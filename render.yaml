@@ -2,8 +2,9 @@ services:
   - type: web
     name: maxwifiapp
     runtime: docker
-    plan: starter  # Free tier: $0/mes con 750 horas
+    plan: free
     region: oregon
+    repo: https://github.com/cruzayala/maxwifiapp
     branch: main
     autoDeploy: true
     dockerfilePath: ./Dockerfile
@@ -15,7 +16,8 @@ services:
         value: production
       - key: PORT
         value: 7400
-      # Estas se configuran como secrets en Render (no aqui)
+      - key: DATABASE_URL
+        value: file:/tmp/data.db
       - key: WISPHUB_API_KEY
         sync: false
       - key: ACCESS_PIN
@@ -28,10 +30,3 @@ services:
         sync: false
       - key: MIKROTIK_PORT
         sync: false
-      - key: DATABASE_URL
-        value: file:/app/data/data.db
-
-    disk:
-      name: data
-      mountPath: /app/data
-      sizeGB: 1
