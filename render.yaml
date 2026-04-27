@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: maxwifiapp
+    runtime: docker
+    plan: starter  # Free tier: $0/mes con 750 horas
+    region: oregon
+    branch: main
+    autoDeploy: true
+    dockerfilePath: ./Dockerfile
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 7400
+      # Estas se configuran como secrets en Render (no aqui)
+      - key: WISPHUB_API_KEY
+        sync: false
+      - key: ACCESS_PIN
+        sync: false
+      - key: MIKROTIK_HOST
+        sync: false
+      - key: MIKROTIK_USER
+        sync: false
+      - key: MIKROTIK_PASS
+        sync: false
+      - key: MIKROTIK_PORT
+        sync: false
+      - key: DATABASE_URL
+        value: file:/app/data/data.db
+
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
