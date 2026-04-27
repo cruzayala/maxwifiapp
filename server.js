@@ -50,6 +50,7 @@ app.get('/health', async (req, res) => {
       timestamp: new Date().toISOString(),
       database: 'connected',
       whatsapp: waStatus,
+      mikrotik: mtConn?.connected ? 'connected' : 'disconnected',
       uptime: process.uptime(),
       version: '1.0.0',
     };
@@ -525,6 +526,314 @@ if (API_KEY) {
 }
 
 app.use('/api', apiRouter);
+
+// ─── MIKROTIK INTEGRATION ───
+const { RouterOSAPI } = require('node-routeros');
+
+const MT_HOST = process.env.MIKROTIK_HOST;
+const MT_USER = process.env.MIKROTIK_USER;
+const MT_PASS = process.env.MIKROTIK_PASS;
+const MT_PORT = parseInt(process.env.MIKROTIK_PORT || '8728');
+
+let mtConn = null;
+let mtConnecting = false;
+let mtLastError = null;
+
+async function getMtConnection() {
+  if (!MT_HOST || !MT_USER || !MT_PASS) {
+    throw new Error('MikroTik no configurado en .env');
+  }
+
+  if (mtConn?.connected) return mtConn;
+
+  if (mtConnecting) {
+    // Esperar conexion en curso
+    let waited = 0;
+    while (mtConnecting && waited < 5000) {
+      await new Promise(r => setTimeout(r, 100));
+      waited += 100;
+    }
+    if (mtConn?.connected) return mtConn;
+  }
+
+  mtConnecting = true;
+  try {
+    if (mtConn) try { await mtConn.close(); } catch {}
+    mtConn = new RouterOSAPI({
+      host: MT_HOST, user: MT_USER, password: MT_PASS, port: MT_PORT,
+      timeout: 10, keepalive: true,
+    });
+    await mtConn.connect();
+    mtLastError = null;
+    return mtConn;
+  } catch (e) {
+    mtLastError = e.message;
+    mtConn = null;
+    throw e;
+  } finally {
+    mtConnecting = false;
+  }
+}
+
+const mtRouter = express.Router();
+mtRouter.use(authMiddleware);
+
+// Status
+mtRouter.get('/status', asyncHandler(async (req, res) => {
+  res.json({
+    configured: !!(MT_HOST && MT_USER && MT_PASS),
+    connected: !!mtConn?.connected,
+    host: MT_HOST,
+    error: mtLastError,
+  });
+}));
+
+// System info
+mtRouter.get('/system', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const [resource, identity, health] = await Promise.all([
+    c.write('/system/resource/print'),
+    c.write('/system/identity/print'),
+    c.write('/system/health/print').catch(() => []),
+  ]);
+  res.json({ resource: resource[0], identity: identity[0]?.name, health });
+}));
+
+// Interfaces
+mtRouter.get('/interfaces', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const ifaces = await c.write('/interface/print');
+  res.json(ifaces);
+}));
+
+// Traffic - bytes en tiempo real
+mtRouter.get('/traffic', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const ifaces = await c.write('/interface/print');
+  res.json(ifaces.map(i => ({
+    name: i.name,
+    type: i.type,
+    running: i.running === 'true',
+    macAddress: i['mac-address'],
+    rxBytes: parseInt(i['rx-byte'] || '0'),
+    txBytes: parseInt(i['tx-byte'] || '0'),
+    rxPackets: parseInt(i['rx-packet'] || '0'),
+    txPackets: parseInt(i['tx-packet'] || '0'),
+  })));
+}));
+
+// Monitor traffic en vivo de una interface
+mtRouter.get('/monitor/:iface', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const result = await c.write('/interface/monitor-traffic', '=interface=' + req.params.iface, '=once=');
+  res.json(result[0] || {});
+}));
+
+// Simple Queues - clientes con limite de banda
+mtRouter.get('/queues', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const queues = await c.write('/queue/simple/print');
+  res.json(queues.map(q => ({
+    id: q['.id'],
+    name: q.name,
+    target: q.target,
+    maxLimit: q['max-limit'],
+    burstLimit: q['burst-limit'],
+    burstThreshold: q['burst-threshold'],
+    burstTime: q['burst-time'],
+    bytes: q.bytes,  // upload/download
+    packets: q.packets,
+    rate: q.rate,
+    disabled: q.disabled === 'true',
+  })));
+}));
+
+// Stats de queue especifica con bandwidth actual
+mtRouter.get('/queue-stats', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const queues = await c.write('/queue/simple/print', '=stats=');
+  res.json(queues);
+}));
+
+// IP Addresses
+mtRouter.get('/addresses', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const addrs = await c.write('/ip/address/print');
+  res.json(addrs);
+}));
+
+// Active sessions PPPoE / Hotspot
+mtRouter.get('/active-sessions', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const [pppoe, hotspot] = await Promise.all([
+    c.write('/ppp/active/print').catch(() => []),
+    c.write('/ip/hotspot/active/print').catch(() => []),
+  ]);
+  res.json({ pppoe, hotspot });
+}));
+
+// DHCP Leases
+mtRouter.get('/dhcp-leases', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const leases = await c.write('/ip/dhcp-server/lease/print');
+  res.json(leases);
+}));
+
+// ARP Table
+mtRouter.get('/arp', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const arp = await c.write('/ip/arp/print');
+  res.json(arp);
+}));
+
+// Cache para calcular bandwidth en tiempo real (delta entre samples)
+const bandwidthCache = new Map(); // ip → { upload, download, timestamp }
+
+// Cliente live: queue + WispHub client + bandwidth real-time
+mtRouter.get('/clients-live', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+
+  // 1. Get queues with stats (incluye rate actual calculado por MikroTik)
+  const queues = await c.write('/queue/simple/print', '=stats=');
+
+  // 2. Get clients from local DB cache (mas rapido que pegarle a WispHub)
+  const clients = await prisma.client.findMany({
+    where: { ip: { not: null } },
+    select: {
+      idServicio: true, nombre: true, ip: true, telefono: true,
+      planInternetName: true, precioPlan: true, estado: true,
+      estadoFacturas: true, zonaNombre: true,
+    }
+  });
+  const clientsByIp = new Map();
+  clients.forEach(cl => { if (cl.ip) clientsByIp.set(cl.ip, cl); });
+
+  const now = Date.now();
+  const result = [];
+
+  for (const q of queues) {
+    const targetIp = (q.target || '').split('/')[0];
+    if (!targetIp) continue;
+
+    const bytes = (q.bytes || '0/0').split('/');
+    const uploadBytes = parseInt(bytes[0] || '0');
+    const downloadBytes = parseInt(bytes[1] || '0');
+    const totalBytes = uploadBytes + downloadBytes;
+
+    // El campo 'rate' del MikroTik viene como "uploadBps/downloadBps" en bps
+    // Si MikroTik no lo provee (sin stats=), usamos cache delta como fallback
+    let uploadBps = 0, downloadBps = 0;
+
+    if (q.rate) {
+      const rateParts = q.rate.split('/');
+      uploadBps = parseInt(rateParts[0] || '0');
+      downloadBps = parseInt(rateParts[1] || '0');
+    } else {
+      // Fallback: calcular delta
+      const prev = bandwidthCache.get(targetIp);
+      if (prev) {
+        const dt = (now - prev.timestamp) / 1000;
+        if (dt >= 1 && dt <= 15) {
+          const upDelta = uploadBytes - prev.upload;
+          const downDelta = downloadBytes - prev.download;
+          if (upDelta >= 0 && upDelta < 1e10) uploadBps = (upDelta * 8) / dt;
+          if (downDelta >= 0 && downDelta < 1e10) downloadBps = (downDelta * 8) / dt;
+        }
+      }
+      bandwidthCache.set(targetIp, { upload: uploadBytes, download: downloadBytes, timestamp: now });
+    }
+
+    // Sanity check: ignorar valores que excedan 10x el max-limit (algun bug de counter)
+    const maxReasonableUp = (parseInt((q['max-limit'] || '0/0').split('/')[0] || '0') || 1e9) * 10;
+    const maxReasonableDown = (parseInt((q['max-limit'] || '0/0').split('/')[1] || '0') || 1e9) * 10;
+    if (uploadBps > maxReasonableUp) uploadBps = 0;
+    if (downloadBps > maxReasonableDown) downloadBps = 0;
+
+    const client = clientsByIp.get(targetIp);
+
+    // Parse max-limit "4300000/4300000"
+    const limits = (q['max-limit'] || '0/0').split('/');
+    const maxUp = parseInt(limits[0] || '0');
+    const maxDown = parseInt(limits[1] || '0');
+
+    result.push({
+      queueName: q.name,
+      ip: targetIp,
+      // Cliente WispHub
+      client: client ? {
+        id: client.idServicio,
+        name: client.nombre,
+        phone: client.telefono,
+        plan: client.planInternetName,
+        price: client.precioPlan,
+        zone: client.zonaNombre,
+        status: client.estado,
+        invoiceStatus: client.estadoFacturas,
+      } : null,
+      // Queue
+      maxUploadBps: maxUp,
+      maxDownloadBps: maxDown,
+      // Acumulado historico
+      totalUploadBytes: uploadBytes,
+      totalDownloadBytes: downloadBytes,
+      totalBytes,
+      // En vivo (bps actual)
+      uploadBps,
+      downloadBps,
+      // Utilizacion %
+      uploadPct: maxUp > 0 ? Math.min(100, (uploadBps / maxUp) * 100) : 0,
+      downloadPct: maxDown > 0 ? Math.min(100, (downloadBps / maxDown) * 100) : 0,
+      isActive: uploadBps + downloadBps > 0,
+      isDisabled: q.disabled === 'true',
+    });
+  }
+
+  // Stats globales
+  const totalUp = result.reduce((s, r) => s + r.uploadBps, 0);
+  const totalDown = result.reduce((s, r) => s + r.downloadBps, 0);
+  const activeCount = result.filter(r => r.isActive).length;
+
+  res.json({
+    timestamp: new Date().toISOString(),
+    stats: {
+      totalQueues: result.length,
+      activeClients: activeCount,
+      totalUploadBps: totalUp,
+      totalDownloadBps: totalDown,
+      totalBpsCombined: totalUp + totalDown,
+    },
+    clients: result,
+  });
+}));
+
+// Top consumers (queue ordenadas por bytes)
+mtRouter.get('/top-consumers', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const queues = await c.write('/queue/simple/print');
+  const consumers = queues.map(q => {
+    const bytes = (q.bytes || '0/0').split('/');
+    return {
+      name: q.name,
+      target: q.target,
+      maxLimit: q['max-limit'],
+      uploadBytes: parseInt(bytes[0] || '0'),
+      downloadBytes: parseInt(bytes[1] || '0'),
+      totalBytes: parseInt(bytes[0] || '0') + parseInt(bytes[1] || '0'),
+    };
+  });
+  consumers.sort((a, b) => b.totalBytes - a.totalBytes);
+  res.json(consumers.slice(0, parseInt(req.query.limit) || 20));
+}));
+
+// Ping desde el MikroTik
+mtRouter.post('/ping', asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const { address, count = 4 } = req.body;
+  const result = await c.write('/ping', '=address=' + address, '=count=' + count);
+  res.json(result);
+}));
+
+app.use('/mikrotik', mtRouter);
 
 // ─── WHATSAPP BAILEYS ───
 let waSocket = null;

@@ -15,6 +15,8 @@ export const routes: Routes = [
   { path: 'reports', canActivate: [authGuard], loadComponent: () => import('./pages/reports/reports').then(m => m.ReportsComponent) },
   { path: 'network', canActivate: [authGuard], loadComponent: () => import('./pages/network-monitor/network-monitor').then(m => m.NetworkMonitorComponent) },
   { path: 'bandwidth', canActivate: [authGuard], loadComponent: () => import('./pages/bandwidth/bandwidth').then(m => m.BandwidthComponent) },
+  { path: 'mikrotik', canActivate: [authGuard], loadComponent: () => import('./pages/mikrotik/mikrotik').then(m => m.MikrotikComponent) },
+  { path: 'live', canActivate: [authGuard], loadComponent: () => import('./pages/live/live').then(m => m.LiveComponent) },
   { path: 'whatsapp', canActivate: [authGuard], loadComponent: () => import('./pages/whatsapp/whatsapp').then(m => m.WhatsappComponent) },
   { path: 'morosos', canActivate: [authGuard], loadComponent: () => import('./pages/morosos/morosos').then(m => m.MorososComponent) },
   { path: 'settings', canActivate: [authGuard], loadComponent: () => import('./pages/settings/settings').then(m => m.SettingsComponent) },

@@ -25,6 +25,11 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
           <span>Dashboard</span>
         </a>
+        <a routerLink="/live" routerLinkActive="active" class="nav-item live-item" (click)="closeSidebar()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 9a1.65 1.65 0 00.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 0024.5 4.6"/></svg>
+          <span>EN VIVO</span>
+          <span class="live-dot"></span>
+        </a>
         <a routerLink="/clients" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
           <span>Clientes</span>
@@ -56,6 +61,10 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
         <a routerLink="/bandwidth" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/><path d="M12 3a9 9 0 00-9 9"/><path d="M12 12l5-5"/></svg>
           <span>Velocidad</span>
+        </a>
+        <a routerLink="/mikrotik" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="6" cy="12" r="1"/><circle cx="10" cy="12" r="1"/><circle cx="14" cy="12" r="1"/><circle cx="18" cy="12" r="1"/></svg>
+          <span>MikroTik</span>
         </a>
         <a routerLink="/whatsapp" routerLinkActive="active" class="nav-item" (click)="closeSidebar()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
@@ -180,6 +189,18 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     @keyframes pulse {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.5; }
+    }
+
+    .live-item { position: relative; }
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #ef4444; margin-left: auto;
+      animation: pulseDot 1.2s infinite;
+      box-shadow: 0 0 8px #ef4444;
+    }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.6; transform: scale(1.2); }
     }
 
     /* MOBILE */
