@@ -1,0 +1,628 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// WispHub Admin - Schema SQLite completo
+// Autor: Sistema para 1 usuario | Backup: copiar data.db
+// ═══════════════════════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 1. CACHE DE WISPHUB (espejo local para funcionamiento offline)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cliente - mirror completo de WispHub /api/clientes/
+model Client {
+  idServicio     Int      @id
+  usuario        String?
+  nombre         String
+  email          String?
+  emailCc        String?
+  razonSocial    String?
+  tipoPersona    String?
+  cedula         String?
+  rfc            String?
+  telefono       String?
+  direccion      String?
+  localidad      String?
+  ciudad         String?
+  coordenadas    String?
+
+  // Plan y facturacion
+  planInternetId   Int?
+  planInternetName String?
+  precioPlan       String?
+  descuento        String?
+  saldo            String?
+  estadoFacturas   String?
+
+  // Estado y red
+  estado          String?   // Activo, Suspendido, Cortado, Gratis, Retirado
+  ip              String?
+  ipLocal         String?
+  macCpe          String?
+  interfazLan     String?
+  snOnu           String?
+
+  // Router WiFi
+  modeloRouterWifi   String?
+  ipRouterWifi       String?
+  macRouterWifi      String?
+  ssidRouterWifi     String?
+  passwordSsidWifi   String?
+
+  // Zona, router, tecnico (desnormalizado para query rapido)
+  zonaId          Int?
+  zonaNombre      String?
+  routerId        Int?
+  routerNombre    String?
+  sectorialId     Int?
+  sectorialNombre String?
+  modeloAntenaId  Int?
+  modeloAntenaName String?
+  tecnicoId       Int?
+  tecnicoNombre   String?
+
+  // Metadata
+  firewall           Boolean @default(true)
+  autoActivar        Boolean @default(false)
+  formaContratacion  String?
+  comentarios        String?
+  fechaInstalacion   String?
+  fechaCancelacion   String?
+  fechaCorte         String?
+  ultimoCambio       String?
+
+  syncedAt           DateTime @default(now())
+
+  notes      ClientNote[]
+  promises   PaymentPromise[]
+  pings      PingHistory[]
+  tests      SpeedTest[]
+  payments   PaymentLog[]
+  messages   WhatsappLog[]
+  tags       ClientTagAssignment[]
+  invoices   Invoice[]    @relation("InvoiceToClient")
+
+  @@index([nombre])
+  @@index([estado])
+  @@index([telefono])
+  @@index([ip])
+  @@index([cedula])
+  @@index([zonaId])
+  @@index([planInternetId])
+  @@index([estadoFacturas])
+  @@index([fechaCorte])
+}
+
+/// Factura - mirror completo de WispHub /api/facturas/
+model Invoice {
+  idFactura       Int      @id
+  folio           String?
+  fechaEmision    String?
+  fechaVencimiento String?
+  fechaPago       String?
+  estado          String?  // Pagada, Pendiente de Pago, Vencida
+
+  tipo            Int?
+  subTotal        Float    @default(0)
+  descuento       Float    @default(0)
+  impuestosTotal  Float    @default(0)
+  total           Float    @default(0)
+  totalCobrado    Float    @default(0)
+  saldo           Float    @default(0)
+  saldoNuevo      Float    @default(0)
+
+  comprobantePago String?
+  referencia      String?
+  referenciaOxxo  String?
+
+  // Pasarelas
+  totalPasarela   Float    @default(0)
+  totalOpenpay    Float    @default(0)
+  totalOxxo       Float    @default(0)
+  idMercadopago   String?
+  idPayu          String?
+  urlPayu         String?
+
+  // Retenciones
+  retencionPorcentaje Float @default(0)
+  retencionesTotal    Float @default(0)
+
+  // Relaciones
+  zonaId          Int?
+  zonaNombre      String?
+  formaPagoId     Int?
+  formaPagoNombre String?
+  cajeroId        Int?
+  cajeroNombre    String?
+
+  // Cliente (puede no existir en cache)
+  clienteIdServicio Int?
+  clienteNombre     String
+  clienteUsuario    String?
+  clienteCedula     String?
+  clienteTelefono   String?
+  clienteDireccion  String?
+  clienteEmail      String?
+  clienteRfc        String?
+
+  syncedAt        DateTime @default(now())
+
+  client          Client?        @relation("InvoiceToClient", fields: [clienteIdServicio], references: [idServicio])
+  articles        InvoiceArticle[]
+  payments        PaymentLog[]
+
+  @@index([clienteIdServicio])
+  @@index([clienteNombre])
+  @@index([estado])
+  @@index([fechaEmision])
+  @@index([fechaVencimiento])
+  @@index([formaPagoId])
+}
+
+/// Articulos (line items) de factura
+model InvoiceArticle {
+  id             Int     @id @default(autoincrement())
+  idFactura      Int
+  remoteId       Int?    // ID original en WispHub
+  uuidEquipo     String?
+  categoriaStock String?
+  cantidad       Int     @default(1)
+  descripcion    String
+  precio         String  @default("0")
+  idServicio     Int?    // ref a Client.idServicio
+
+  invoice        Invoice @relation(fields: [idFactura], references: [idFactura], onDelete: Cascade)
+
+  @@index([idFactura])
+  @@index([idServicio])
+}
+
+/// Ticket de soporte
+model Ticket {
+  idTicket           Int      @id
+  asunto             String?
+  descripcion        String?
+  estado             String?  // Abierto, En Progreso, Cerrado
+  prioridad          String?  // Alta, Media, Baja
+  asignado           String?
+
+  clienteIdServicio  Int?
+  clienteNombre      String?
+
+  fechaCreacion      String?
+  fechaActualizacion String?
+
+  syncedAt           DateTime @default(now())
+
+  @@index([estado])
+  @@index([prioridad])
+  @@index([clienteIdServicio])
+}
+
+/// Plan de internet
+model InternetPlan {
+  id         Int     @id
+  nombre     String
+  tipo       String? // Simple Queue, PPPoE
+
+  syncedAt   DateTime @default(now())
+
+  @@index([nombre])
+}
+
+/// Zona geografica
+model Zone {
+  id         Int     @id
+  nombre     String
+
+  syncedAt   DateTime @default(now())
+}
+
+/// Router MikroTik
+model Router {
+  id                      Int     @id
+  nombre                  String
+  ip                      String?
+  fallaGeneral            Boolean @default(false)
+  fallaGeneralDescripcion String?
+
+  syncedAt                DateTime @default(now())
+}
+
+/// Forma de pago
+model PaymentMethod {
+  id         Int     @id
+  nombre     String  // Efectivo, Transferencia, Saldo a Favor
+
+  syncedAt   DateTime @default(now())
+}
+
+/// Modelo de antena CPE
+model AntennaModel {
+  id         Int     @id
+  nombre     String
+  marca      String?
+
+  syncedAt   DateTime @default(now())
+}
+
+/// Miembros del staff (técnicos/cajeros)
+model Staff {
+  id         Int     @id
+  username   String?
+  nombre     String
+  email      String?
+
+  syncedAt   DateTime @default(now())
+}
+
+/// Sectorial
+model Sectorial {
+  id         Int     @id
+  nombre     String
+
+  syncedAt   DateTime @default(now())
+}
+
+/// Log de sincronizaciones con WispHub
+model SyncLog {
+  id         Int      @id @default(autoincrement())
+  entity     String   // clients, invoices, tickets, plans, zones, routers
+  status     String   // success, error
+  recordCount Int     @default(0)
+  errorMessage String?
+  durationMs Int?
+  startedAt  DateTime @default(now())
+  endedAt    DateTime?
+
+  @@index([entity, startedAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2. OPERACIONES PROPIAS DE LA APP
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cada pago registrado desde la app (auditoria completa)
+model PaymentLog {
+  id                Int      @id @default(autoincrement())
+  idFactura         Int
+  idServicio        Int?
+  clientName        String
+  amount            Float
+  paymentMethodId   Int?
+  paymentMethodName String?
+  paidAt            DateTime
+  notes             String?
+  success           Boolean  @default(true)
+  errorMessage      String?
+  receiptPrinted    Boolean  @default(false)
+  wasRegisteredOnWisphub Boolean @default(false)
+  taskId            String?  // WispHub async task id
+  createdAt         DateTime @default(now())
+
+  invoice   Invoice? @relation(fields: [idFactura], references: [idFactura])
+  client    Client?  @relation(fields: [idServicio], references: [idServicio])
+
+  @@index([idFactura])
+  @@index([idServicio])
+  @@index([paidAt])
+  @@index([createdAt])
+  @@index([success])
+  @@index([clientName])
+}
+
+/// Promesas de pago hechas por los clientes
+model PaymentPromise {
+  id            Int       @id @default(autoincrement())
+  idServicio    Int
+  clientName    String
+  amount        Float
+  promisedDate  DateTime
+  status        String    @default("pending") // pending, paid, broken
+  notes         String?
+  reminderSent  Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  client        Client?   @relation(fields: [idServicio], references: [idServicio])
+
+  @@index([idServicio])
+  @@index([status])
+  @@index([promisedDate])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 3. WHATSAPP - mensajes, plantillas, campañas
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cada mensaje enviado por WhatsApp
+model WhatsappLog {
+  id            Int      @id @default(autoincrement())
+  phone         String
+  message       String
+  idServicio    Int?
+  clientName    String?
+  messageType   String?  // manual, reminder, overdue, template, bulk
+  campaignId    Int?
+  status        String   // sent, failed, pending
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  client        Client?  @relation(fields: [idServicio], references: [idServicio])
+  campaign      WhatsappCampaign? @relation(fields: [campaignId], references: [id])
+
+  @@index([phone])
+  @@index([idServicio])
+  @@index([status])
+  @@index([messageType])
+  @@index([createdAt])
+  @@index([campaignId])
+}
+
+/// Plantillas reusables de mensajes
+model WhatsappTemplate {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique   // cobro, corte, reconexion, saludo, etc
+  category  String?            // pago, tecnico, comercial
+  content   String
+  variables String?            // JSON array con vars que usa
+  isDefault Boolean  @default(false)
+  useCount  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}
+
+/// Campañas de mensajes masivos
+model WhatsappCampaign {
+  id              Int      @id @default(autoincrement())
+  name            String
+  templateId      Int?
+  messageContent  String
+  targetFilter    String?   // JSON con criterios de seleccion
+  status          String   @default("draft")  // draft, sending, completed, cancelled
+  totalTargets    Int      @default(0)
+  successCount    Int      @default(0)
+  failedCount     Int      @default(0)
+  scheduledFor    DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  messages        WhatsappLog[]
+
+  @@index([status])
+  @@index([scheduledFor])
+}
+
+/// Reglas de envio automatico
+model NotificationRule {
+  id              Int      @id @default(autoincrement())
+  name            String
+  type            String   // reminder_before_cut, overdue, welcome, payment_received
+  active          Boolean  @default(true)
+  daysOffset      Int      @default(0)  // -3 = 3 dias antes del corte, +5 = 5 dias despues
+  scheduleHour    Int      @default(10) // 0-23
+  messageTemplate String
+  intervalDays    Int      @default(1)  // Para repeticion
+  lastRunAt       DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([active])
+  @@index([type])
+}
+
+/// Log para evitar duplicados en envios automaticos
+model NotificationSentLog {
+  id          Int      @id @default(autoincrement())
+  ruleId      Int?
+  phone       String
+  idServicio  Int?
+  type        String   // reminder, overdue, etc
+  sentAt      DateTime @default(now())
+
+  @@index([phone, type, sentAt])
+  @@index([idServicio, type])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 4. RED - monitoreo, pings, speed tests
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Historial de pings a clientes (uptime tracking)
+model PingHistory {
+  id            Int      @id @default(autoincrement())
+  idServicio    Int
+  success       Boolean
+  successCount  Int      @default(0)
+  totalAttempts Int      @default(0)
+  latencyMs     Float?
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+
+  client        Client?  @relation(fields: [idServicio], references: [idServicio])
+
+  @@index([idServicio, createdAt])
+  @@index([createdAt])
+  @@index([success])
+}
+
+/// Resultados de speed tests
+model SpeedTest {
+  id           Int      @id @default(autoincrement())
+  idServicio   Int?
+  clientName   String?
+  clientIp     String?
+  downloadMbps Float
+  uploadMbps   Float
+  pingMs       Float
+  jitterMs     Float
+  location     String?  // Donde se realizo el test
+  testServer   String?  // cloudflare, google, etc
+  notes        String?
+  createdAt    DateTime @default(now())
+
+  client       Client?  @relation(fields: [idServicio], references: [idServicio])
+
+  @@index([idServicio])
+  @@index([createdAt])
+}
+
+/// Escaneos de red (cuando se hace scan masivo)
+model NetworkScan {
+  id           Int      @id @default(autoincrement())
+  totalScanned Int      @default(0)
+  onlineCount  Int      @default(0)
+  offlineCount Int      @default(0)
+  errorCount   Int      @default(0)
+  durationMs   Int?
+  startedAt    DateTime @default(now())
+  endedAt      DateTime?
+  notes        String?
+
+  @@index([startedAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 5. GESTION DE CLIENTES (notas, tags, adjuntos)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Notas internas (no sincronizan con WispHub)
+model ClientNote {
+  id         Int      @id @default(autoincrement())
+  idServicio Int
+  clientName String
+  title      String?
+  note       String
+  priority   String   @default("normal") // low, normal, high, alert
+  isPinned   Boolean  @default(false)
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  client     Client?  @relation(fields: [idServicio], references: [idServicio])
+
+  @@index([idServicio])
+  @@index([priority])
+  @@index([isPinned])
+}
+
+/// Tags/etiquetas reusables
+model ClientTag {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+
+  assignments ClientTagAssignment[]
+}
+
+/// Relacion muchos-a-muchos de clientes y tags
+model ClientTagAssignment {
+  id         Int      @id @default(autoincrement())
+  idServicio Int
+  tagId      Int
+  assignedAt DateTime @default(now())
+
+  client     Client   @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+  tag        ClientTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([idServicio, tagId])
+  @@index([idServicio])
+  @@index([tagId])
+}
+
+/// Adjuntos de clientes (contratos, cedulas, fotos, etc)
+model ClientAttachment {
+  id          Int      @id @default(autoincrement())
+  idServicio  Int
+  fileName    String
+  fileType    String?
+  fileSize    Int?
+  mimeType    String?
+  description String?
+  category    String?  // contrato, cedula, instalacion, factura, otro
+  filePath    String?  // Path en disco (si se guarda)
+  fileData    Bytes?   // O blob directo (si es pequeño)
+  createdAt   DateTime @default(now())
+
+  @@index([idServicio])
+  @@index([category])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 6. CONFIGURACION Y AUDITORIA
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Settings compartidos de la app (sobrevive limpieza de navegador)
+model AppSetting {
+  key         String   @id
+  value       String
+  category    String?  // company, whatsapp, printing, notifications
+  description String?
+  updatedAt   DateTime @updatedAt
+
+  @@index([category])
+}
+
+/// Log de todas las acciones hechas en la app
+model Activity {
+  id         Int      @id @default(autoincrement())
+  action     String   // payment, suspend, activate, edit_client, edit_service, create_client, delete_client, message_sent, etc
+  entityType String?  // client, invoice, note, setting, whatsapp
+  entityId   String?
+  entityName String?
+  details    String?  // JSON con datos adicionales
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+/// Historial de exportaciones CSV / PDF
+model ExportLog {
+  id          Int      @id @default(autoincrement())
+  exportType  String   // clientes, facturas, morosos, reporte_planes
+  format      String   @default("csv") // csv, pdf, excel
+  recordCount Int      @default(0)
+  fileName    String?
+  filters     String?  // JSON con filtros aplicados
+  createdAt   DateTime @default(now())
+
+  @@index([exportType])
+  @@index([createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 7. DASHBOARD Y RESUMENES (agregados precomputados)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Snapshots diarios para grafica historica
+model DailySnapshot {
+  id               Int      @id @default(autoincrement())
+  date             DateTime @unique
+  totalClients     Int      @default(0)
+  activeClients    Int      @default(0)
+  suspendedClients Int      @default(0)
+  freeClients      Int      @default(0)
+  totalBilled      Float    @default(0)
+  totalCollected   Float    @default(0)
+  totalPending     Float    @default(0)
+  paidInvoices     Int      @default(0)
+  pendingInvoices  Int      @default(0)
+  monthlyRevenue   Float    @default(0)
+  createdAt        DateTime @default(now())
+
+  @@index([date])
+}

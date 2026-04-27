@@ -1,0 +1,20 @@
+{
+  "/api": {
+    "target": "https://api.wisphub.io",
+    "secure": true,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/db": {
+    "target": "http://localhost:7401",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/wa": {
+    "target": "http://localhost:7401",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  }
+}

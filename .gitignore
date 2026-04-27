@@ -1,0 +1,64 @@
+# Compiled output
+/dist
+/tmp
+/out-tsc
+/bazel-out
+
+# Node
+/node_modules
+npm-debug.log
+yarn-error.log
+
+# IDEs
+.idea/
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
+.history/*
+
+# Angular
+/.angular/cache
+.sass-cache/
+/connect.lock
+/coverage
+/libpeerconnection.log
+testem.log
+/typings
+__screenshots__/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Prisma generated
+/src/generated/prisma
+
+# SECRETOS - NUNCA COMMITEAR
+.env
+.env.local
+.env.production
+
+# Database (la del usuario, NO subir)
+*.db
+*.db-journal
+prisma/data.db
+prisma/data.db-journal
+
+# WhatsApp auth (sesion personal)
+wa-auth/
+baileys-store.json
+
+# Backups locales
+backups/
+*.bak
