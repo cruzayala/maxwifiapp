@@ -80,6 +80,35 @@ model Client {
 
   syncedAt           DateTime @default(now())
 
+  // Alias / nombre real del cliente (override custom del admin)
+  // Se usa para imprimir facturas, notificaciones, captive page
+  // El sync NUNCA sobrescribe este campo - solo lo modifica el admin
+  aliasNombre     String?
+  aliasCedula     String?    // cedula real, si Wisphub la tiene mal
+  aliasTelefono   String?    // telefono real, si Wisphub lo tiene mal
+  aliasNotas      String?    // notas internas del admin
+
+  // Bloqueo manual desde el CRM (independiente del estado WispHub)
+  crmAction       String?    // "moroso" | "block" | null
+  crmActionReason String?
+  crmActionAt     DateTime?
+
+  // Métricas calculadas automáticamente (recompute cada 2 min)
+  creditScore       Int?       // 0-100
+  creditTier        String?    // EXCELENTE | BUENO | REGULAR | RIESGO | CRITICO
+  creditFactors     String?    // JSON: detalles del cálculo
+  consumptionMb30d  Float?     // MB consumidos últimos 30 días
+  consumptionPct    Float?     // % vs plan teórico mensual
+  consumptionTier   String?    // INTENSIVO | NORMAL | BAJO | INACTIVO
+  metricsUpdatedAt  DateTime?
+
+  // Mirror del MikroTik por IP (datos en vivo del router)
+  mtSyncedAt    DateTime?
+  mtMacAddress  String?
+  mtQueueName   String?
+  mtQueueLimit  String?
+  mtInterface   String?
+
   notes      ClientNote[]
   promises   PaymentPromise[]
   pings      PingHistory[]
@@ -88,6 +117,8 @@ model Client {
   messages   WhatsappLog[]
   tags       ClientTagAssignment[]
   invoices   Invoice[]    @relation("InvoiceToClient")
+  blockEvents BlockEvent[]
+  webActivity WebActivity[]
 
   @@index([nombre])
   @@index([estado])
@@ -625,4 +656,74 @@ model DailySnapshot {
   createdAt        DateTime @default(now())
 
   @@index([date])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 8. USUARIOS Y PERMISOS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Roles disponibles:
+/// - super_admin: todo incluyendo gestion de usuarios
+/// - admin:       todo excepto crear/eliminar usuarios
+/// - tecnico:     ver datos MikroTik + ping/test, NO editar
+/// - cobranza:    ver clientes, enviar facturas/recordatorios, marcar moroso (NO bloqueo total)
+/// - viewer:      solo lectura
+model User {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique
+  passwordHash  String
+  fullName      String?
+  email         String?
+  role          String    @default("admin")
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  lastLoginIp   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdById   Int?
+  passwordChangedAt DateTime?
+
+  @@index([role])
+  @@index([isActive])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 9. BLOQUEOS MANUALES (CRM -> MikroTik)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cada vez que el admin marca a un cliente como moroso, lo bloquea o lo reactiva
+model BlockEvent {
+  id         Int      @id @default(autoincrement())
+  idServicio Int
+  ipAddress  String
+  action     String   // "moroso" | "block" | "unblock"
+  reason     String
+  createdBy  String?  // futuro: usuario que ejecuto
+  createdAt  DateTime @default(now())
+
+  client     Client   @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+
+  @@index([idServicio])
+  @@index([action])
+  @@index([createdAt])
+}
+
+/// Web Activity (DNS queries) por cliente - agregado por (cliente, dominio, dia)
+/// Una sola fila por cliente+dominio+dia con queryCount incrementado
+/// Auto-purge despues de 30 dias para no crecer infinito
+model WebActivity {
+  id          Int      @id @default(autoincrement())
+  idServicio  Int
+  domain      String
+  day         String   // YYYY-MM-DD
+  queryCount  Int      @default(0)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  client      Client   @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+
+  @@unique([idServicio, domain, day])
+  @@index([idServicio, day])
+  @@index([day])
+  @@index([domain])
 }

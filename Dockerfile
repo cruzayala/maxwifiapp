@@ -36,5 +36,8 @@ COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 # Solo deps de producción
 RUN npm ci --omit=dev
 
+# Directorio para DB persistente (Railway monta el Volume aqui externamente)
+RUN mkdir -p /data
+
 EXPOSE 7400
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss --skip-generate && node server.js"]

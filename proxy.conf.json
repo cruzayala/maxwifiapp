@@ -1,18 +1,60 @@
 {
   "/api": {
-    "target": "https://api.wisphub.io",
-    "secure": true,
+    "target": "http://localhost:7402",
+    "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/db": {
-    "target": "http://localhost:7401",
+    "target": "http://localhost:7402",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/wa": {
-    "target": "http://localhost:7401",
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/clients-actions": {
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/web-activity": {
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/mikrotik": {
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/sync": {
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/captive": {
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/auth": {
+    "target": "http://localhost:7402",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/health": {
+    "target": "http://localhost:7402",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"

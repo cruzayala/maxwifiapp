@@ -18,35 +18,46 @@ import { AuthService } from '../../services/auth.service';
             </svg>
           </div>
           <h1>WispHub Admin</h1>
-          <p>Ingresa tu PIN de acceso</p>
+          <p>Ingresa con tu cuenta</p>
         </div>
 
-        <div class="pin-input-wrap">
-          <input
-            #pinInput
-            type="password"
-            inputmode="numeric"
-            pattern="[0-9]*"
-            maxlength="8"
-            [(ngModel)]="pin"
-            (keyup.enter)="login()"
-            placeholder="****"
-            class="pin-input"
-            autofocus />
-        </div>
+        <form (submit)="login(); $event.preventDefault()">
+          <label class="field">
+            <span>Usuario</span>
+            <input
+              type="text"
+              autocomplete="username"
+              [(ngModel)]="username"
+              name="username"
+              placeholder="maximo"
+              class="text-input"
+              autofocus />
+          </label>
 
-        @if (error()) {
-          <div class="error-msg">{{ error() }}</div>
-        }
+          <label class="field">
+            <span>Clave</span>
+            <input
+              type="password"
+              autocomplete="current-password"
+              [(ngModel)]="password"
+              name="password"
+              placeholder="••••••••"
+              class="text-input" />
+          </label>
 
-        <button class="btn-login" (click)="login()" [disabled]="loading() || !pin">
-          @if (loading()) {
-            <div class="spinner"></div>
-          } @else {
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          @if (error()) {
+            <div class="error-msg">{{ error() }}</div>
           }
-          <span>{{ loading() ? 'Validando...' : 'Ingresar' }}</span>
-        </button>
+
+          <button type="submit" class="btn-login" [disabled]="loading() || !username || !password">
+            @if (loading()) {
+              <div class="spinner"></div>
+            } @else {
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            }
+            <span>{{ loading() ? 'Validando...' : 'Ingresar' }}</span>
+          </button>
+        </form>
       </div>
     </div>
   `,
@@ -65,7 +76,7 @@ import { AuthService } from '../../services/auth.service';
       border-radius: 24px;
       padding: 40px;
       width: 100%;
-      max-width: 380px;
+      max-width: 400px;
       box-shadow: 0 25px 60px rgba(0,0,0,0.3);
       animation: fadeIn 0.4s ease;
     }
@@ -76,20 +87,18 @@ import { AuthService } from '../../services/auth.service';
     .brand h1 { margin: 0 0 8px; font-size: 24px; font-weight: 700; color: #0f172a; }
     .brand p { margin: 0; color: #64748b; font-size: 14px; }
 
-    .pin-input-wrap { margin-bottom: 16px; }
-    .pin-input {
-      width: 100%; padding: 18px;
+    .field { display: block; margin-bottom: 14px; }
+    .field span { display: block; font-size: 13px; color: #475569; margin-bottom: 6px; font-weight: 500; }
+    .text-input {
+      width: 100%; padding: 12px 14px;
       border: 2px solid #e2e8f0;
-      border-radius: 14px;
-      font-size: 32px; font-weight: 700;
-      text-align: center; letter-spacing: 12px;
+      border-radius: 10px;
+      font-size: 15px;
       outline: none; box-sizing: border-box;
       color: #0f172a;
       transition: all 0.2s;
-      font-family: 'Courier New', monospace;
     }
-    .pin-input:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
-    .pin-input::placeholder { color: #cbd5e1; letter-spacing: 8px; }
+    .text-input:focus { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.1); }
 
     .error-msg {
       background: #fee2e2; color: #dc2626;
@@ -105,6 +114,7 @@ import { AuthService } from '../../services/auth.service';
       font-size: 16px; font-weight: 600;
       cursor: pointer; transition: all 0.2s;
       display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 6px;
     }
     .btn-login:hover:not(:disabled) { background: #4f46e5; transform: translateY(-1px); }
     .btn-login:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -122,16 +132,17 @@ export class LoginComponent {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
 
-  pin = '';
+  username = '';
+  password = '';
   loading = signal(false);
   error = signal('');
 
   login() {
-    if (!this.pin) return;
+    if (!this.username || !this.password) return;
     this.loading.set(true);
     this.error.set('');
 
-    this.auth.login(this.pin).subscribe({
+    this.auth.login(this.username, this.password).subscribe({
       next: () => {
         this.loading.set(false);
         const returnUrl = this.route.snapshot.queryParams['return'] || '/dashboard';
@@ -139,8 +150,8 @@ export class LoginComponent {
       },
       error: (e) => {
         this.loading.set(false);
-        this.error.set(e.error?.error || 'PIN incorrecto');
-        this.pin = '';
+        this.error.set(e.error?.error || 'Usuario o clave incorrectos');
+        this.password = '';
       }
     });
   }

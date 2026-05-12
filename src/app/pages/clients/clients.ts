@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
@@ -6,11 +6,16 @@ import { WispHubClient } from '../../models/client.model';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ExportService } from '../../services/export.service';
+import { ClientBlockActionsComponent } from '../../components/client-block-actions/client-block-actions';
+import { ClientActionsService } from '../../services/client-actions.service';
+import { MetricsService } from '../../services/metrics.service';
+import { ClientMetric, tierStyle, consStyle, CreditTier } from '../../models/metrics.model';
+import { DecimalPipe } from '@angular/common';
 
 @Component({
   selector: 'app-clients',
   standalone: true,
-  imports: [NavbarComponent, RouterLink, FormsModule],
+  imports: [NavbarComponent, RouterLink, FormsModule, ClientBlockActionsComponent, DecimalPipe],
   template: `
     <app-navbar pageTitle="Clientes" />
 
@@ -34,6 +39,14 @@ import { ExportService } from '../../services/export.service';
             @for (plan of allPlans(); track plan) {
               <option [value]="plan">{{ plan }}</option>
             }
+          </select>
+          <select [(ngModel)]="tierFilter" (change)="filterClients()" class="filter-select">
+            <option value="">Todos los tiers</option>
+            <option value="EXCELENTE">🌟 Excelente</option>
+            <option value="BUENO">✅ Bueno</option>
+            <option value="REGULAR">⚠️ Regular</option>
+            <option value="RIESGO">🟠 Riesgo</option>
+            <option value="CRITICO">🔴 Crítico</option>
           </select>
         </div>
         <div class="toolbar-actions">
@@ -75,8 +88,10 @@ import { ExportService } from '../../services/export.service';
                 <th class="sortable" (click)="sort('precio_plan')">Precio {{ sortIcon('precio_plan') }}</th>
                 <th class="sortable" (click)="sort('ip')">IP {{ sortIcon('ip') }}</th>
                 <th class="sortable" (click)="sort('estado')">Estado {{ sortIcon('estado') }}</th>
+                <th class="sortable" (click)="sort('creditScore')">Score {{ sortIcon('creditScore') }}</th>
                 <th>Facturas</th>
                 <th class="sortable" (click)="sort('fecha_corte')">Corte {{ sortIcon('fecha_corte') }}</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -103,7 +118,38 @@ import { ExportService } from '../../services/export.service';
                   <td data-label="Facturas">
                     <span class="badge" [class]="'badge-' + getFacturaClass(c.estado_facturas)">{{ c.estado_facturas || '-' }}</span>
                   </td>
+                  <td data-label="Score" (click)="$event.stopPropagation()">
+                    @if (getMetric(c.id_servicio); as m) {
+                      <div class="score-cell">
+                        @if (m.creditTier && tierStyle(m.creditTier); as ts) {
+                          <span class="tier-pill" [style.background]="ts.bg" [style.color]="ts.color"
+                                [title]="'Score: ' + (m.creditScore || '?') + '/100 — ' + ts.label">
+                            {{ ts.emoji }} {{ m.creditScore }}
+                          </span>
+                        }
+                        @if (m.consumptionTier && consStyle(m.consumptionTier); as cs) {
+                          <span class="cons-pill" [style.background]="cs.bg" [style.color]="cs.color"
+                                [title]="cs.label + ' — ' + ((m.consumptionMb30d || 0) / 1024 | number:'1.1-1') + ' GB en 30d'">
+                            {{ cs.emoji }}
+                          </span>
+                        }
+                      </div>
+                    } @else {
+                      <span class="empty-tier">—</span>
+                    }
+                  </td>
                   <td data-label="Corte" class="date">{{ c.fecha_corte || '-' }}</td>
+                  <td data-label="Acciones">
+                    @if (crmActionLabel(c.id_servicio); as lbl) {
+                      <span class="badge badge-{{ lbl.color }}">{{ lbl.text }}</span>
+                    }
+                    <app-client-block-actions
+                      [idServicio]="c.id_servicio"
+                      [clientName]="c.nombre"
+                      [crmAction]="crmActionFor(c.id_servicio)"
+                      (changed)="onActionChanged($event, c.id_servicio)"
+                    />
+                  </td>
                 </tr>
               }
             </tbody>
@@ -229,12 +275,26 @@ import { ExportService } from '../../services/export.service';
       gap: 12px; font-size: 14px; transition: bottom 0.3s; z-index: 50;
     }
     .sync-bar.visible { bottom: 0; }
+
+    .badge-warn { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
+    .badge-danger { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
+
+    .score-cell { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .tier-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; cursor: help; }
+    .cons-pill { display: inline-flex; align-items: center; padding: 3px 6px; border-radius: 999px; font-size: 12px; cursor: help; }
+    .empty-tier { color: #cbd5e1; font-size: 13px; }
   `]
 })
-export class ClientsComponent implements OnInit {
+export class ClientsComponent implements OnInit, OnDestroy {
   private api = inject(WisphubService);
   private db = inject(LocalDbService);
   private exportSvc = inject(ExportService);
+  private actions = inject(ClientActionsService);
+  metrics = inject(MetricsService);
+
+  // Re-export para usar en el template
+  tierStyle = tierStyle;
+  consStyle = consStyle;
 
   allClients = signal<WispHubClient[]>([]);
   filteredClients = signal<WispHubClient[]>([]);
@@ -242,14 +302,55 @@ export class ClientsComponent implements OnInit {
   loading = signal(true);
   syncing = signal(false);
   syncMessage = signal('');
+  crmActions = signal<Map<number, string>>(new Map());
   searchTerm = '';
   statusFilter = '';
   planFilter = '';
+  tierFilter = '';
   sortCol = '';
   sortDir: 'asc' | 'desc' = 'asc';
 
   async ngOnInit() {
     await this.loadLocal();
+    this.loadCrmStates();
+    this.metrics.startAutoRefresh(30000);
+  }
+
+  ngOnDestroy() {
+    this.metrics.stopAutoRefresh();
+  }
+
+  getMetric(idServicio: number): ClientMetric | null {
+    return this.metrics.get(idServicio);
+  }
+
+  loadCrmStates() {
+    this.actions.states().subscribe({
+      next: (rows) => {
+        const map = new Map<number, string>();
+        for (const r of rows) if (r.crmAction) map.set(r.idServicio, r.crmAction);
+        this.crmActions.set(map);
+      },
+      error: () => {},
+    });
+  }
+
+  crmActionFor(id: number): string | null {
+    return this.crmActions().get(id) ?? null;
+  }
+
+  crmActionLabel(id: number): { text: string; color: string } | null {
+    const a = this.crmActionFor(id);
+    if (a === 'block') return { text: 'BLOQUEADO', color: 'danger' };
+    if (a === 'moroso') return { text: 'MOROSO', color: 'warn' };
+    return null;
+  }
+
+  onActionChanged(ev: { action: string; result: any }, id: number) {
+    const map = new Map(this.crmActions());
+    if (ev.action === 'clear') map.delete(id);
+    else map.set(id, ev.action);
+    this.crmActions.set(map);
   }
 
   async loadLocal() {
@@ -288,10 +389,21 @@ export class ClientsComponent implements OnInit {
       result = result.filter(c => c.plan_internet?.nombre === this.planFilter);
     }
 
+    if (this.tierFilter) {
+      result = result.filter(c => this.getMetric(c.id_servicio)?.creditTier === this.tierFilter);
+    }
+
     if (this.sortCol) {
       result = [...result].sort((a, b) => {
-        const valA = this.getNestedVal(a, this.sortCol);
-        const valB = this.getNestedVal(b, this.sortCol);
+        let valA: any, valB: any;
+        if (this.sortCol === 'creditScore') {
+          // Sort especial: usa el score del MetricsService
+          valA = this.getMetric(a.id_servicio)?.creditScore ?? -1;
+          valB = this.getMetric(b.id_servicio)?.creditScore ?? -1;
+        } else {
+          valA = this.getNestedVal(a, this.sortCol);
+          valB = this.getNestedVal(b, this.sortCol);
+        }
         const cmp = this.compareVals(valA, valB);
         return this.sortDir === 'asc' ? cmp : -cmp;
       });

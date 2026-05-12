@@ -9,11 +9,13 @@ import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ReceiptService } from '../../services/receipt.service';
 import { ToastService } from '../../services/toast.service';
+import { ClientExtrasComponent } from '../../components/client-extras/client-extras';
+import { ClientMetricsComponent } from '../../components/client-metrics/client-metrics';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [NavbarComponent, RouterLink, DecimalPipe, FormsModule],
+  imports: [NavbarComponent, RouterLink, DecimalPipe, FormsModule, ClientExtrasComponent, ClientMetricsComponent],
   template: `
     <app-navbar [pageTitle]="clientName()" />
 
@@ -220,6 +222,12 @@ import { ToastService } from '../../services/toast.service';
             </div>
           </div>
         </div>
+
+        <!-- MÉTRICAS (auto-refresh cada 30s) -->
+        <app-client-metrics [idServicio]="client()!.id_servicio" />
+
+        <!-- ALIAS + WEB ACTIVITY -->
+        <app-client-extras [idServicio]="client()!.id_servicio" />
 
         <!-- FACTURAS DEL CLIENTE -->
         @if (clientInvoices().length > 0) {

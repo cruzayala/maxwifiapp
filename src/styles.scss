@@ -149,3 +149,151 @@ button, a, .nav-item, input, select, textarea {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE - mejoras globales adicionales
+   ═══════════════════════════════════════════════════════════════ */
+
+/* iOS: evitar zoom en focus de inputs */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* TOUCH targets mínimos 44px */
+@media (max-width: 768px) {
+  .btn, .btn-primary, .btn-outline, .btn-green, .btn-danger, .btn-warn,
+  button.btn, button[type="submit"] {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+  .btn-ac, .btn-sm {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 12px !important;
+  }
+}
+
+/* TIPOGRAFÍA mobile */
+@media (max-width: 640px) {
+  h1 { font-size: 22px !important; }
+  h2 { font-size: 18px !important; }
+  h3 { font-size: 16px !important; }
+  .page-title { font-size: 18px !important; }
+}
+
+/* TABLAS: las celdas con SVG/badges no se rompan */
+@media (max-width: 768px) {
+  .data-table td .actions,
+  .data-table td app-client-block-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .badge { font-size: 11px !important; padding: 3px 8px !important; }
+}
+
+/* Filtros horizontales → grid 2 cols en mobile */
+@media (max-width: 640px) {
+  .search-filter, .filters {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+  }
+  .search-input { grid-column: 1 / -1 !important; }
+  .filter-select { width: 100% !important; min-width: 0 !important; }
+}
+
+/* MODALS y DIÁLOGOS: full-screen en mobile */
+@media (max-width: 640px) {
+  .modal-card, .dialog-card, .panel-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+  .modal-overlay, .dialog-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+}
+
+/* SCROLL horizontal seguro en tablas (cuando NO se convierten a cards) */
+@media (max-width: 768px) {
+  .table-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* CARDS: adaptación */
+@media (max-width: 640px) {
+  .card, .stat-card, .info-card {
+    padding: 14px !important;
+  }
+  .card h2, .card h3 { margin-top: 0 !important; }
+}
+
+/* NAVBAR sticky compacto */
+@media (max-width: 768px) {
+  .navbar { padding: 10px 14px !important; }
+  .search-box { display: none !important; } /* search en navbar oculto, usar página específica */
+  .menu-btn { display: flex !important; }
+}
+
+/* SIDEBAR: ya es responsive (translateX) — tweak z-index */
+.sidebar { z-index: 100; }
+.sidebar-overlay { z-index: 99; }
+
+/* CLIENTES: en mobile cell-client compacto */
+@media (max-width: 768px) {
+  .cell-client { gap: 8px !important; }
+  .avatar-sm { width: 32px !important; height: 32px !important; font-size: 12px !important; }
+  .name { font-size: 13px !important; }
+  .sub { font-size: 10px !important; }
+}
+
+/* FAB (floating action button) - util para mobile primary action */
+.fab {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: white;
+  border: none;
+  box-shadow: 0 6px 16px rgba(99,102,241,0.4);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 50;
+}
+@media (max-width: 768px) {
+  .fab.show-mobile { display: flex; }
+}
+
+/* Safe area para iOS notch */
+@media (max-width: 768px) {
+  .navbar, .page, .main-content {
+    padding-left: max(env(safe-area-inset-left), 12px);
+    padding-right: max(env(safe-area-inset-right), 12px);
+  }
+}
+
+/* Sync bar en mobile */
+@media (max-width: 768px) {
+  .global-sync-bar { left: 0 !important; font-size: 12px !important; }
+  .sync-bar { left: 0 !important; }
+}
+
+/* Login: ya tiene max-width responsive, pero ajustar margin */
+@media (max-width: 480px) {
+  .login-card { padding: 28px 20px !important; }
+  .brand h1 { font-size: 22px !important; }
+}

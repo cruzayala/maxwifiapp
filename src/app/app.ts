@@ -83,9 +83,7 @@ export class App implements OnInit {
       this.showLayout.set(!e.urlAfterRedirects?.startsWith('/login'));
     });
 
-    // Verificar si requiere PIN
-    this.auth.checkPinRequired().subscribe();
-
+    // Auth ya inicializado en constructor del AuthService
     this.syncSvc.syncIfStale();
 
     this.router.events.pipe(
