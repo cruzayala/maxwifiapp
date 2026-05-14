@@ -14,7 +14,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
             <path d="M8 16L14 22L24 10" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
         </div>
-        <span class="brand-text">WispHub<span class="brand-accent">Admin</span></span>
+        <span class="brand-text">WISP<span class="brand-accent">RD</span></span>
         <button class="close-btn" (click)="closeSidebar()">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
@@ -83,7 +83,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
       <div class="sidebar-footer">
         <div class="sync-status">
           <div class="sync-dot"></div>
-          <span>WispHub API</span>
+          <span>API conectada</span>
         </div>
       </div>
     </aside>

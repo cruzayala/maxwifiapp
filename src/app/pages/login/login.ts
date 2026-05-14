@@ -17,7 +17,7 @@ import { AuthService } from '../../services/auth.service';
               <path d="M8 16L14 22L24 10" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
           </div>
-          <h1>WispHub Admin</h1>
+          <h1>WISP RD</h1>
           <p>Ingresa con tu cuenta</p>
         </div>
 

@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// WispHub Admin Server - Production Ready
+// WISP RD - ISP Management Server
 // ═══════════════════════════════════════════════════════════════
 
 console.log('[boot] starting at', new Date().toISOString());
@@ -3113,7 +3113,7 @@ async function autoConfigureCaptive() {
 // ─── START SERVER ───
 const server = app.listen(PORT, () => {
   console.log('═══════════════════════════════════════');
-  console.log(`WispHub Admin running on port ${PORT}`);
+  console.log(`WISP RD running on port ${PORT}`);
   console.log(`Mode: ${IS_PROD ? 'PRODUCTION' : 'development'}`);
   console.log(`Auth mode: users (PIN auth removed)`);
   console.log(`API key: ${API_KEY ? 'configured' : 'MISSING - set WISPHUB_API_KEY'}`);
