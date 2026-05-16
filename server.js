@@ -752,6 +752,11 @@ dbRouter.get('/backup', (req, res) => {
 
 app.use('/db', dbRouter);
 
+// Survey router (declarado/montado AQUI antes del proxy /api -> WispHub
+// para que /api/survey/* matchee local en vez de irse al proxy)
+const surveyRouter = express.Router();
+app.use('/api/survey', surveyRouter);
+
 // ─── WISPHUB API PROXY (autenticado tambien) ───
 const apiRouter = express.Router();
 apiRouter.use(authMiddleware);
@@ -1620,7 +1625,7 @@ app.post('/survey/submit', asyncHandler(async (req, res) => {
 }));
 
 // API admin para crear/listar encuestas
-const surveyRouter = express.Router();
+// (surveyRouter ya declarado y montado mas arriba en /api/survey)
 surveyRouter.use(authMiddleware);
 
 // Activar encuesta para un cliente (por IP)
@@ -1722,7 +1727,7 @@ surveyRouter.get('/stats', asyncHandler(async (req, res) => {
   res.json({ ok: true, pending, submitted, total });
 }));
 
-app.use('/api/survey', surveyRouter);
+// (surveyRouter ya montado en /api/survey arriba antes del apiRouter)
 
 // ═══════════════════════════════════════════════════════════════
 // AUTO-SYNC LOOP (cada 2 min: WispHub + MikroTik -> SQLite)
