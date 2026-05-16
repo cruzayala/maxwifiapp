@@ -119,6 +119,7 @@ model Client {
   invoices   Invoice[]    @relation("InvoiceToClient")
   blockEvents BlockEvent[]
   webActivity WebActivity[]
+  surveys     SurveyResponse[]
 
   @@index([nombre])
   @@index([estado])
@@ -726,4 +727,28 @@ model WebActivity {
   @@index([idServicio, day])
   @@index([day])
   @@index([domain])
+}
+
+/// Survey - encuesta forzada a clientes via captive portal HTTP redirect
+/// Admin activa por IP -> MikroTik redirige al cliente al form
+/// Cliente llena nombre+telefono -> queda guardado en esta tabla
+model SurveyResponse {
+  id           Int       @id @default(autoincrement())
+  clientIp     String              // IP del cliente (en address-list survey-pending)
+  idServicio   Int?                // si se pudo mapear a cliente WispHub
+  fullName     String?             // lo que llena el cliente
+  phone        String?             // lo que llena el cliente
+  status       String    @default("pending")  // pending | submitted | expired | cancelled
+  sentBy       String              // username admin que activo
+  sentAt       DateTime  @default(now())
+  submittedAt  DateTime?
+  userAgent    String?             // navegador del cliente al enviar
+  notes        String?             // notas internas
+
+  client       Client?   @relation(fields: [idServicio], references: [idServicio], onDelete: SetNull)
+
+  @@index([clientIp])
+  @@index([status])
+  @@index([sentAt])
+  @@index([idServicio])
 }

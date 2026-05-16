@@ -1458,6 +1458,273 @@ async function renderCaptive(req, res) {
 app.get('/captive', asyncHandler(renderCaptive));
 
 // ═══════════════════════════════════════════════════════════════
+// SURVEY (encuesta forzada via captive HTTP redirect)
+// admin activa por IP -> mikrotik intercepta http puerto 80 ->
+// cliente ve form -> envia nombre+telefono -> queda guardado
+// ═══════════════════════════════════════════════════════════════
+
+const LIST_SURVEY = 'survey-pending';
+
+function buildSurveyForm({ ip, name, alreadySubmitted }) {
+  if (alreadySubmitted) {
+    return `<!doctype html><html lang="es"><head><meta charset="utf-8"/>
+<title>Gracias</title><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#10b981 100%);color:#f8fafc;
+display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:100%;max-width:480px;background:rgba(15,23,42,.85);border:1px solid #10b98180;
+border-radius:18px;padding:40px;text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.check{width:80px;height:80px;background:#10b98133;border:2px solid #10b981;border-radius:50%;
+display:inline-flex;align-items:center;justify-content:center;font-size:48px;margin-bottom:18px}
+h1{font-size:28px;margin:0 0 12px}p{color:#cbd5e1;line-height:1.6}
+</style></head><body><div class="card"><div class="check">&#10003;</div>
+<h1>Gracias por confirmar</h1>
+<p>Tu informacion ha sido recibida. Ya puedes seguir navegando.</p>
+<p style="font-size:13px;color:#94a3b8;margin-top:18px">Si esta pagina no se cierra sola, abre cualquier sitio y deberias ver internet normal.</p>
+</div></body></html>`;
+  }
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"/>
+<title>Verifica tu informacion - MaxWiFi</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#3b82f6 100%);
+  color:#f8fafc;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{width:100%;max-width:480px;background:rgba(15,23,42,.92);border:1px solid #3b82f680;
+  border-radius:18px;padding:32px 28px;box-shadow:0 30px 80px rgba(0,0,0,.55)}
+.logo{display:inline-flex;align-items:center;gap:10px;background:#3b82f633;color:#dbeafe;
+  border:1px solid #3b82f680;border-radius:999px;padding:6px 14px;font-size:11px;
+  font-weight:700;letter-spacing:.15em;text-transform:uppercase;margin-bottom:18px}
+h1{font-size:24px;margin:0 0 8px;line-height:1.2}
+p.lead{color:#cbd5e1;margin:0 0 22px;line-height:1.55;font-size:14px}
+label{display:block;font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;
+  letter-spacing:.05em;margin:14px 0 6px}
+input{width:100%;background:rgba(15,23,42,.6);border:1px solid rgba(148,163,184,.3);
+  border-radius:10px;padding:13px 14px;color:#f1f5f9;font-size:16px;font-family:inherit;
+  outline:none;transition:border-color .15s,background .15s}
+input:focus{border-color:#3b82f6;background:rgba(15,23,42,.9)}
+.btn{width:100%;background:linear-gradient(135deg,#3b82f6 0%,#2563eb 100%);color:#fff;
+  font-weight:700;font-size:16px;padding:14px;border:0;border-radius:10px;
+  cursor:pointer;margin-top:22px;transition:transform .1s,box-shadow .15s}
+.btn:hover{box-shadow:0 8px 20px rgba(59,130,246,.4)}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.info{margin-top:14px;font-size:11px;color:#64748b;text-align:center;line-height:1.5}
+.error{background:#ef444433;border:1px solid #ef4444;color:#fecaca;padding:10px 14px;
+  border-radius:10px;margin-top:14px;font-size:13px;display:none}
+.error.show{display:block}
+.ip-tag{display:inline-block;background:rgba(15,23,42,.7);border:1px solid rgba(148,163,184,.25);
+  border-radius:6px;padding:3px 8px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#94a3b8;margin-top:4px}
+</style></head><body>
+<div class="card">
+<span class="logo">&#x1F4F6; MaxWiFi RD</span>
+<h1>Verifica tu informacion</h1>
+<p class="lead">Necesitamos confirmar tus datos para mejorar el servicio que te ofrecemos. Solo te tomara 30 segundos.</p>
+<form id="f">
+<label for="fullName">Nombre completo</label>
+<input id="fullName" name="fullName" type="text" required minlength="3" maxlength="80" placeholder="Ej: Juan Antonio Perez" autocomplete="name" />
+<label for="phone">Telefono / WhatsApp</label>
+<input id="phone" name="phone" type="tel" required minlength="7" maxlength="20" placeholder="Ej: 809-555-1234" autocomplete="tel" inputmode="tel" />
+<div class="error" id="err"></div>
+<button class="btn" type="submit" id="btn">Enviar y seguir navegando</button>
+<p class="info">Tu IP: <span class="ip-tag">${htmlEscape(ip)}</span><br>
+Esta informacion es confidencial y solo la usamos para verificar tu cuenta.</p>
+</form>
+</div>
+<script>
+const f=document.getElementById('f'),b=document.getElementById('btn'),er=document.getElementById('err');
+f.addEventListener('submit',async(e)=>{
+  e.preventDefault();er.classList.remove('show');b.disabled=true;b.textContent='Enviando...';
+  try{
+    const r=await fetch('/survey/submit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({fullName:f.fullName.value.trim(),phone:f.phone.value.trim()})});
+    const d=await r.json();
+    if(!r.ok||!d.ok){throw new Error(d.error||'Error al enviar')}
+    document.body.innerHTML=d.html||'<h1>Gracias</h1>';
+  }catch(x){er.textContent=x.message||'Error de conexion. Intenta de nuevo.';er.classList.add('show');
+    b.disabled=false;b.textContent='Enviar y seguir navegando';
+  }
+});
+</script>
+</body></html>`;
+}
+
+// Pagina publica que ve el cliente cuando lo redirigen
+async function renderSurveyLanding(req, res) {
+  const ip = detectClientIp(req);
+  // Buscar pending para esta IP
+  const pending = await prisma.surveyResponse.findFirst({
+    where: { clientIp: ip, status: 'pending' },
+    orderBy: { sentAt: 'desc' },
+  });
+  if (!pending) {
+    // No hay encuesta pendiente para este IP, mostrar mensaje generico
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-store');
+    res.send(`<!doctype html><html><head><meta charset="utf-8"/><title>OK</title>
+<style>body{font-family:system-ui;background:#0f172a;color:#f1f5f9;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}
+.box{max-width:400px}</style></head><body><div class="box"><h2>Sin encuesta pendiente</h2>
+<p style="color:#94a3b8">Tu IP <code>${htmlEscape(ip)}</code> no tiene encuestas pendientes.</p>
+</div></body></html>`);
+    return;
+  }
+  const client = pending.idServicio
+    ? await prisma.client.findUnique({ where: { idServicio: pending.idServicio } })
+    : null;
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'no-store');
+  res.send(buildSurveyForm({ ip, name: client?.nombre || '', alreadySubmitted: false }));
+}
+
+app.get('/survey/landing', asyncHandler(renderSurveyLanding));
+app.get('/survey', asyncHandler(renderSurveyLanding));
+
+// Cliente envia el form
+app.post('/survey/submit', asyncHandler(async (req, res) => {
+  const ip = detectClientIp(req);
+  const fullName = (req.body?.fullName || '').toString().trim();
+  const phone = (req.body?.phone || '').toString().trim();
+  if (fullName.length < 3 || phone.length < 7) {
+    return res.status(400).json({ ok: false, error: 'Nombre y telefono son obligatorios' });
+  }
+  const pending = await prisma.surveyResponse.findFirst({
+    where: { clientIp: ip, status: 'pending' },
+    orderBy: { sentAt: 'desc' },
+  });
+  if (!pending) {
+    return res.status(404).json({ ok: false, error: 'No hay encuesta pendiente para tu IP' });
+  }
+  // Guardar
+  await prisma.surveyResponse.update({
+    where: { id: pending.id },
+    data: {
+      fullName,
+      phone,
+      status: 'submitted',
+      submittedAt: new Date(),
+      userAgent: (req.headers['user-agent'] || '').toString().substring(0, 200),
+    },
+  });
+  // Sacar al cliente del address-list para que pueda navegar
+  try {
+    const c = await getMtConnection();
+    await removeFromAddressList(c, LIST_SURVEY, ip);
+  } catch (e) {
+    console.error('[survey] error removing from MT list:', e.message);
+  }
+  res.json({
+    ok: true,
+    html: buildSurveyForm({ ip, name: fullName, alreadySubmitted: true }),
+  });
+}));
+
+// API admin para crear/listar encuestas
+const surveyRouter = express.Router();
+surveyRouter.use(authMiddleware);
+
+// Activar encuesta para un cliente (por IP)
+surveyRouter.post('/start', asyncHandler(async (req, res) => {
+  const ip = (req.body?.ip || '').toString().trim();
+  const idServicio = req.body?.idServicio ? parseInt(req.body.idServicio) : null;
+  if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+    return res.status(400).json({ ok: false, error: 'IP invalida' });
+  }
+  // Si ya hay una pending para esta IP, devolverla
+  const existing = await prisma.surveyResponse.findFirst({
+    where: { clientIp: ip, status: 'pending' },
+  });
+  if (existing) {
+    return res.json({ ok: true, alreadyPending: true, survey: existing });
+  }
+  // Buscar cliente por IP si no se dio idServicio
+  let resolvedIdServicio = idServicio;
+  if (!resolvedIdServicio) {
+    const cl = await prisma.client.findFirst({ where: { ip } });
+    if (cl) resolvedIdServicio = cl.idServicio;
+  }
+  const survey = await prisma.surveyResponse.create({
+    data: {
+      clientIp: ip,
+      idServicio: resolvedIdServicio,
+      sentBy: req.user?.username || 'admin',
+      status: 'pending',
+    },
+  });
+  // Agregar IP al address-list de MikroTik
+  let mtResult = null;
+  try {
+    const c = await getMtConnection();
+    mtResult = await addToAddressList(c, LIST_SURVEY, ip, `survey ${survey.id}`);
+    // matar conexiones existentes para forzar re-conexion HTTP
+    await killConnectionsFrom(c, ip).catch(() => {});
+  } catch (e) {
+    console.error('[survey] error adding to MT list:', e.message);
+    return res.status(500).json({ ok: false, error: 'Encuesta guardada pero error al activar en MikroTik: ' + e.message, survey });
+  }
+  res.json({ ok: true, survey, mikrotik: mtResult });
+}));
+
+// Cancelar una encuesta pending (saca al cliente del list sin guardar respuesta)
+surveyRouter.post('/cancel/:id', asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const survey = await prisma.surveyResponse.findUnique({ where: { id } });
+  if (!survey) return res.status(404).json({ ok: false, error: 'No existe' });
+  await prisma.surveyResponse.update({
+    where: { id },
+    data: { status: 'cancelled' },
+  });
+  try {
+    const c = await getMtConnection();
+    await removeFromAddressList(c, LIST_SURVEY, survey.clientIp);
+  } catch (e) {
+    console.error('[survey] cancel mt error:', e.message);
+  }
+  res.json({ ok: true });
+}));
+
+// Listar respuestas
+surveyRouter.get('/responses', asyncHandler(async (req, res) => {
+  const status = req.query?.status;
+  const where = status ? { status: status.toString() } : {};
+  const rows = await prisma.surveyResponse.findMany({
+    where,
+    orderBy: { sentAt: 'desc' },
+    take: 500,
+    include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true, planInternetName: true } } },
+  });
+  res.json({ ok: true, rows });
+}));
+
+// Eliminar respuesta
+surveyRouter.delete('/responses/:id', asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const survey = await prisma.surveyResponse.findUnique({ where: { id } });
+  if (!survey) return res.status(404).json({ ok: false, error: 'No existe' });
+  // Si esta pending, primero sacar del MT list
+  if (survey.status === 'pending') {
+    try {
+      const c = await getMtConnection();
+      await removeFromAddressList(c, LIST_SURVEY, survey.clientIp);
+    } catch {}
+  }
+  await prisma.surveyResponse.delete({ where: { id } });
+  res.json({ ok: true });
+}));
+
+// Stats rapidos para dashboard
+surveyRouter.get('/stats', asyncHandler(async (req, res) => {
+  const [pending, submitted, total] = await Promise.all([
+    prisma.surveyResponse.count({ where: { status: 'pending' } }),
+    prisma.surveyResponse.count({ where: { status: 'submitted' } }),
+    prisma.surveyResponse.count(),
+  ]);
+  res.json({ ok: true, pending, submitted, total });
+}));
+
+app.use('/api/survey', surveyRouter);
+
+// ═══════════════════════════════════════════════════════════════
 // AUTO-SYNC LOOP (cada 2 min: WispHub + MikroTik -> SQLite)
 // ═══════════════════════════════════════════════════════════════
 

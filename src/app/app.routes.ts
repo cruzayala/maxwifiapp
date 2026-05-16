@@ -20,6 +20,7 @@ export const routes: Routes = [
   { path: 'whatsapp', canActivate: [authGuard], loadComponent: () => import('./pages/whatsapp/whatsapp').then(m => m.WhatsappComponent) },
   { path: 'whatsapp-bot', canActivate: [authGuard], loadComponent: () => import('./pages/whatsapp-bot/whatsapp-bot').then(m => m.WhatsappBotComponent) },
   { path: 'morosos', canActivate: [authGuard], loadComponent: () => import('./pages/morosos/morosos').then(m => m.MorososComponent) },
+  { path: 'encuestas', canActivate: [authGuard], loadComponent: () => import('./pages/encuestas/encuestas').then(m => m.EncuestasComponent) },
   { path: 'settings', canActivate: [authGuard], loadComponent: () => import('./pages/settings/settings').then(m => m.SettingsComponent) },
   { path: '**', redirectTo: 'dashboard' }
 ];

@@ -9,6 +9,8 @@ import { ExportService } from '../../services/export.service';
 import { ClientBlockActionsComponent } from '../../components/client-block-actions/client-block-actions';
 import { ClientActionsService } from '../../services/client-actions.service';
 import { MetricsService } from '../../services/metrics.service';
+import { SurveyService } from '../../services/survey.service';
+import { ToastService } from '../../services/toast.service';
 import { ClientMetric, tierStyle, consStyle, CreditTier } from '../../models/metrics.model';
 import { DecimalPipe } from '@angular/common';
 
@@ -149,6 +151,19 @@ import { DecimalPipe } from '@angular/common';
                       [crmAction]="crmActionFor(c.id_servicio)"
                       (changed)="onActionChanged($event, c.id_servicio)"
                     />
+                    @if (c.ip) {
+                      <button
+                        class="btn-survey"
+                        [disabled]="surveyLoading() === c.id_servicio"
+                        (click)="enviarEncuesta(c)"
+                        title="Mostrar encuesta al cliente al abrir cualquier sitio HTTP">
+                        @if (surveyLoading() === c.id_servicio) {
+                          ...
+                        } @else {
+                          &#x1F4DD; Encuesta
+                        }
+                      </button>
+                    }
                   </td>
                 </tr>
               }
@@ -283,6 +298,15 @@ import { DecimalPipe } from '@angular/common';
     .tier-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; cursor: help; }
     .cons-pill { display: inline-flex; align-items: center; padding: 3px 6px; border-radius: 999px; font-size: 12px; cursor: help; }
     .empty-tier { color: #cbd5e1; font-size: 13px; }
+
+    .btn-survey {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
+      border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600;
+      cursor: pointer; margin-top: 4px; transition: all 0.15s;
+    }
+    .btn-survey:hover:not(:disabled) { background: #dbeafe; border-color: #3b82f6; }
+    .btn-survey:disabled { opacity: 0.5; cursor: wait; }
   `]
 })
 export class ClientsComponent implements OnInit, OnDestroy {
@@ -290,7 +314,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
   private db = inject(LocalDbService);
   private exportSvc = inject(ExportService);
   private actions = inject(ClientActionsService);
+  private survey = inject(SurveyService);
+  private toast = inject(ToastService);
   metrics = inject(MetricsService);
+
+  surveyLoading = signal<number | null>(null);
 
   // Re-export para usar en el template
   tierStyle = tierStyle;
@@ -351,6 +379,33 @@ export class ClientsComponent implements OnInit, OnDestroy {
     if (ev.action === 'clear') map.delete(id);
     else map.set(id, ev.action);
     this.crmActions.set(map);
+  }
+
+  enviarEncuesta(c: WispHubClient) {
+    const ip = c.ip;
+    if (!ip) {
+      this.toast.error('Cliente sin IP asignada');
+      return;
+    }
+    const confirmMsg = `Activar encuesta para ${c.nombre} (${ip})?\n\nCuando el cliente abra cualquier sitio HTTP, se le mostrara el formulario para que llene nombre y telefono.`;
+    if (!confirm(confirmMsg)) return;
+    this.surveyLoading.set(c.id_servicio);
+    this.survey.start(ip, c.id_servicio).subscribe({
+      next: (r) => {
+        this.surveyLoading.set(null);
+        if (r.alreadyPending) {
+          this.toast.info('Ya hay una encuesta pendiente para este cliente');
+        } else if (r.ok) {
+          this.toast.success(`Encuesta activada para ${c.nombre}. Espera a que abra un sitio web.`);
+        } else {
+          this.toast.error(r.error || 'No se pudo activar la encuesta');
+        }
+      },
+      error: (e) => {
+        this.surveyLoading.set(null);
+        this.toast.error(e.error?.error || e.message || 'Error al activar encuesta');
+      },
+    });
   }
 
   async loadLocal() {
