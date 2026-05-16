@@ -1717,6 +1717,54 @@ surveyRouter.delete('/responses/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Setup: crea/actualiza la regla NAT en MikroTik para apuntar a esta instancia de Railway
+// (Util si la IP de Railway cambia o para configurar inicialmente)
+surveyRouter.post('/setup', asyncHandler(async (req, res) => {
+  const dns = require('dns').promises;
+  const host = req.body?.host || process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app';
+  const port = parseInt(req.body?.port || '80');
+  const NAT_COMMENT = 'WISP RD - Encuesta forzada (HTTP)';
+
+  // Resolver el dominio a IP
+  const resolved = await dns.lookup(host);
+  const serverIp = resolved.address;
+
+  const c = await getMtConnection();
+
+  // Buscar regla existente
+  const natRules = await c.write('/ip/firewall/nat/print', `?comment=${NAT_COMMENT}`);
+  let action;
+  if (natRules.length > 0) {
+    const rule = natRules[0];
+    if (rule['to-addresses'] !== serverIp || rule['to-ports'] !== String(port)) {
+      await c.write(
+        '/ip/firewall/nat/set',
+        '=.id=' + rule['.id'],
+        '=to-addresses=' + serverIp,
+        '=to-ports=' + port,
+      );
+      action = 'updated';
+    } else {
+      action = 'unchanged';
+    }
+    res.json({ ok: true, action, ruleId: rule['.id'], serverIp, port, host });
+  } else {
+    const r = await c.write(
+      '/ip/firewall/nat/add',
+      '=chain=dstnat',
+      '=protocol=tcp',
+      '=dst-port=80',
+      '=src-address-list=' + LIST_SURVEY,
+      '=action=dst-nat',
+      '=to-addresses=' + serverIp,
+      '=to-ports=' + port,
+      '=comment=' + NAT_COMMENT,
+    );
+    action = 'created';
+    res.json({ ok: true, action, ruleId: r[0]?.ret, serverIp, port, host });
+  }
+}));
+
 // Stats rapidos para dashboard
 surveyRouter.get('/stats', asyncHandler(async (req, res) => {
   const [pending, submitted, total] = await Promise.all([
