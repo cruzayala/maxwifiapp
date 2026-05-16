@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -727,6 +727,21 @@ model WebActivity {
   @@index([idServicio, day])
   @@index([day])
   @@index([domain])
+}
+
+/// Session - tokens de auth persistidos en DB para sobrevivir a redeploys
+/// Antes estaban en memoria (Map) -> redeploy de Railway tumbaba a todos
+model Session {
+  token     String   @id
+  userId    Int
+  username  String
+  role      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  lastSeen  DateTime @default(now())
+
+  @@index([expiresAt])
+  @@index([userId])
 }
 
 /// Survey - encuesta forzada a clientes via captive portal HTTP redirect

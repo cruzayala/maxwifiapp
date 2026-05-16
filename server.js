@@ -98,25 +98,99 @@ app.get('/health', async (req, res) => {
 
 // ─── AUTH (PIN legacy + Users) ───
 const bcrypt = require('bcryptjs');
-const SESSIONS = new Map(); // token -> { expiresAt, userId, role, username }
+
+// Sesiones en DB (sobreviven a redeploys) + cache en memoria para performance
+// El cache se invalida solo si expira; renovaciones se hacen en background.
+const SESSION_CACHE = new Map(); // token -> { expiresAt, userId, role, username, cachedAt }
+const SESSION_CACHE_TTL_MS = 30 * 1000; // re-leer de DB cada 30s para coger cambios
 
 function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function getSession(token) {
+async function getSession(token) {
   if (!token) return null;
-  const s = SESSIONS.get(token);
-  if (!s) return null;
-  if (Date.now() > s.expiresAt) {
-    SESSIONS.delete(token);
+
+  // 1. Verificar cache
+  const cached = SESSION_CACHE.get(token);
+  if (cached) {
+    if (Date.now() > cached.expiresAt) {
+      SESSION_CACHE.delete(token);
+      // Tambien borrar de DB (best-effort)
+      prisma.session.delete({ where: { token } }).catch(() => {});
+      return null;
+    }
+    if (Date.now() - cached.cachedAt < SESSION_CACHE_TTL_MS) {
+      return cached;
+    }
+  }
+
+  // 2. Cargar de DB
+  const s = await prisma.session.findUnique({ where: { token } }).catch(() => null);
+  if (!s) {
+    SESSION_CACHE.delete(token);
     return null;
   }
-  return s;
+  if (s.expiresAt.getTime() < Date.now()) {
+    SESSION_CACHE.delete(token);
+    prisma.session.delete({ where: { token } }).catch(() => {});
+    return null;
+  }
+  const sess = {
+    expiresAt: s.expiresAt.getTime(),
+    userId: s.userId,
+    username: s.username,
+    role: s.role,
+    cachedAt: Date.now(),
+  };
+  SESSION_CACHE.set(token, sess);
+  return sess;
 }
 
-function isValidToken(token) {
-  return !!getSession(token);
+async function createSession(token, userId, username, role) {
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000); // 8h
+  await prisma.session.create({
+    data: { token, userId, username, role, expiresAt },
+  });
+  SESSION_CACHE.set(token, {
+    expiresAt: expiresAt.getTime(),
+    userId, username, role,
+    cachedAt: Date.now(),
+  });
+}
+
+async function touchSession(token) {
+  // Renovar TTL +8h en DB (en background, no bloquea)
+  const newExpiry = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  prisma.session.update({
+    where: { token },
+    data: { expiresAt: newExpiry, lastSeen: new Date() },
+  }).catch(() => {});
+  // Tambien en cache
+  const cached = SESSION_CACHE.get(token);
+  if (cached) {
+    cached.expiresAt = newExpiry.getTime();
+    cached.cachedAt = Date.now();
+  }
+}
+
+async function deleteSession(token) {
+  SESSION_CACHE.delete(token);
+  await prisma.session.delete({ where: { token } }).catch(() => {});
+}
+
+// Cleanup sesiones expiradas cada 1h
+setInterval(async () => {
+  try {
+    const r = await prisma.session.deleteMany({
+      where: { expiresAt: { lt: new Date() } },
+    });
+    if (r.count > 0) console.log('[sessions] cleanup:', r.count, 'expired removed');
+  } catch (e) { console.error('[sessions] cleanup error:', e.message); }
+}, 60 * 60 * 1000);
+
+async function isValidToken(token) {
+  return !!(await getSession(token));
 }
 
 // Roles - jerarquia (super_admin > admin > tecnico/cobranza > viewer)
@@ -136,7 +210,7 @@ function userHasRole(session, allowedRoles) {
   return allowedRoles.some((r) => userLevel >= (ROLE_HIERARCHY[r] || 99));
 }
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   // Endpoints publicos (no requieren login)
   if (
     req.path === '/auth/login' ||
@@ -147,11 +221,11 @@ function authMiddleware(req, res, next) {
   ) return next();
 
   const token = req.headers['x-auth-token'] || req.query.token;
-  const session = getSession(token);
+  const session = await getSession(token);
   if (!session) return res.status(401).json({ error: 'No autorizado' });
 
-  // Renovar sesion
-  session.expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+  // Renovar sesion (background, no bloquea)
+  touchSession(token);
   req.session = session;
   next();
 }
@@ -206,12 +280,7 @@ app.post('/auth/login', authLimiter, async (req, res) => {
   }).catch(() => {});
 
   const token = generateToken();
-  SESSIONS.set(token, {
-    expiresAt: Date.now() + 8 * 60 * 60 * 1000,
-    userId: user.id,
-    username: user.username,
-    role: user.role,
-  });
+  await createSession(token, user.id, user.username, user.role);
   res.json({
     token,
     user: { id: user.id, username: user.username, fullName: user.fullName, role: user.role },
@@ -226,9 +295,9 @@ app.get('/auth/me', authMiddleware, (req, res) => {
   });
 });
 
-app.post('/auth/logout', (req, res) => {
+app.post('/auth/logout', async (req, res) => {
   const token = req.headers['x-auth-token'];
-  if (token) SESSIONS.delete(token);
+  if (token) await deleteSession(token);
   res.json({ success: true });
 });
 
