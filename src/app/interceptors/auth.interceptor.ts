@@ -7,7 +7,7 @@ import { catchError, throwError } from 'rxjs';
 const PROTECTED_PREFIXES = [
   '/db', '/wa', '/api', '/users', '/sync', '/mikrotik',
   '/clients-actions', '/web-activity', '/auto-block',
-  '/notifications', '/templates', '/auth/me', '/auth/logout',
+  '/notifications', '/templates', '/metrics', '/auth/me', '/auth/logout',
 ];
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
