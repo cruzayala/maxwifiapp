@@ -1150,6 +1150,24 @@ mtRouter.post('/ping', asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// Trafico WAN (interfaz upstream) en tiempo real para detectar saturacion del backhaul
+mtRouter.get('/wan-traffic', asyncHandler(async (req, res) => {
+  const wanIface = process.env.MIKROTIK_WAN_IFACE || 'sfp2';
+  const maxMbps = parseInt(process.env.MIKROTIK_WAN_MAX_MBPS || '1000');
+  const c = await getMtConnection();
+  const result = await c.write('/interface/monitor-traffic', '=interface=' + wanIface, '=once=');
+  const r = result[0] || {};
+  res.json({
+    ifaceName: wanIface,
+    rxBps: parseInt(r['rx-bits-per-second'] || 0),
+    txBps: parseInt(r['tx-bits-per-second'] || 0),
+    rxPps: parseInt(r['rx-packets-per-second'] || 0),
+    txPps: parseInt(r['tx-packets-per-second'] || 0),
+    maxBps: maxMbps * 1e6,
+    timestamp: Date.now(),
+  });
+}));
+
 app.use('/mikrotik', mtRouter);
 
 // ═══════════════════════════════════════════════════════════════

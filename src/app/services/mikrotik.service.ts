@@ -112,4 +112,16 @@ export class MikrotikService {
   }> {
     return this.http.get<any>('/mikrotik/clients-live');
   }
+
+  getWanTraffic(): Observable<{
+    ifaceName: string;
+    rxBps: number;
+    txBps: number;
+    rxPps: number;
+    txPps: number;
+    maxBps: number;
+    timestamp: number;
+  }> {
+    return this.http.get<any>('/mikrotik/wan-traffic');
+  }
 }
