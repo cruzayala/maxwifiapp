@@ -40,6 +40,9 @@ const API_KEY = process.env.WISPHUB_API_KEY || '';
 const IS_PROD = process.env.NODE_ENV === 'production';
 
 // ─── SECURITY MIDDLEWARE ───
+// Trust proxy: Railway/Render mete X-Forwarded-For. Sin esto rate-limiter falla
+app.set('trust proxy', 1);
+
 app.use(helmet({
   contentSecurityPolicy: false, // Angular requiere relaxed CSP
   crossOriginEmbedderPolicy: false,
