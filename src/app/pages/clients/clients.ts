@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
+import { Subject, takeUntil } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
@@ -141,7 +142,7 @@ import { DecimalPipe } from '@angular/common';
                     }
                   </td>
                   <td data-label="Corte" class="date">{{ c.fecha_corte || '-' }}</td>
-                  <td data-label="Acciones">
+                  <td data-label="Acciones" (click)="$event.stopPropagation()">
                     @if (crmActionLabel(c.id_servicio); as lbl) {
                       <span class="badge badge-{{ lbl.color }}">{{ lbl.text }}</span>
                     }
@@ -320,6 +321,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   surveyLoading = signal<number | null>(null);
 
+  private destroy$ = new Subject<void>();
+
   // Re-export para usar en el template
   tierStyle = tierStyle;
   consStyle = consStyle;
@@ -346,6 +349,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.metrics.stopAutoRefresh();
+    this.destroy$.next();
+    this.destroy$.complete();
   }
 
   getMetric(idServicio: number): ClientMetric | null {
@@ -353,7 +358,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   loadCrmStates() {
-    this.actions.states().subscribe({
+    this.actions.states().pipe(takeUntil(this.destroy$)).subscribe({
       next: (rows) => {
         const map = new Map<number, string>();
         for (const r of rows) if (r.crmAction) map.set(r.idServicio, r.crmAction);

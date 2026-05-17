@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
@@ -243,7 +243,7 @@ import { SyncService } from '../../services/sync.service';
     }
   `]
 })
-export class DashboardComponent implements OnInit {
+export class DashboardComponent implements OnInit, OnDestroy {
   private api = inject(WisphubService);
   private db = inject(LocalDbService);
   private syncSvc = inject(SyncService);
@@ -267,12 +267,20 @@ export class DashboardComponent implements OnInit {
 
   private colors = ['#6366f1', '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#64748b'];
 
+  private syncCheckInterval: any = null;
+  private syncCheckStartedAt = 0;
+
   async ngOnInit() {
     await this.loadData();
   }
 
+  ngOnDestroy() {
+    if (this.syncCheckInterval) { clearInterval(this.syncCheckInterval); this.syncCheckInterval = null; }
+  }
+
   async loadData() {
     this.loading.set(true);
+    try {
     const clients = await this.db.getClients();
     const invoices = await this.db.getInvoices();
 
@@ -309,17 +317,24 @@ export class DashboardComponent implements OnInit {
     // Last sync
     const ls = await this.db.getLastSync('clients');
     if (ls) this.lastSync.set(new Date(ls).toLocaleString('es-DO'));
-
-    this.loading.set(false);
+    } catch (e) {
+      console.error('[dashboard] loadData error:', e);
+    } finally {
+      this.loading.set(false);
+    }
   }
 
   syncAll() {
     this.syncSvc.syncAll();
-    // Reload data when sync finishes
-    const check = setInterval(async () => {
-      if (!this.syncSvc.syncing()) {
-        clearInterval(check);
-        await this.loadData();
+    // Reload data when sync finishes (timeout 60s para no quedar loop infinito si sync nunca termina)
+    if (this.syncCheckInterval) clearInterval(this.syncCheckInterval);
+    this.syncCheckStartedAt = Date.now();
+    this.syncCheckInterval = setInterval(async () => {
+      const elapsed = Date.now() - this.syncCheckStartedAt;
+      if (!this.syncSvc.syncing() || elapsed > 60_000) {
+        clearInterval(this.syncCheckInterval);
+        this.syncCheckInterval = null;
+        await this.loadData().catch(() => this.loading.set(false));
       }
     }, 500);
   }
