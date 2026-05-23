@@ -9,15 +9,8 @@ process.on('unhandledRejection', (e) => { console.error('[unhandled]', e); });
 require('dotenv/config');
 console.log('[boot] dotenv loaded; NODE_ENV=', process.env.NODE_ENV, 'PORT=', process.env.PORT);
 
-const { execSync } = require('child_process');
-try {
-  console.log('[boot] running prisma db push...');
-  execSync('npx prisma db push --accept-data-loss --skip-generate', { stdio: 'inherit' });
-  console.log('[boot] prisma db push OK');
-} catch (e) {
-  console.error('[boot] prisma db push FAILED:', e.message);
-  // No abortamos: igual intenta arrancar — quizas la BD ya existe
-}
+// Database schema is applied by the production start command, not at app boot.
+console.log('[boot] database schema is managed before server startup');
 
 const express = require('express');
 const cors = require('cors');
@@ -63,7 +56,7 @@ const authLimiter = rateLimit({
 });
 
 // ─── SYS INFO (egress IP del contenedor para whitelist MikroTik) ───
-app.get('/sys/info', async (req, res) => {
+app.get('/sys/info', authMiddleware, requireRole(['admin']), async (req, res) => {
   try {
     const r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) });
     const { ip } = await r.json();
@@ -219,7 +212,6 @@ async function authMiddleware(req, res, next) {
     req.path === '/auth/login' ||
     req.path === '/auth/check' ||
     req.path === '/health' ||
-    req.path === '/sys/info' ||
     req.path.startsWith('/captive')
   ) return next();
 
@@ -230,6 +222,7 @@ async function authMiddleware(req, res, next) {
   // Renovar sesion (background, no bloquea)
   touchSession(token);
   req.session = session;
+  req.user = session;
   next();
 }
 
@@ -244,20 +237,76 @@ function requireRole(roles) {
   };
 }
 
+function requireAnyRole(roles) {
+  const list = Array.isArray(roles) ? roles : [roles];
+  return (req, res, next) => {
+    const role = req.session?.role;
+    const allowed = hasAnyRole(req.session, list);
+    if (!allowed) {
+      return res.status(403).json({ error: 'Permisos insuficientes', required: list, your: role });
+    }
+    next();
+  };
+}
+
+function hasAnyRole(session, roles) {
+  const list = Array.isArray(roles) ? roles : [roles];
+  const role = session?.role;
+  return role === 'super_admin' || role === 'admin' || list.includes(role);
+}
+
+function requestIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) return String(xff).split(',')[0].trim();
+  return (req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+}
+
+async function logActivity(req, data) {
+  try {
+    const actor = req?.session?.username || data.actor || 'system';
+    await prisma.activity.create({
+      data: {
+        action: data.action,
+        entityType: data.entityType || null,
+        entityId: data.entityId != null ? String(data.entityId) : null,
+        entityName: data.entityName || null,
+        details: JSON.stringify({
+          actor,
+          role: req?.session?.role || data.role || null,
+          ...(data.details || {}),
+        }),
+        ipAddress: req ? requestIp(req) : null,
+        userAgent: req?.headers?.['user-agent'] || null,
+      },
+    });
+  } catch (e) {
+    console.error('[activity] log error:', e.message);
+  }
+}
+
 async function ensureSuperAdmin() {
   const userCount = await prisma.user.count();
   if (userCount > 0) return;
-  const passwordHash = await bcrypt.hash('MAXCELY6805', 10);
+  const username = process.env.ADMIN_USERNAME || (IS_PROD ? '' : 'admin');
+  const password = process.env.ADMIN_PASSWORD || (IS_PROD ? '' : 'admin12345');
+  if (!username || !password) {
+    throw new Error('No users exist. Set ADMIN_USERNAME and ADMIN_PASSWORD for the first boot.');
+  }
+  if (password.length < 8) {
+    throw new Error('ADMIN_PASSWORD must be at least 8 characters long.');
+  }
+  const passwordHash = await bcrypt.hash(password, 10);
   await prisma.user.create({
     data: {
-      username: 'maximo',
+      username,
       passwordHash,
-      fullName: 'Super Administrador',
+      fullName: process.env.ADMIN_FULL_NAME || 'Super Administrador',
       role: 'super_admin',
       isActive: true,
+      passwordChangedAt: new Date(),
     },
   });
-  console.log('[auth] Super admin sembrado: username=maximo');
+  console.log(`[auth] Super admin seeded: username=${username}`);
 }
 
 app.get('/auth/check', (req, res) => {
@@ -450,8 +499,16 @@ dbRouter.get('/payments', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.post('/payments', asyncHandler(async (req, res) => {
+  if (!hasAnyRole(req.session, ['cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const p = await prisma.paymentLog.create({
     data: { ...req.body, paidAt: new Date(req.body.paidAt) }
+  });
+  await logActivity(req, {
+    action: 'payment_log_created',
+    entityType: 'payment',
+    entityId: p.id,
+    entityName: p.clientName,
+    details: { idFactura: p.idFactura, idServicio: p.idServicio, amount: p.amount },
   });
   res.json(p);
 }));
@@ -483,20 +540,44 @@ dbRouter.get('/notes', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.post('/notes', asyncHandler(async (req, res) => {
+  if (!hasAnyRole(req.session, ['cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const n = await prisma.clientNote.create({ data: req.body });
+  await logActivity(req, {
+    action: 'client_note_created',
+    entityType: 'client',
+    entityId: n.idServicio,
+    entityName: n.clientName,
+    details: { noteId: n.id, priority: n.priority },
+  });
   res.json(n);
 }));
 
 dbRouter.put('/notes/:id', asyncHandler(async (req, res) => {
+  if (!hasAnyRole(req.session, ['cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const n = await prisma.clientNote.update({
     where: { id: parseInt(req.params.id) },
     data: req.body,
+  });
+  await logActivity(req, {
+    action: 'client_note_updated',
+    entityType: 'client',
+    entityId: n.idServicio,
+    entityName: n.clientName,
+    details: { noteId: n.id, priority: n.priority },
   });
   res.json(n);
 }));
 
 dbRouter.delete('/notes/:id', asyncHandler(async (req, res) => {
-  await prisma.clientNote.delete({ where: { id: parseInt(req.params.id) } });
+  if (!hasAnyRole(req.session, ['cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
+  const deleted = await prisma.clientNote.delete({ where: { id: parseInt(req.params.id) } });
+  await logActivity(req, {
+    action: 'client_note_deleted',
+    entityType: 'client',
+    entityId: deleted.idServicio,
+    entityName: deleted.clientName,
+    details: { noteId: deleted.id },
+  });
   res.json({ success: true });
 }));
 
@@ -510,6 +591,7 @@ dbRouter.get('/speedtests', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.post('/speedtests', asyncHandler(async (req, res) => {
+  if (!hasAnyRole(req.session, ['tecnico'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const t = await prisma.speedTest.create({ data: req.body });
   res.json(t);
 }));
@@ -522,18 +604,34 @@ dbRouter.get('/promises', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.post('/promises', asyncHandler(async (req, res) => {
+  if (!hasAnyRole(req.session, ['cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const p = await prisma.paymentPromise.create({
     data: { ...req.body, promisedDate: new Date(req.body.promisedDate) },
+  });
+  await logActivity(req, {
+    action: 'payment_promise_created',
+    entityType: 'client',
+    entityId: p.idServicio,
+    entityName: p.clientName,
+    details: { promiseId: p.id, amount: p.amount, promisedDate: p.promisedDate },
   });
   res.json(p);
 }));
 
 dbRouter.put('/promises/:id', asyncHandler(async (req, res) => {
+  if (!hasAnyRole(req.session, ['cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const data = { ...req.body };
   if (data.promisedDate) data.promisedDate = new Date(data.promisedDate);
   if (data.completedAt) data.completedAt = new Date(data.completedAt);
   const p = await prisma.paymentPromise.update({
     where: { id: parseInt(req.params.id) }, data,
+  });
+  await logActivity(req, {
+    action: 'payment_promise_updated',
+    entityType: 'client',
+    entityId: p.idServicio,
+    entityName: p.clientName,
+    details: { promiseId: p.id, status: p.status },
   });
   res.json(p);
 }));
@@ -547,6 +645,7 @@ dbRouter.get('/settings', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.put('/settings', asyncHandler(async (req, res) => {
+  if (!userHasRole(req.session, ['admin'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const updates = Object.entries(req.body).map(([key, value]) =>
     prisma.appSetting.upsert({
       where: { key },
@@ -555,6 +654,11 @@ dbRouter.put('/settings', asyncHandler(async (req, res) => {
     })
   );
   await Promise.all(updates);
+  await logActivity(req, {
+    action: 'settings_updated',
+    entityType: 'setting',
+    details: { keys: Object.keys(req.body || {}) },
+  });
   res.json({ success: true });
 }));
 
@@ -568,6 +672,7 @@ dbRouter.get('/activity', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.post('/activity', asyncHandler(async (req, res) => {
+  if (!userHasRole(req.session, ['admin'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const a = await prisma.activity.create({ data: req.body });
   res.json(a);
 }));
@@ -601,6 +706,7 @@ dbRouter.get('/invoices', asyncHandler(async (req, res) => {
 
 // SYNC FROM WISPHUB - guarda clientes/facturas en la DB
 dbRouter.post('/sync/clients', asyncHandler(async (req, res) => {
+  if (!userHasRole(req.session, ['admin'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const { clients } = req.body;
   if (!Array.isArray(clients)) return res.status(400).json({ error: 'clients array required' });
 
@@ -673,6 +779,12 @@ dbRouter.post('/sync/clients', asyncHandler(async (req, res) => {
       data: { status: 'success', recordCount: count, endedAt: new Date(), durationMs: Date.now() - log.startedAt.getTime() },
     });
 
+    await logActivity(req, {
+      action: 'sync_clients',
+      entityType: 'sync',
+      entityName: 'clients',
+      details: { count },
+    });
     res.json({ success: true, count });
   } catch (e) {
     await prisma.syncLog.update({
@@ -684,6 +796,7 @@ dbRouter.post('/sync/clients', asyncHandler(async (req, res) => {
 }));
 
 dbRouter.post('/sync/invoices', asyncHandler(async (req, res) => {
+  if (!userHasRole(req.session, ['admin'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const { invoices } = req.body;
   if (!Array.isArray(invoices)) return res.status(400).json({ error: 'invoices array required' });
 
@@ -778,7 +891,19 @@ dbRouter.post('/sync/invoices', asyncHandler(async (req, res) => {
       data: { status: 'success', recordCount: count, endedAt: new Date(), durationMs: Date.now() - log.startedAt.getTime() },
     });
 
-    res.json({ success: true, count });
+    let autoPaymentWarningCleared = [];
+    try {
+      autoPaymentWarningCleared = await reconcileResolvedPaymentWarnings();
+    } catch (e) {
+      console.error('[payment-warning] reconcile after invoice sync failed:', e.message);
+    }
+    await logActivity(req, {
+      action: 'sync_invoices',
+      entityType: 'sync',
+      entityName: 'invoices',
+      details: { count, autoPaymentWarningCleared: autoPaymentWarningCleared.length },
+    });
+    res.json({ success: true, count, autoPaymentWarningCleared: autoPaymentWarningCleared.length });
   } catch (e) {
     await prisma.syncLog.update({
       where: { id: log.id },
@@ -813,7 +938,7 @@ dbRouter.get('/stats', asyncHandler(async (req, res) => {
 }));
 
 // BACKUP - descargar data.db
-dbRouter.get('/backup', (req, res) => {
+dbRouter.get('/backup', requireRole(['admin']), (req, res) => {
   const dbPath = path.join(__dirname, 'prisma', 'data.db');
   if (!fs.existsSync(dbPath)) {
     return res.status(404).json({ error: 'DB no encontrada' });
@@ -832,6 +957,27 @@ app.use('/api/survey', surveyRouter);
 // ─── WISPHUB API PROXY (autenticado tambien) ───
 const apiRouter = express.Router();
 apiRouter.use(authMiddleware);
+apiRouter.use((req, res, next) => {
+  if (req.method === 'GET' || req.method === 'HEAD') return next();
+  const pathName = req.path.toLowerCase();
+  const requiredRole =
+    pathName.includes('/ping/')
+      ? 'tecnico'
+      : pathName.includes('/registrar-pago/') || pathName.includes('/clientes/activar/')
+      ? 'cobranza'
+      : pathName.includes('/clientes/desactivar/') || pathName.includes('/eliminar-clientes/')
+      ? 'admin'
+      : 'admin';
+  const allowed = requiredRole === 'tecnico'
+    ? ['tecnico', 'admin', 'super_admin'].includes(req.session?.role)
+    : requiredRole === 'cobranza'
+    ? ['cobranza', 'admin', 'super_admin'].includes(req.session?.role)
+    : userHasRole(req.session, [requiredRole]);
+  if (!allowed) {
+    return res.status(403).json({ error: 'Permisos insuficientes', required: requiredRole, your: req.session?.role });
+  }
+  next();
+});
 
 if (API_KEY) {
   apiRouter.use('/', createProxyMiddleware({
@@ -839,7 +985,17 @@ if (API_KEY) {
     changeOrigin: true,
     pathRewrite: { '^/': '/api/' },
     headers: { 'Authorization': `Api-Key ${API_KEY}` },
+    on: {
+      proxyReq: (proxyReq) => {
+        proxyReq.setHeader('Authorization', `Api-Key ${API_KEY}`);
+        proxyReq.setHeader('Accept', 'application/json');
+      },
+    },
   }));
+} else {
+  apiRouter.use((req, res) => {
+    res.status(503).json({ error: 'WISPHUB_API_KEY is not configured on the server' });
+  });
 }
 
 app.use('/api', apiRouter);
@@ -894,6 +1050,7 @@ async function getMtConnection() {
 
 const mtRouter = express.Router();
 mtRouter.use(authMiddleware);
+mtRouter.use(requireAnyRole(['tecnico']));
 
 // Status
 mtRouter.get('/status', asyncHandler(async (req, res) => {
@@ -1230,6 +1387,41 @@ async function ensureNatRedirect(c, list, comment, captive) {
   return { action: 'created', id: res[0]?.ret || null };
 }
 
+async function ensureSurveySoftPortalNat(c) {
+  const dns = require('dns').promises;
+  const host = process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app';
+  const resolved = await dns.lookup(host);
+  const serverIp = resolved.address;
+  const port = 80;
+  const comment = 'WISP RD - Encuesta forzada (HTTP)';
+  const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
+  if (existing) {
+    if (existing['to-addresses'] !== serverIp || existing['to-ports'] !== String(port) || existing.disabled === 'true') {
+      await c.write(
+        '/ip/firewall/nat/set',
+        `=.id=${existing['.id']}`,
+        `=to-addresses=${serverIp}`,
+        `=to-ports=${port}`,
+        '=disabled=no',
+      );
+      return { action: 'updated', id: existing['.id'], serverIp, port };
+    }
+    return { action: 'exists', id: existing['.id'], serverIp, port };
+  }
+  const res = await c.write(
+    '/ip/firewall/nat/add',
+    '=chain=dstnat',
+    '=protocol=tcp',
+    '=dst-port=80',
+    `=src-address-list=${LIST_SURVEY}`,
+    '=action=dst-nat',
+    `=to-addresses=${serverIp}`,
+    `=to-ports=${port}`,
+    `=comment=${comment}`,
+  );
+  return { action: 'created', id: res[0]?.ret || null, serverIp, port };
+}
+
 async function ensureFilterRule(c, comment, params, options) {
   const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
   if (existing) return { action: 'exists', id: existing['.id'] };
@@ -1242,6 +1434,129 @@ async function ensureFilterRule(c, comment, params, options) {
   }
   const res = await c.write(...args);
   return { action: 'created', id: res[0]?.ret || null };
+}
+
+async function resolveCaptiveTarget() {
+  const dns = require('dns').promises;
+  const customHost = process.env.CAPTIVE_HOST;
+  const host = customHost || process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app';
+  const port = parseInt(customHost ? (process.env.CAPTIVE_PORT || PORT) : '80');
+  const isIp = /^\d+\.\d+\.\d+\.\d+$/.test(host);
+  const address = isIp ? host : (await dns.lookup(host)).address;
+  return { host, address, port };
+}
+
+async function ensureCaptiveNatRule(c, list, comment, target) {
+  const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
+  if (existing) {
+    if (
+      existing['to-addresses'] !== target.address ||
+      existing['to-ports'] !== String(target.port) ||
+      existing.disabled === 'true'
+    ) {
+      await c.write(
+        '/ip/firewall/nat/set',
+        `=.id=${existing['.id']}`,
+        `=to-addresses=${target.address}`,
+        `=to-ports=${target.port}`,
+        '=disabled=no',
+      );
+      return { action: 'updated', id: existing['.id'] };
+    }
+    return { action: 'exists', id: existing['.id'] };
+  }
+  const res = await c.write(
+    '/ip/firewall/nat/add',
+    '=chain=dstnat',
+    `=src-address-list=${list}`,
+    '=protocol=tcp',
+    '=dst-port=80',
+    '=action=dst-nat',
+    `=to-addresses=${target.address}`,
+    `=to-ports=${target.port}`,
+    `=comment=${comment}`,
+  );
+  return { action: 'created', id: res[0]?.ret || null };
+}
+
+async function ensureCaptiveFilterRule(c, comment, params, options) {
+  const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
+  if (existing) {
+    const changes = [];
+    for (const [k, v] of Object.entries(params)) {
+      if (existing[k] !== String(v)) changes.push(`=${k}=${v}`);
+    }
+    if (existing.disabled === 'true') changes.push('=disabled=no');
+    if (changes.length) {
+      await c.write('/ip/firewall/filter/set', `=.id=${existing['.id']}`, ...changes);
+      return { action: 'updated', id: existing['.id'] };
+    }
+    return { action: 'exists', id: existing['.id'] };
+  }
+  return ensureFilterRule(c, comment, params, options);
+}
+
+async function ensureClientBlockCaptiveRules(c) {
+  const target = await resolveCaptiveTarget();
+  const moroso = await ensureCaptiveNatRule(c, LIST_MOROSOS, 'morosos-crm-redirect', target);
+  const bloqueado = await ensureCaptiveNatRule(c, LIST_BLOQUEADOS, 'bloqueados-crm-redirect', target);
+  const dropAll = await ensureCaptiveFilterRule(c, 'bloqueados-crm-drop-rest', {
+    chain: 'forward',
+    'src-address-list': LIST_BLOQUEADOS,
+    action: 'drop',
+  }, { placeAtTop: true });
+  const allowCaptive = await ensureCaptiveFilterRule(c, 'bloqueados-crm-allow-captive', {
+    chain: 'forward',
+    'src-address-list': LIST_BLOQUEADOS,
+    'dst-address': target.address,
+    action: 'accept',
+  }, { placeAtTop: true });
+  const allowDns = await ensureCaptiveFilterRule(c, 'bloqueados-crm-allow-dns', {
+    chain: 'forward',
+    'src-address-list': LIST_BLOQUEADOS,
+    protocol: 'udp',
+    'dst-port': '53',
+    action: 'accept',
+  }, { placeAtTop: true });
+  return { target, moroso, bloqueado, allowDns, allowCaptive, dropAll };
+}
+
+async function inspectClientBlockCaptiveRules(c) {
+  const target = await resolveCaptiveTarget();
+  const [moroso, bloqueado, allowDns, allowCaptive, dropAll, lists] = await Promise.all([
+    findRuleByComment(c, '/ip/firewall/nat', 'morosos-crm-redirect'),
+    findRuleByComment(c, '/ip/firewall/nat', 'bloqueados-crm-redirect'),
+    findRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-allow-dns'),
+    findRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-allow-captive'),
+    findRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-drop-rest'),
+    c.write('/ip/firewall/address-list/print').catch(() => []),
+  ]);
+  const ruleState = (rule, expected = {}) => {
+    if (!rule) return { exists: false, ok: false };
+    const mismatches = Object.entries(expected)
+      .filter(([key, value]) => value !== undefined && rule[key] !== String(value))
+      .map(([key, value]) => ({ key, expected: String(value), actual: rule[key] || null }));
+    return {
+      exists: true,
+      ok: rule.disabled !== 'true' && mismatches.length === 0,
+      disabled: rule.disabled === 'true',
+      id: rule['.id'],
+      mismatches,
+    };
+  };
+  const morososCount = lists.filter((e) => e.list === LIST_MOROSOS).length;
+  const bloqueadosCount = lists.filter((e) => e.list === LIST_BLOQUEADOS).length;
+  return {
+    target,
+    addressLists: { morosos: morososCount, bloqueados: bloqueadosCount },
+    rules: {
+      morosoRedirect: ruleState(moroso, { 'to-addresses': target.address, 'to-ports': target.port }),
+      bloqueadoRedirect: ruleState(bloqueado, { 'to-addresses': target.address, 'to-ports': target.port }),
+      allowDns: ruleState(allowDns),
+      allowCaptive: ruleState(allowCaptive, { 'dst-address': target.address }),
+      dropRest: ruleState(dropAll),
+    },
+  };
 }
 
 // Cierra conexiones activas con src=ip (necesario para que el drop tome efecto inmediato)
@@ -1265,6 +1580,7 @@ async function killConnectionsFrom(c, ip) {
 
 const blockRouter = express.Router();
 blockRouter.use(authMiddleware);
+blockRouter.use(requireRole(['admin']));
 
 // Listar IPs en cada lista
 blockRouter.get('/list', asyncHandler(async (req, res) => {
@@ -1288,10 +1604,6 @@ async function removeRuleByComment(c, path, comment) {
 // Crear las 5 reglas (NAT x2 + filter x3 para bloqueo total)
 // Body opcional: {host, port, force} - force=true elimina existentes y recrea
 blockRouter.post('/setup', asyncHandler(async (req, res) => {
-  const captive = {
-    host: req.body?.host || process.env.CAPTIVE_HOST || MT_HOST,
-    port: parseInt(req.body?.port || process.env.CAPTIVE_PORT || PORT),
-  };
   const force = req.body?.force === true;
   const c = await getMtConnection();
 
@@ -1303,38 +1615,21 @@ blockRouter.post('/setup', asyncHandler(async (req, res) => {
     await removeRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-drop-rest');
   }
 
-  const moroso = await ensureNatRedirect(c, LIST_MOROSOS, 'morosos-crm-redirect', captive);
-  const bloqueado = await ensureNatRedirect(c, LIST_BLOQUEADOS, 'bloqueados-crm-redirect', captive);
-
-  // Importante: insertar al INICIO de la cadena para que tome precedencia
-  // sobre cualquier regla "accept established/related" que normalmente esta arriba
-  const dropAll = await ensureFilterRule(c, 'bloqueados-crm-drop-rest', {
-    chain: 'forward',
-    'src-address-list': LIST_BLOQUEADOS,
-    action: 'drop',
-  }, { placeAtTop: true });
-  const allowCaptive = await ensureFilterRule(c, 'bloqueados-crm-allow-captive', {
-    chain: 'forward',
-    'src-address-list': LIST_BLOQUEADOS,
-    'dst-address': captive.host,
-    action: 'accept',
-  }, { placeAtTop: true });
-  const allowDns = await ensureFilterRule(c, 'bloqueados-crm-allow-dns', {
-    chain: 'forward',
-    'src-address-list': LIST_BLOQUEADOS,
-    protocol: 'udp',
-    'dst-port': '53',
-    action: 'accept',
-  }, { placeAtTop: true });
-
-  res.json({ captive, force, moroso, bloqueado, allowDns, allowCaptive, dropAll });
+  const rules = await ensureClientBlockCaptiveRules(c);
+  await logActivity(req, {
+    action: 'mikrotik_captive_rules_setup',
+    entityType: 'mikrotik',
+    entityName: 'captive-rules',
+    details: { force, target: rules.target },
+  });
+  res.json({ force, ...rules });
 }));
 
 app.use('/mikrotik/blocklist', blockRouter);
 
 // ─── ACCIONES SOBRE CLIENTES (moroso / block / clear) ───
 
-async function applyClientAction(idServicio, action, reason) {
+async function applyClientAction(idServicio, action, reason, actor = null) {
   const client = await prisma.client.findUnique({
     where: { idServicio: parseInt(idServicio) },
   });
@@ -1342,6 +1637,9 @@ async function applyClientAction(idServicio, action, reason) {
   if (!client.ip) return { ok: false, error: 'Cliente sin IP asignada' };
 
   const c = await getMtConnection();
+  const rules = ['moroso', 'block'].includes(action)
+    ? await ensureClientBlockCaptiveRules(c)
+    : null;
 
   let mt;
   let connectionsKilled = 0;
@@ -1375,10 +1673,18 @@ async function applyClientAction(idServicio, action, reason) {
       ipAddress: client.ip,
       action: action === 'clear' ? 'unblock' : action,
       reason,
+      createdBy: actor?.username || actor?.actor || null,
     },
   });
 
-  return { ok: true, ip: client.ip, mt, connectionsKilled };
+  return {
+    ok: true,
+    ip: client.ip,
+    mt,
+    rules,
+    connectionsKilled,
+    captiveUrl: `${process.env.PUBLIC_APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app'}`}/captive?ip=${encodeURIComponent(client.ip)}`,
+  };
 }
 
 const clientActionsRouter = express.Router();
@@ -1404,6 +1710,13 @@ clientActionsRouter.patch('/:id/alias', asyncHandler(async (req, res) => {
     },
   }).catch(() => null);
   if (!updated) return res.status(404).json({ error: 'Cliente no encontrado' });
+  await logActivity(req, {
+    action: 'client_alias_updated',
+    entityType: 'client',
+    entityId: updated.idServicio,
+    entityName: updated.nombre,
+    details: { fields: Object.keys(data) },
+  });
   res.json(updated);
 }));
 
@@ -1435,23 +1748,47 @@ clientActionsRouter.get('/states', asyncHandler(async (req, res) => {
 }));
 
 // Marcar moroso: cobranza+ (cobranza puede marcar pero no bloquear total)
-clientActionsRouter.post('/:id/moroso', requireRole(['cobranza']), asyncHandler(async (req, res) => {
+clientActionsRouter.post('/:id/moroso', requireAnyRole(['cobranza']), asyncHandler(async (req, res) => {
   const reason = String(req.body?.reason || 'Falta de pago').trim();
-  const r = await applyClientAction(req.params.id, 'moroso', reason);
+  const r = await applyClientAction(req.params.id, 'moroso', reason, req.session);
+  if (r.ok) {
+    await logActivity(req, {
+      action: 'client_marked_moroso',
+      entityType: 'client',
+      entityId: req.params.id,
+      details: { reason, ip: r.ip, connectionsKilled: r.connectionsKilled },
+    });
+  }
   res.status(r.ok ? 200 : 400).json(r);
 }));
 
 // Bloqueo total: solo admin+
 clientActionsRouter.post('/:id/block', requireRole(['admin']), asyncHandler(async (req, res) => {
   const reason = String(req.body?.reason || 'Bloqueo manual').trim();
-  const r = await applyClientAction(req.params.id, 'block', reason);
+  const r = await applyClientAction(req.params.id, 'block', reason, req.session);
+  if (r.ok) {
+    await logActivity(req, {
+      action: 'client_blocked',
+      entityType: 'client',
+      entityId: req.params.id,
+      details: { reason, ip: r.ip, connectionsKilled: r.connectionsKilled },
+    });
+  }
   res.status(r.ok ? 200 : 400).json(r);
 }));
 
 // Reactivar: cobranza+
-clientActionsRouter.post('/:id/clear', requireRole(['cobranza']), asyncHandler(async (req, res) => {
+clientActionsRouter.post('/:id/clear', requireAnyRole(['cobranza']), asyncHandler(async (req, res) => {
   const reason = String(req.body?.reason || 'Reactivado').trim();
-  const r = await applyClientAction(req.params.id, 'clear', reason);
+  const r = await applyClientAction(req.params.id, 'clear', reason, req.session);
+  if (r.ok) {
+    await logActivity(req, {
+      action: 'client_reactivated',
+      entityType: 'client',
+      entityId: req.params.id,
+      details: { reason, ip: r.ip },
+    });
+  }
   res.status(r.ok ? 200 : 400).json(r);
 }));
 
@@ -1522,11 +1859,152 @@ ${contact ? `<p class="foot">Soporte: ${htmlEscape(contact)}</p>` : ''}
 </div></body></html>`;
 }
 
+function buildServiceStatusCaptive({
+  mode,
+  name,
+  ip,
+  plan,
+  priceDop,
+  reason,
+  contact,
+  status,
+  speed,
+  zone,
+  router,
+  actionAt,
+  invoiceNumber,
+  invoiceStatus,
+  invoiceDue,
+  invoiceMonth,
+  invoiceBalance,
+}) {
+  const isBlocked = mode === 'bloqueado';
+  const banner = isBlocked
+    ? {
+        title: 'Servicio desactivado',
+        accent: '#ef4444',
+        soft: '#fee2e2',
+        badge: 'DESACTIVADO',
+        defaultMsg: 'Tu servicio fue desactivado manualmente por el administrador.',
+      }
+    : mode === 'moroso'
+    ? {
+        title: 'Pago pendiente',
+        accent: '#f97316',
+        soft: '#ffedd5',
+        badge: 'PAGO PENDIENTE',
+        defaultMsg: 'Tu servicio esta pausado por estado de cuenta.',
+      }
+    : {
+        title: 'Informacion del servicio',
+        accent: '#0ea5e9',
+        soft: '#e0f2fe',
+        badge: 'INFO',
+        defaultMsg: 'Tu servicio esta activo.',
+      };
+  const cleanPhone = contact ? String(contact).replace(/[^\d+]/g, '') : '';
+  const contactHref = cleanPhone ? `tel:${cleanPhone}` : '#';
+  const price = priceDop ? `RD$ ${Number(priceDop).toLocaleString('es-DO')}` : '-';
+  const copy = isBlocked
+    ? 'Tu acceso a internet esta desactivado. Esta pagina queda disponible para que veas el estado de tu servicio y contactes administracion.'
+    : 'Tu internet esta pausado. Esta pagina queda disponible para ayudarte a resolver el estado de tu servicio.';
+  return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"/>
+<title>${htmlEscape(banner.title)}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;min-height:100vh;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#f8fafc;color:#0f172a;display:flex;align-items:center;justify-content:center;padding:18px}
+.shell{width:100%;max-width:760px;background:white;border:1px solid #e2e8f0;border-radius:24px;box-shadow:0 24px 80px rgba(15,23,42,.18);overflow:hidden}
+.top{background:linear-gradient(135deg,#111827 0%,#1f2937 58%,${banner.accent} 100%);color:white;padding:28px}
+.badge{display:inline-flex;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+h1{font-size:clamp(28px,5vw,44px);line-height:1.04;margin:18px 0 10px;letter-spacing:0}
+.lead{max-width:620px;color:#e2e8f0;font-size:16px;line-height:1.55;margin:0}
+.body{padding:26px}
+.notice{border-left:5px solid ${banner.accent};background:${banner.soft};border-radius:14px;padding:16px 18px;margin-bottom:18px}
+.notice strong{display:block;margin-bottom:4px}.notice p{margin:0;line-height:1.5;color:#334155}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:18px 0}
+.item{border:1px solid #e2e8f0;border-radius:14px;padding:14px;background:#fff}
+.lbl{display:block;color:#64748b;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.val{display:block;font-size:16px;font-weight:800;color:#0f172a;overflow-wrap:anywhere}
+.cta-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:18px}
+.cta{display:inline-flex;align-items:center;justify-content:center;background:${banner.accent};color:white;font-weight:800;min-height:48px;padding:0 20px;border-radius:12px;text-decoration:none}
+.ghost{color:#475569;font-size:13px;line-height:1.45;max-width:420px}
+.foot{border-top:1px solid #e2e8f0;color:#64748b;font-size:12px;padding:16px 26px;background:#f8fafc}
+@media (max-width:640px){.grid{grid-template-columns:1fr}.top,.body{padding:22px}.shell{border-radius:18px}}
+</style></head><body>
+<main class="shell">
+  <section class="top">
+    <span class="badge">${htmlEscape(banner.badge)}</span>
+    <h1>${htmlEscape(banner.title)}</h1>
+    <p class="lead">Hola ${htmlEscape(name)}, ${htmlEscape(copy)}</p>
+  </section>
+  <section class="body">
+    <div class="notice"><strong>Motivo</strong><p>${htmlEscape(reason || banner.defaultMsg)}</p></div>
+    <div class="grid">
+      <div class="item"><span class="lbl">Cliente</span><span class="val">${htmlEscape(name)}</span></div>
+      <div class="item"><span class="lbl">Estado</span><span class="val">${htmlEscape(status || banner.badge)}</span></div>
+      <div class="item"><span class="lbl">IP asignada</span><span class="val">${htmlEscape(ip)}</span></div>
+      <div class="item"><span class="lbl">Velocidad</span><span class="val">${htmlEscape(speed || 'No disponible')}</span></div>
+      <div class="item"><span class="lbl">Plan</span><span class="val">${htmlEscape(plan)}</span></div>
+      <div class="item"><span class="lbl">Cuota mensual</span><span class="val">${htmlEscape(price)}</span></div>
+      ${invoiceNumber ? `<div class="item"><span class="lbl">Factura</span><span class="val">#${htmlEscape(invoiceNumber)}</span></div>` : ''}
+      ${invoiceStatus ? `<div class="item"><span class="lbl">Estado factura</span><span class="val">${htmlEscape(invoiceStatus)}</span></div>` : ''}
+      ${invoiceDue ? `<div class="item"><span class="lbl">Vencimiento</span><span class="val">${htmlEscape(invoiceDue)}</span></div>` : ''}
+      ${invoiceMonth ? `<div class="item"><span class="lbl">Mes de pago</span><span class="val">${htmlEscape(invoiceMonth)}</span></div>` : ''}
+      ${invoiceBalance ? `<div class="item"><span class="lbl">Saldo pendiente</span><span class="val">${htmlEscape(invoiceBalance)}</span></div>` : ''}
+      ${zone ? `<div class="item"><span class="lbl">Zona</span><span class="val">${htmlEscape(zone)}</span></div>` : ''}
+      ${router ? `<div class="item"><span class="lbl">Router/Sector</span><span class="val">${htmlEscape(router)}</span></div>` : ''}
+    </div>
+    <div class="cta-row">
+      <a class="cta" href="${htmlEscape(contactHref)}">Contactar administracion</a>
+      <span class="ghost">Para reconectar el servicio debes comunicarte con el administrador. Esta pagina no libera el bloqueo automaticamente.</span>
+    </div>
+  </section>
+  <footer class="foot">
+    ${contact ? `Soporte: ${htmlEscape(contact)}. ` : ''}IP registrada: ${htmlEscape(ip)}${actionAt ? ` - Estado aplicado: ${htmlEscape(actionAt)}` : ''}
+  </footer>
+</main></body></html>`;
+}
+
 function detectClientIp(req) {
   const xff = req.headers['x-forwarded-for'];
   if (xff) return String(xff).split(',')[0].trim();
   if (req.headers['x-real-ip']) return String(req.headers['x-real-ip']).trim();
   return (req.ip || '').replace(/^::ffff:/, '');
+}
+
+function isPendingInvoiceStatus(status) {
+  const s = (status || '').toLowerCase();
+  return s.includes('pendiente') || s.includes('vencid') || s.includes('atras') || (s && !s.includes('pagad'));
+}
+
+function formatDop(value) {
+  const n = parseFloat(String(value ?? '0').replace(/[^\d.-]/g, '')) || 0;
+  if (!n) return '';
+  return `RD$ ${n.toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatInvoiceMonth(date) {
+  if (!date) return '';
+  return date.toLocaleDateString('es-DO', { month: 'long', year: 'numeric' });
+}
+
+async function findLatestPendingInvoiceForClient(idServicio) {
+  if (!idServicio) return null;
+  const invoices = await prisma.invoice.findMany({
+    where: { clienteIdServicio: idServicio },
+    orderBy: { idFactura: 'desc' },
+    take: 20,
+  });
+  const pending = invoices.filter((inv) => isPendingInvoiceStatus(inv.estado));
+  if (!pending.length) return null;
+  pending.sort((a, b) => {
+    const da = parseFechaCorte(a.fechaVencimiento || a.fechaEmision)?.getTime() || 0;
+    const db = parseFechaCorte(b.fechaVencimiento || b.fechaEmision)?.getTime() || 0;
+    return db - da || b.idFactura - a.idFactura;
+  });
+  return pending[0];
 }
 
 async function renderCaptive(req, res) {
@@ -1536,14 +2014,27 @@ async function renderCaptive(req, res) {
   if (client?.crmAction === 'block') mode = 'bloqueado';
   else if (client?.crmAction === 'moroso') mode = 'moroso';
   else if ((client?.estado || '').toLowerCase().includes('suspend')) mode = 'moroso';
-  const html = buildCaptive({
+  const invoice = client?.idServicio ? await findLatestPendingInvoiceForClient(client.idServicio) : null;
+  const dueDate = parseFechaCorte(invoice?.fechaVencimiento || client?.fechaCorte || '');
+  const displayName = client?.aliasNombre || client?.nombre || 'Cliente';
+  const html = buildServiceStatusCaptive({
     mode,
-    name: client?.nombre || 'Cliente',
+    name: displayName,
     ip,
     plan: client?.planInternetName || 'Servicio de internet',
     priceDop: client?.precioPlan ? Number(client.precioPlan) : null,
     reason: client?.crmActionReason || '',
     contact: process.env.SUPPORT_PHONE || '',
+    status: client?.crmAction === 'block' ? 'Desactivado manualmente' : (client?.estado || ''),
+    speed: client?.mtQueueLimit || '',
+    zone: client?.zonaNombre || client?.localidad || '',
+    router: client?.routerNombre || client?.sectorialNombre || '',
+    actionAt: client?.crmActionAt ? client.crmActionAt.toLocaleString('es-DO') : '',
+    invoiceNumber: invoice?.folio || invoice?.idFactura || '',
+    invoiceStatus: invoice?.estado || client?.estadoFacturas || '',
+    invoiceDue: invoice?.fechaVencimiento || client?.fechaCorte || '',
+    invoiceMonth: formatInvoiceMonth(dueDate),
+    invoiceBalance: formatDop(invoice?.saldo || client?.saldo || client?.precioPlan),
   });
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.set('Cache-Control', 'no-store');
@@ -1559,8 +2050,104 @@ app.get('/captive', asyncHandler(renderCaptive));
 // ═══════════════════════════════════════════════════════════════
 
 const LIST_SURVEY = 'survey-pending';
+const SURVEY_REMINDER_INTERVAL_HOURS = Math.max(1, parseInt(process.env.SURVEY_REMINDER_INTERVAL_HOURS || '4'));
+const SURVEY_REMINDER_POLL_MS = Math.max(60_000, parseInt(process.env.SURVEY_REMINDER_POLL_MS || '300000'));
+let surveyReminderTimer = null;
+let lastSurveyReminderRun = null;
 
-function buildSurveyForm({ ip, name, alreadySubmitted }) {
+function generateSurveyToken() {
+  return crypto.randomBytes(24).toString('base64url');
+}
+
+function addHours(date, hours) {
+  return new Date(date.getTime() + hours * 60 * 60 * 1000);
+}
+
+function getPublicBaseUrl(req) {
+  if (process.env.PUBLIC_APP_URL) return process.env.PUBLIC_APP_URL.replace(/\/$/, '');
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`;
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
+  return `${proto}://${req.get('host')}`;
+}
+
+function buildSurveyUrl(req, token) {
+  return `${getPublicBaseUrl(req)}/survey/landing/${encodeURIComponent(token)}`;
+}
+
+function buildSurveyPortalUrl(req, ip) {
+  const qs = ip ? `?ip=${encodeURIComponent(ip)}` : '';
+  return `${getPublicBaseUrl(req)}/survey/portal${qs}`;
+}
+
+function withSurveyPublicUrl(req, row) {
+  if (!row) return row;
+  return {
+    ...row,
+    publicUrl: row.publicToken ? buildSurveyUrl(req, row.publicToken) : null,
+    portalUrl: buildSurveyPortalUrl(req, row.clientIp),
+  };
+}
+
+function buildSurveyReminderMessage(client, publicUrl) {
+  const business = process.env.INVOICE_BUSINESS_NAME || 'MaxWiFi';
+  const name = client?.nombre || 'Cliente';
+  return `Hola ${name}, somos ${business}.\n\nNecesitamos que confirmes tus datos de contacto para mantener tu cuenta actualizada.\n\nLlena este formulario seguro:\n${publicUrl}\n\nTu internet no sera bloqueado por esta encuesta. Si ya lo llenaste, puedes ignorar este mensaje.`;
+}
+
+async function sendSurveyReminderById(id, req = null) {
+  const survey = await prisma.surveyResponse.findUnique({
+    where: { id },
+    include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
+  });
+  if (!survey || survey.status !== 'pending') return { ok: false, skipped: true, reason: 'not_pending' };
+
+  let publicToken = survey.publicToken;
+  let current = survey;
+  if (!publicToken) {
+    publicToken = generateSurveyToken();
+    current = await prisma.surveyResponse.update({
+      where: { id: survey.id },
+      data: { publicToken },
+      include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
+    });
+  }
+
+  const phone = current.client?.telefono;
+  const now = new Date();
+  const retryAt = addHours(now, SURVEY_REMINDER_INTERVAL_HOURS);
+  const baseUrl = (process.env.PUBLIC_APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app'}`).replace(/\/$/, '');
+  const publicUrl = req ? buildSurveyUrl(req, publicToken) : `${baseUrl}/survey/landing/${encodeURIComponent(publicToken)}`;
+
+  if (!phone || phone.length < 7) {
+    await prisma.surveyResponse.update({
+      where: { id: current.id },
+      data: { nextReminderAt: retryAt, lastReminderStatus: 'no_phone' },
+    });
+    return { ok: false, reason: 'no_phone', publicUrl };
+  }
+  if (waStatus !== 'connected' || !waSocket) {
+    await prisma.surveyResponse.update({
+      where: { id: current.id },
+      data: { nextReminderAt: addHours(now, 1), lastReminderStatus: `whatsapp_${waStatus}` },
+    });
+    return { ok: false, reason: `whatsapp_${waStatus}`, publicUrl };
+  }
+
+  const message = buildSurveyReminderMessage(current.client, publicUrl);
+  const sent = await sendWhatsappNotification(current.idServicio, phone, message, 'survey_reminder', current.client?.nombre || null);
+  await prisma.surveyResponse.update({
+    where: { id: current.id },
+    data: {
+      lastReminderAt: now,
+      nextReminderAt: retryAt,
+      reminderCount: { increment: sent.ok ? 1 : 0 },
+      lastReminderStatus: sent.ok ? 'sent' : `failed: ${sent.error || 'unknown'}`.slice(0, 180),
+    },
+  });
+  return { ...sent, publicUrl };
+}
+
+function buildSurveyForm({ ip, name, alreadySubmitted, token }) {
   if (alreadySubmitted) {
     return `<!doctype html><html lang="es"><head><meta charset="utf-8"/>
 <title>Gracias</title><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -1633,7 +2220,7 @@ f.addEventListener('submit',async(e)=>{
   e.preventDefault();er.classList.remove('show');b.disabled=true;b.textContent='Enviando...';
   try{
     const r=await fetch('/survey/submit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({fullName:f.fullName.value.trim(),phone:f.phone.value.trim()})});
+      body:JSON.stringify({token:${JSON.stringify(token || '')},fullName:f.fullName.value.trim(),phone:f.phone.value.trim()})});
     const d=await r.json();
     if(!r.ok||!d.ok){throw new Error(d.error||'Error al enviar')}
     document.body.innerHTML=d.html||'<h1>Gracias</h1>';
@@ -1647,10 +2234,13 @@ f.addEventListener('submit',async(e)=>{
 
 // Pagina publica que ve el cliente cuando lo redirigen
 async function renderSurveyLanding(req, res) {
+  const token = (req.params?.token || req.query?.token || req.query?.t || '').toString().trim();
   const ip = detectClientIp(req);
-  // Buscar pending para esta IP
+  // Buscar pending por enlace publico; fallback legacy por IP para captive antiguo.
   const pending = await prisma.surveyResponse.findFirst({
-    where: { clientIp: ip, status: 'pending' },
+    where: token
+      ? { publicToken: token, status: 'pending' }
+      : { clientIp: ip, status: 'pending' },
     orderBy: { sentAt: 'desc' },
   });
   if (!pending) {
@@ -1669,22 +2259,87 @@ async function renderSurveyLanding(req, res) {
     : null;
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.set('Cache-Control', 'no-store');
-  res.send(buildSurveyForm({ ip, name: client?.nombre || '', alreadySubmitted: false }));
+  res.send(buildSurveyForm({
+    ip: pending.clientIp || ip,
+    name: client?.nombre || '',
+    alreadySubmitted: false,
+    token: pending.publicToken || token,
+  }));
 }
 
+app.get('/survey/landing/:token', asyncHandler(renderSurveyLanding));
 app.get('/survey/landing', asyncHandler(renderSurveyLanding));
 app.get('/survey', asyncHandler(renderSurveyLanding));
+
+// Portal suave para MikroTik/Hotspot. El router debe abrir esta URL incluyendo
+// la IP del cliente: /survey/portal?ip=$(ip). Asi Railway recibe el host correcto
+// y el formulario puede seguir siendo seguro por token.
+async function renderSurveyPortal(req, res) {
+  const token = (req.query?.token || req.query?.t || '').toString().trim();
+  const rawIp = (req.query?.ip || req.query?.address || detectClientIp(req)).toString().trim();
+  const ip = rawIp.replace(/^::ffff:/, '');
+  const where = [];
+  if (token) where.push({ publicToken: token, status: 'pending' });
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) where.push({ clientIp: ip, status: 'pending' });
+
+  const pending = where.length
+    ? await prisma.surveyResponse.findFirst({ where: { OR: where }, orderBy: { sentAt: 'desc' } })
+    : null;
+
+  if (!pending) {
+    const submittedWhere = [];
+    if (token) submittedWhere.push({ publicToken: token, status: 'submitted' });
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(ip)) submittedWhere.push({ clientIp: ip, status: 'submitted' });
+    const submitted = submittedWhere.length
+      ? await prisma.surveyResponse.findFirst({ where: { OR: submittedWhere }, orderBy: { submittedAt: 'desc' } })
+      : null;
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'no-store');
+    if (submitted) {
+      return res.send(buildSurveyForm({ ip, name: submitted.fullName || 'Cliente', alreadySubmitted: true }));
+    }
+    return res.send(`<!doctype html><html><head><meta charset="utf-8"/><title>Sin encuesta</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<style>body{font-family:system-ui;background:#0f172a;color:#f1f5f9;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px;text-align:center}.box{max-width:420px}.muted{color:#94a3b8}</style>
+</head><body><div class="box"><h2>No tienes encuesta pendiente</h2>
+<p class="muted">Puedes seguir navegando normalmente.</p></div></body></html>`);
+  }
+
+  let current = pending;
+  if (!current.publicToken) {
+    current = await prisma.surveyResponse.update({
+      where: { id: current.id },
+      data: { publicToken: generateSurveyToken() },
+    });
+  }
+  const client = current.idServicio
+    ? await prisma.client.findUnique({ where: { idServicio: current.idServicio } })
+    : null;
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.set('Cache-Control', 'no-store');
+  res.send(buildSurveyForm({
+    ip: current.clientIp || ip,
+    name: client?.nombre || '',
+    alreadySubmitted: false,
+    token: current.publicToken,
+  }));
+}
+
+app.get('/survey/portal', asyncHandler(renderSurveyPortal));
 
 // Cliente envia el form
 app.post('/survey/submit', asyncHandler(async (req, res) => {
   const ip = detectClientIp(req);
+  const token = (req.body?.token || '').toString().trim();
   const fullName = (req.body?.fullName || '').toString().trim();
   const phone = (req.body?.phone || '').toString().trim();
   if (fullName.length < 3 || phone.length < 7) {
     return res.status(400).json({ ok: false, error: 'Nombre y telefono son obligatorios' });
   }
   const pending = await prisma.surveyResponse.findFirst({
-    where: { clientIp: ip, status: 'pending' },
+    where: token
+      ? { publicToken: token, status: 'pending' }
+      : { clientIp: ip, status: 'pending' },
     orderBy: { sentAt: 'desc' },
   });
   if (!pending) {
@@ -1698,39 +2353,90 @@ app.post('/survey/submit', asyncHandler(async (req, res) => {
       phone,
       status: 'submitted',
       submittedAt: new Date(),
+      nextReminderAt: null,
+      lastReminderStatus: 'submitted',
       userAgent: (req.headers['user-agent'] || '').toString().substring(0, 200),
     },
   });
   // Sacar al cliente del address-list para que pueda navegar
   try {
     const c = await getMtConnection();
-    await removeFromAddressList(c, LIST_SURVEY, ip);
+    await removeFromAddressList(c, LIST_SURVEY, pending.clientIp || ip);
   } catch (e) {
     console.error('[survey] error removing from MT list:', e.message);
   }
   res.json({
     ok: true,
-    html: buildSurveyForm({ ip, name: fullName, alreadySubmitted: true }),
+    html: buildSurveyForm({ ip: pending.clientIp || ip, name: fullName, alreadySubmitted: true }),
   });
 }));
 
 // API admin para crear/listar encuestas
 // (surveyRouter ya declarado y montado mas arriba en /api/survey)
 surveyRouter.use(authMiddleware);
+surveyRouter.use(requireAnyRole(['cobranza']));
 
 // Activar encuesta para un cliente (por IP)
 surveyRouter.post('/start', asyncHandler(async (req, res) => {
   const ip = (req.body?.ip || '').toString().trim();
   const idServicio = req.body?.idServicio ? parseInt(req.body.idServicio) : null;
+  const legacyNat = req.body?.legacyNat === true || req.body?.forceRedirect === true;
+  if (legacyNat && !userHasRole(req.session, ['admin'])) {
+    return res.status(403).json({ ok: false, error: 'Solo admin puede activar NAT legacy de encuesta' });
+  }
   if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
     return res.status(400).json({ ok: false, error: 'IP invalida' });
   }
+  const submittedWhere = [{ clientIp: ip, status: 'submitted' }];
+  if (idServicio) submittedWhere.push({ idServicio, status: 'submitted' });
+  const submitted = await prisma.surveyResponse.findFirst({
+    where: { OR: submittedWhere },
+    orderBy: { submittedAt: 'desc' },
+  });
+  if (submitted) {
+    return res.json({
+      ok: true,
+      alreadySubmitted: true,
+      survey: withSurveyPublicUrl(req, submitted),
+    });
+  }
+
   // Si ya hay una pending para esta IP, devolverla
-  const existing = await prisma.surveyResponse.findFirst({
+  let existing = await prisma.surveyResponse.findFirst({
     where: { clientIp: ip, status: 'pending' },
   });
   if (existing) {
-    return res.json({ ok: true, alreadyPending: true, survey: existing });
+    if (!existing.publicToken) {
+      existing = await prisma.surveyResponse.update({
+        where: { id: existing.id },
+        data: { publicToken: generateSurveyToken(), nextReminderAt: existing.nextReminderAt || new Date() },
+      });
+    }
+    const reminder = await sendSurveyReminderById(existing.id, req).catch((e) => ({ ok: false, error: e.message }));
+    let mtResult = null;
+    if (legacyNat) {
+      try {
+        const c = await getMtConnection();
+        const nat = await ensureSurveySoftPortalNat(c);
+        const list = await addToAddressList(c, LIST_SURVEY, ip, `survey ${existing.id}`);
+        mtResult = { mode: 'legacy-nat-http', nat, list };
+      } catch (e) {
+        mtResult = { mode: 'legacy-nat-http', ok: false, error: e.message };
+      }
+    } else {
+      mtResult = { mode: 'cloud-link', ok: true, skippedMikrotik: true };
+    }
+    return res.json({
+      ok: true,
+      alreadyPending: true,
+      delivery: 'cloud-link',
+      networkImpact: false,
+      publicUrl: buildSurveyUrl(req, existing.publicToken),
+      portalUrl: buildSurveyPortalUrl(req, existing.clientIp),
+      reminder,
+      survey: withSurveyPublicUrl(req, existing),
+      mikrotik: mtResult,
+    });
   }
   // Buscar cliente por IP si no se dio idServicio
   let resolvedIdServicio = idServicio;
@@ -1742,22 +2448,65 @@ surveyRouter.post('/start', asyncHandler(async (req, res) => {
     data: {
       clientIp: ip,
       idServicio: resolvedIdServicio,
+      publicToken: generateSurveyToken(),
       sentBy: req.user?.username || 'admin',
       status: 'pending',
+      nextReminderAt: new Date(),
     },
   });
-  // Agregar IP al address-list de MikroTik
+  // Modo seguro por defecto: enlace en la nube + recordatorios, sin tocar
+  // navegacion del cliente. El NAT legacy queda solo para admins y no se usa
+  // desde la UI porque Railway no puede servir captive con Host arbitrario.
   let mtResult = null;
-  try {
-    const c = await getMtConnection();
-    mtResult = await addToAddressList(c, LIST_SURVEY, ip, `survey ${survey.id}`);
-    // matar conexiones existentes para forzar re-conexion HTTP
-    await killConnectionsFrom(c, ip).catch(() => {});
-  } catch (e) {
-    console.error('[survey] error adding to MT list:', e.message);
-    return res.status(500).json({ ok: false, error: 'Encuesta guardada pero error al activar en MikroTik: ' + e.message, survey });
+  if (legacyNat) {
+    try {
+      const c = await getMtConnection();
+      const nat = await ensureSurveySoftPortalNat(c);
+      const list = await addToAddressList(c, LIST_SURVEY, ip, `survey ${survey.id}`);
+      mtResult = { mode: 'legacy-nat-http', nat, list };
+    } catch (e) {
+      console.error('[survey] error adding to MT list:', e.message);
+      return res.status(500).json({ ok: false, error: 'Encuesta guardada pero error al activar en MikroTik: ' + e.message, survey: withSurveyPublicUrl(req, survey) });
+    }
+  } else {
+    mtResult = { mode: 'cloud-link', ok: true, skippedMikrotik: true };
   }
-  res.json({ ok: true, survey, mikrotik: mtResult });
+  const reminder = await sendSurveyReminderById(survey.id, req).catch((e) => ({ ok: false, error: e.message }));
+  await logActivity(req, {
+    action: 'survey_started',
+    entityType: 'survey',
+    entityId: survey.id,
+    entityName: ip,
+    details: { idServicio: resolvedIdServicio, delivery: 'cloud-link', networkImpact: false, mikrotik: mtResult?.mode || null },
+  });
+  res.json({
+    ok: true,
+    delivery: 'cloud-link',
+    networkImpact: false,
+    publicUrl: buildSurveyUrl(req, survey.publicToken),
+    portalUrl: buildSurveyPortalUrl(req, survey.clientIp),
+    reminder,
+    survey: withSurveyPublicUrl(req, survey),
+    mikrotik: mtResult,
+  });
+}));
+
+// Reenviar manualmente el recordatorio de WhatsApp para una encuesta pending
+surveyRouter.post('/resend/:id', asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'id invalido' });
+  const survey = await prisma.surveyResponse.findUnique({ where: { id } });
+  if (!survey) return res.status(404).json({ ok: false, error: 'No existe' });
+  if (survey.status !== 'pending') return res.status(400).json({ ok: false, error: `Encuesta esta en estado ${survey.status}, no se puede reenviar` });
+  const result = await sendSurveyReminderById(id, req).catch((e) => ({ ok: false, error: e.message }));
+  if (result?.ok) {
+    return res.json({ ok: true, message: 'WhatsApp enviado', publicUrl: result.publicUrl });
+  }
+  res.status(400).json({
+    ok: false,
+    error: result?.reason || result?.error || 'No se pudo enviar',
+    publicUrl: result?.publicUrl,
+  });
 }));
 
 // Cancelar una encuesta pending (saca al cliente del list sin guardar respuesta)
@@ -1775,7 +2524,80 @@ surveyRouter.post('/cancel/:id', asyncHandler(async (req, res) => {
   } catch (e) {
     console.error('[survey] cancel mt error:', e.message);
   }
+  await logActivity(req, {
+    action: 'survey_cancelled',
+    entityType: 'survey',
+    entityId: survey.id,
+    entityName: survey.clientIp,
+    details: { idServicio: survey.idServicio },
+  });
   res.json({ ok: true });
+}));
+
+// Quitar encuesta inteligente: cancela pendientes y limpia restos legacy en MikroTik.
+surveyRouter.post('/clear', asyncHandler(async (req, res) => {
+  const ip = (req.body?.ip || '').toString().trim();
+  const idServicio = req.body?.idServicio ? parseInt(req.body.idServicio) : null;
+
+  if (!ip && !idServicio) {
+    return res.status(400).json({ ok: false, error: 'IP o idServicio requerido' });
+  }
+  if (ip && !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
+    return res.status(400).json({ ok: false, error: 'IP invalida' });
+  }
+
+  const pendingWhere = [];
+  if (ip) pendingWhere.push({ clientIp: ip, status: 'pending' });
+  if (idServicio) pendingWhere.push({ idServicio, status: 'pending' });
+
+  const pending = pendingWhere.length
+    ? await prisma.surveyResponse.findMany({ where: { OR: pendingWhere } })
+    : [];
+  const ids = pending.map((row) => row.id);
+
+  let snoozed = 0;
+  if (ids.length) {
+    const result = await prisma.surveyResponse.updateMany({
+      where: { id: { in: ids } },
+      data: {
+        snoozedAt: new Date(),
+        nextReminderAt: addHours(new Date(), SURVEY_REMINDER_INTERVAL_HOURS),
+        snoozeCount: { increment: 1 },
+        lastReminderStatus: 'snoozed_by_admin',
+      },
+    });
+    snoozed = result.count;
+  }
+
+  const ipsToClean = [...new Set([ip, ...pending.map((row) => row.clientIp)].filter(Boolean))];
+  const mikrotik = { removed: [], errors: [] };
+  if (ipsToClean.length) {
+    try {
+      const c = await getMtConnection();
+      for (const targetIp of ipsToClean) {
+        const removed = await removeFromAddressList(c, LIST_SURVEY, targetIp);
+        mikrotik.removed.push({ ip: targetIp, wasInList: removed.wasIn });
+      }
+    } catch (e) {
+      console.error('[survey] smart clear mt error:', e.message);
+      mikrotik.errors.push(e.message);
+    }
+  }
+
+  await logActivity(req, {
+    action: 'survey_snoozed',
+    entityType: 'survey',
+    entityName: ip || String(idServicio),
+    details: { idServicio, ip, snoozed, mikrotik },
+  });
+  res.json({
+    ok: true,
+    snoozed,
+    cancelled: 0,
+    nextReminderAt: snoozed ? addHours(new Date(), SURVEY_REMINDER_INTERVAL_HOURS) : null,
+    reminderIntervalHours: SURVEY_REMINDER_INTERVAL_HOURS,
+    mikrotik,
+  });
 }));
 
 // Listar respuestas
@@ -1788,7 +2610,17 @@ surveyRouter.get('/responses', asyncHandler(async (req, res) => {
     take: 500,
     include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true, planInternetName: true } } },
   });
-  res.json({ ok: true, rows });
+  const rowsWithTokens = await Promise.all(rows.map((row) => {
+    if (row.status === 'pending' && !row.publicToken) {
+      return prisma.surveyResponse.update({
+        where: { id: row.id },
+        data: { publicToken: generateSurveyToken(), nextReminderAt: row.nextReminderAt || new Date() },
+        include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true, planInternetName: true } } },
+      });
+    }
+    return row;
+  }));
+  res.json({ ok: true, rows: rowsWithTokens.map((row) => withSurveyPublicUrl(req, row)) });
 }));
 
 // Eliminar respuesta
@@ -1804,12 +2636,48 @@ surveyRouter.delete('/responses/:id', asyncHandler(async (req, res) => {
     } catch {}
   }
   await prisma.surveyResponse.delete({ where: { id } });
+  await logActivity(req, {
+    action: 'survey_deleted',
+    entityType: 'survey',
+    entityId: survey.id,
+    entityName: survey.clientIp,
+    details: { status: survey.status, idServicio: survey.idServicio },
+  });
   res.json({ ok: true });
 }));
 
-// Setup: crea/actualiza la regla NAT en MikroTik para apuntar a esta instancia de Railway
-// (Util si la IP de Railway cambia o para configurar inicialmente)
+function buildSurveyHotspotSnippet(req) {
+  const base = `${getPublicBaseUrl(req)}/survey/portal`;
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="refresh" content="0; url=${base}?ip=$(ip)&mac=$(mac)">
+  <title>Encuesta</title>
+</head>
+<body>
+  <script>location.replace('${base}?ip=$(ip)&mac=$(mac)');</script>
+  <a href="${base}?ip=$(ip)&mac=$(mac)">Continuar</a>
+</body>
+</html>`;
+}
+
+// Setup seguro: por defecto NO crea NAT ciego hacia Railway. Railway enruta por
+// Host y fuerza HTTPS, por eso la encuesta segura debe abrir una URL real con
+// el dominio correcto. Un portal local/Hotspot puede enlazar a /survey/portal.
+// El modo legacy queda disponible solo si se pide explicitamente.
 surveyRouter.post('/setup', asyncHandler(async (req, res) => {
+  if (req.body?.mode !== 'legacy-nat' && req.body?.forceLegacy !== true) {
+    return res.json({
+      ok: true,
+      mode: 'cloud-link',
+      portalUrl: buildSurveyPortalUrl(req, ''),
+      hotspotLoginHtml: buildSurveyHotspotSnippet(req),
+      note: 'No se creo NAT legacy. Usa el enlace seguro o instala este HTML solo en un Hotspot/portal local que abra el dominio real de Railway.',
+    });
+  }
+
   const dns = require('dns').promises;
   const host = req.body?.host || process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app';
   const port = parseInt(req.body?.port || '80');
@@ -2021,6 +2889,7 @@ function mapWisphubToClient(cl, queue, arpEntry) {
 
 const syncRouter = express.Router();
 syncRouter.use(authMiddleware);
+syncRouter.use(requireRole(['admin']));
 syncRouter.get('/status', (req, res) => {
   res.json({
     running: !!syncTimer,
@@ -2048,29 +2917,90 @@ function startSyncLoop() {
 let waSocket = null;
 let waQR = null;
 let waStatus = 'disconnected';
+let waRetryCount = 0;
+let waRetryTimer = null;
+let waManuallyDisconnected = false;
+const WA_MAX_RETRY = 5;
+const WA_BASE_RETRY_MS = 10_000;
+const WA_MAX_RETRY_MS = 5 * 60_000;
 
 const { handleIncomingMessage } = require('./lib/whatsapp-bot');
 
+// Normaliza un telefono a JID Baileys. Idempotente: si ya viene con @s.whatsapp.net no lo dobla.
+// Acepta formatos: '8095551234', '(809) 555-1234', '+1 809 555 1234', '18095551234', '18095551234@s.whatsapp.net'
+function normalizeJid(rawPhone) {
+  if (!rawPhone) return null;
+  let s = String(rawPhone).trim();
+  // Quitar sufijo si ya lo trae
+  s = s.replace(/@s\.whatsapp\.net$/i, '').replace(/@c\.us$/i, '');
+  // Limpiar caracteres no numericos
+  s = s.replace(/[^\d]/g, '');
+  if (s.length < 7) return null;
+  // DR: si son 10 digitos, prefijar 1
+  if (s.length === 10) s = '1' + s;
+  return s + '@s.whatsapp.net';
+}
+
+// Wrapper que valida conexion antes de enviar y loguea estructurado
+async function sendWhatsappRaw(rawPhone, text) {
+  if (waStatus !== 'connected' || !waSocket) {
+    return { ok: false, error: 'WhatsApp no conectado', code: 'NOT_CONNECTED' };
+  }
+  const jid = normalizeJid(rawPhone);
+  if (!jid) return { ok: false, error: 'Telefono invalido', code: 'BAD_PHONE' };
+  try {
+    await waSocket.sendMessage(jid, { text });
+    return { ok: true, jid };
+  } catch (err) {
+    // Detectar perdida de conexion mid-envio
+    const msg = (err && err.message) || 'sendMessage failed';
+    if (/closed|disconnect|stream|connection|timed out/i.test(msg)) {
+      waStatus = 'disconnected';
+    }
+    return { ok: false, error: msg, code: 'SEND_FAILED' };
+  }
+}
+
+function scheduleWaRetry() {
+  if (waManuallyDisconnected) return;
+  if (waRetryTimer) clearTimeout(waRetryTimer);
+  if (waRetryCount >= WA_MAX_RETRY) {
+    console.error(`[WA] max retries (${WA_MAX_RETRY}) alcanzado. No reintentar automaticamente.`);
+    return;
+  }
+  const delay = Math.min(WA_BASE_RETRY_MS * Math.pow(2, waRetryCount), WA_MAX_RETRY_MS);
+  waRetryCount++;
+  console.log(`[WA] reintento #${waRetryCount} en ${(delay / 1000).toFixed(0)}s`);
+  waRetryTimer = setTimeout(() => { waRetryTimer = null; initWhatsApp(); }, delay);
+}
+
 async function initWhatsApp() {
+  // Evitar arrancar dos veces simultaneo
+  if (waSocket && waStatus === 'connected') return;
+  waManuallyDisconnected = false;
   try {
     const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
     const { state, saveCreds } = await useMultiFileAuthState('./wa-auth');
 
-    waSocket = makeWASocket({ auth: state });
+    waSocket = makeWASocket({ auth: state, printQRInTerminal: false });
     waSocket.ev.on('creds.update', saveCreds);
 
     waSocket.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
-      if (qr) { waQR = qr; waStatus = 'qr'; }
+      if (qr) { waQR = qr; waStatus = 'qr'; console.log('[WA] QR generado'); }
       if (connection === 'open') {
         waStatus = 'connected';
         waQR = null;
+        waRetryCount = 0;
         console.log('[WA] Connected');
       }
       if (connection === 'close') {
         const reason = lastDisconnect?.error?.output?.statusCode;
-        waStatus = 'disconnected';
-        if (reason !== DisconnectReason.loggedOut) setTimeout(initWhatsApp, 10000);
+        const isLoggedOut = reason === DisconnectReason.loggedOut;
+        waStatus = isLoggedOut ? 'logged_out' : 'disconnected';
+        waSocket = null;
+        console.log(`[WA] connection close (reason=${reason}, loggedOut=${isLoggedOut})`);
+        if (!isLoggedOut && !waManuallyDisconnected) scheduleWaRetry();
       }
     });
 
@@ -2084,11 +3014,13 @@ async function initWhatsApp() {
   } catch (err) {
     console.error('[WA] init error:', err.message);
     waStatus = 'error';
+    scheduleWaRetry();
   }
 }
 
 const waRouter = express.Router();
 waRouter.use(authMiddleware);
+waRouter.use(requireAnyRole(['cobranza']));
 
 waRouter.get('/status', (req, res) => res.json({ status: waStatus, qr: waQR }));
 
@@ -2401,50 +3333,21 @@ waRouter.post('/send-invoices-bulk', asyncHandler(async (req, res) => {
 }));
 
 waRouter.post('/send', asyncHandler(async (req, res) => {
-  if (waStatus !== 'connected' || !waSocket) {
-    return res.status(400).json({ error: 'WhatsApp no conectado' });
-  }
   const { phone, message, idServicio, clientName, messageType = 'manual' } = req.body;
-  let jid = phone.replace(/[\s\-\+\(\)]/g, '');
-  if (!jid.startsWith('1') && jid.length === 10) jid = '1' + jid;
-  jid = jid + '@s.whatsapp.net';
-
-  try {
-    await waSocket.sendMessage(jid, { text: message });
-    await prisma.whatsappLog.create({
-      data: { phone, message, idServicio, clientName, messageType, status: 'sent' }
-    });
-    res.json({ success: true });
-  } catch (err) {
-    await prisma.whatsappLog.create({
-      data: { phone, message, idServicio, clientName, messageType, status: 'failed', errorMessage: err.message }
-    });
-    res.status(500).json({ error: err.message });
-  }
+  if (!phone || !message) return res.status(400).json({ error: 'phone y message requeridos' });
+  const r = await sendWhatsappNotification(idServicio || null, phone, message, messageType, clientName || null);
+  if (r.ok) res.json({ success: true, jid: r.jid });
+  else res.status(400).json({ error: r.error, code: r.code });
 }));
 
 waRouter.post('/send-bulk', asyncHandler(async (req, res) => {
   if (waStatus !== 'connected' || !waSocket) return res.status(400).json({ error: 'WhatsApp no conectado' });
   const { contacts, messageType = 'bulk' } = req.body;
   const results = [];
-
-  for (const c of contacts) {
-    try {
-      let jid = c.phone.replace(/[\s\-\+\(\)]/g, '');
-      if (!jid.startsWith('1') && jid.length === 10) jid = '1' + jid;
-      jid = jid + '@s.whatsapp.net';
-      await waSocket.sendMessage(jid, { text: c.message });
-      await prisma.whatsappLog.create({
-        data: { phone: c.phone, message: c.message, idServicio: c.idServicio, clientName: c.clientName, messageType, status: 'sent' }
-      });
-      results.push({ phone: c.phone, status: 'sent' });
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (err) {
-      await prisma.whatsappLog.create({
-        data: { phone: c.phone, message: c.message, idServicio: c.idServicio, clientName: c.clientName, messageType, status: 'failed', errorMessage: err.message }
-      });
-      results.push({ phone: c.phone, status: 'error', error: err.message });
-    }
+  for (const c of contacts || []) {
+    const r = await sendWhatsappNotification(c.idServicio || null, c.phone, c.message, messageType, c.clientName || null);
+    results.push({ phone: c.phone, status: r.ok ? 'sent' : 'error', error: r.error });
+    await new Promise(rs => setTimeout(rs, 2000));
   }
   res.json({ results });
 }));
@@ -2458,12 +3361,17 @@ waRouter.get('/history', asyncHandler(async (req, res) => {
 }));
 
 waRouter.post('/disconnect', (req, res) => {
-  if (waSocket) { waSocket.logout().catch(() => {}); waSocket = null; waStatus = 'disconnected'; waQR = null; }
+  waManuallyDisconnected = true;
+  if (waRetryTimer) { clearTimeout(waRetryTimer); waRetryTimer = null; }
+  if (waSocket) { waSocket.logout().catch(() => {}); waSocket = null; }
+  waStatus = 'disconnected'; waQR = null; waRetryCount = 0;
   res.json({ status: 'disconnected' });
 });
 
 waRouter.post('/connect', (req, res) => {
   if (waStatus === 'connected') return res.json({ status: 'already connected' });
+  waManuallyDisconnected = false;
+  waRetryCount = 0;
   initWhatsApp();
   res.json({ status: 'connecting' });
 });
@@ -2575,6 +3483,7 @@ app.use(asyncHandler(async (req, res, next) => {
     req.path.startsWith('/sys') ||
     req.path.startsWith('/users') ||
     req.path.startsWith('/metrics') ||
+    req.path.startsWith('/ops') ||
     req.path === '/favicon.ico'
   ) return next();
 
@@ -2583,12 +3492,21 @@ app.use(asyncHandler(async (req, res, next) => {
   if (known.includes(host)) return next();
 
   // Host desconocido → cliente bloqueado llego via DST-NAT
+  if (req.method === 'GET') {
+    const ip = detectClientIp(req);
+    const pendingSurvey = await prisma.surveyResponse.findFirst({
+      where: { clientIp: ip, status: 'pending' },
+      select: { id: true },
+    });
+    if (pendingSurvey) return renderSurveyLanding(req, res);
+  }
   return renderCaptive(req, res);
 }));
 
 // ─── WEB ACTIVITY API (registrar antes del captive interceptor + static) ───
 const webActivityRouter = express.Router();
 webActivityRouter.use(authMiddleware);
+webActivityRouter.use(requireRole(['admin']));
 
 webActivityRouter.get('/:id', asyncHandler(async (req, res) => {
   const idServicio = parseInt(req.params.id);
@@ -2640,6 +3558,7 @@ app.use('/web-activity', webActivityRouter);
 // ─── TEMPLATES (CRUD + preview render) ───
 const templatesRouter = express.Router();
 templatesRouter.use(authMiddleware);
+templatesRouter.use(requireAnyRole(['cobranza']));
 
 // Lista todos los templates
 templatesRouter.get('/', asyncHandler(async (req, res) => {
@@ -2746,15 +3665,41 @@ app.use('/templates', templatesRouter);
 // (los handlers se definen mas abajo, pero el mount tiene que ir antes del static catch-all)
 const autoBlockRouter = express.Router();
 autoBlockRouter.use(authMiddleware);
+autoBlockRouter.use(requireRole(['admin']));
 app.use('/auto-block', autoBlockRouter);
+
+const paymentWarningRouter = express.Router();
+paymentWarningRouter.use(authMiddleware);
+app.use('/payment-warning', paymentWarningRouter);
 
 const notifRouter = express.Router();
 notifRouter.use(authMiddleware);
+notifRouter.use(requireAnyRole(['cobranza']));
 app.use('/notifications', notifRouter);
 
 const metricsRouter = express.Router();
 metricsRouter.use(authMiddleware);
+metricsRouter.use(requireAnyRole(['tecnico']));
 app.use('/metrics', metricsRouter);
+
+const opsRouter = express.Router();
+opsRouter.use(authMiddleware);
+opsRouter.use(requireAnyRole(['tecnico']));
+opsRouter.get('/status', asyncHandler(async (req, res) => {
+  res.json(await collectOpsStatus());
+}));
+opsRouter.post('/repair-captive', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const c = await getMtConnection();
+  const rules = await ensureClientBlockCaptiveRules(c);
+  await logActivity(req, {
+    action: 'mikrotik_captive_rules_repaired',
+    entityType: 'mikrotik',
+    entityName: 'captive-rules',
+    details: { target: rules.target },
+  });
+  res.json({ ok: true, rules, status: await inspectClientBlockCaptiveRules(c) });
+}));
+app.use('/ops', opsRouter);
 
 // ─── STATIC FILES (Angular build) ───
 const distPath = path.join(__dirname, 'dist/wishub-admin/browser');
@@ -2778,6 +3723,69 @@ app.use((err, req, res, next) => {
 // ═══════════════════════════════════════════════════════════════
 // WEB ACTIVITY TRACKING (DNS log -> aggregated por cliente+dominio+dia)
 // ═══════════════════════════════════════════════════════════════
+
+async function collectOpsStatus() {
+  const startedAt = Date.now();
+  const [dbOk, latestSync, counts, latestActivity] = await Promise.all([
+    prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false),
+    prisma.syncLog.findMany({ orderBy: { startedAt: 'desc' }, take: 5 }).catch(() => []),
+    Promise.all([
+      prisma.client.count().catch(() => 0),
+      prisma.invoice.count().catch(() => 0),
+      prisma.surveyResponse.count({ where: { status: 'pending' } }).catch(() => 0),
+      prisma.paymentPromise.count({ where: { status: 'pending' } }).catch(() => 0),
+      prisma.activity.count().catch(() => 0),
+    ]),
+    prisma.activity.findMany({ orderBy: { createdAt: 'desc' }, take: 8 }).catch(() => []),
+  ]);
+
+  let mikrotik = {
+    connected: !!mtConn?.connected,
+    configured: !!(MT_HOST && MT_USER && MT_PASS),
+    lastError: mtLastError,
+    captiveRules: null,
+    error: null,
+  };
+  if (MT_HOST && MT_USER && MT_PASS) {
+    try {
+      const c = await getMtConnection();
+      mikrotik = {
+        ...mikrotik,
+        connected: !!c?.connected,
+        captiveRules: await inspectClientBlockCaptiveRules(c),
+        error: null,
+      };
+    } catch (e) {
+      mikrotik = { ...mikrotik, connected: false, error: e.message, lastError: mtLastError || e.message };
+    }
+  }
+
+  return {
+    ok: dbOk,
+    checkedAt: new Date().toISOString(),
+    durationMs: Date.now() - startedAt,
+    app: { env: process.env.NODE_ENV || 'development', uptime: process.uptime(), version: '1.0.0' },
+    database: { connected: dbOk },
+    wisphub: { configured: !!API_KEY },
+    whatsapp: { status: waStatus },
+    mikrotik,
+    counts: {
+      clients: counts[0],
+      invoices: counts[1],
+      pendingSurveys: counts[2],
+      pendingPromises: counts[3],
+      activityRows: counts[4],
+    },
+    automations: {
+      autoBlock: { enabled: AUTO_BLOCK_ENABLED, lastRun: lastAutoBlockRun },
+      paymentWarning: { config: await getPaymentWarningConfig().catch(() => null), lastRun: lastPaymentWarningRun },
+      notifications: { enabled: NOTIF_ENABLED, lastRun: lastNotifRun },
+      surveyReminder: { lastRun: lastSurveyReminderRun },
+    },
+    sync: latestSync,
+    recentActivity: latestActivity,
+  };
+}
 
 const WEB_ACTIVITY_POLL_MS = parseInt(process.env.WEB_ACTIVITY_POLL_MS || '60000');
 const WEB_ACTIVITY_KEEP_DAYS = parseInt(process.env.WEB_ACTIVITY_KEEP_DAYS || '30');
@@ -3233,7 +4241,7 @@ async function runAutoBlockCheck() {
 
     try {
       const reason = `Auto: ${overdueDays} dias vencido (factura ${cl.estadoFacturas || 'pendiente'})`;
-      const result = await applyClientAction(cl.idServicio, action, reason);
+      const result = await applyClientAction(cl.idServicio, action, reason, { username: 'auto-block' });
       actions.push({ id: cl.idServicio, name: cl.nombre, ip: cl.ip, action, overdueDays, ok: result.ok });
     } catch (e) {
       actions.push({ id: cl.idServicio, name: cl.nombre, ip: cl.ip, action, overdueDays, error: e.message });
@@ -3327,6 +4335,237 @@ autoBlockRouter.get('/preview', asyncHandler(async (req, res) => {
 // NOTIFICACIONES WHATSAPP AUTOMATICAS (recordatorios T-3, T-1, T+0, T+5)
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// AVISO HTML AUTOMATICO DE PAGO (moroso suave por factura > N dias)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PAYMENT_WARNING_PREFIX = 'Aviso pago automatico:';
+const PAYMENT_WARNING_DEFAULTS = {
+  paymentWarningEnabled: 'false',
+  paymentWarningOverdueDays: '15',
+  paymentWarningRunHour: '9',
+  paymentWarningMode: 'moroso',
+};
+let paymentWarningTimer = null;
+let lastPaymentWarningRun = null;
+
+async function getSettingsMap(keys = []) {
+  const rows = await prisma.appSetting.findMany(keys.length ? { where: { key: { in: keys } } } : {});
+  const map = {};
+  for (const row of rows) map[row.key] = row.value;
+  return map;
+}
+
+async function setSettingsMap(values, category = 'payment-warning') {
+  const updates = Object.entries(values).map(([key, value]) => prisma.appSetting.upsert({
+    where: { key },
+    update: { value: String(value), category },
+    create: { key, value: String(value), category },
+  }));
+  await Promise.all(updates);
+}
+
+async function getPaymentWarningConfig() {
+  const keys = Object.keys(PAYMENT_WARNING_DEFAULTS);
+  const raw = { ...PAYMENT_WARNING_DEFAULTS, ...(await getSettingsMap(keys)) };
+  return {
+    enabled: raw.paymentWarningEnabled === 'true',
+    overdueDays: Math.max(1, parseInt(raw.paymentWarningOverdueDays || '15') || 15),
+    runHour: Math.max(0, Math.min(23, parseInt(raw.paymentWarningRunHour || '9') || 9)),
+    mode: 'moroso',
+  };
+}
+
+async function buildPaymentWarningCandidates(config) {
+  const clients = await prisma.client.findMany({
+    where: {
+      ip: { not: null },
+      OR: [
+        { estadoFacturas: { contains: 'endiente' } },
+        { estadoFacturas: { contains: 'encida' } },
+        { estadoFacturas: { contains: 'tras' } },
+      ],
+    },
+    select: {
+      idServicio: true,
+      nombre: true,
+      ip: true,
+      estado: true,
+      estadoFacturas: true,
+      fechaCorte: true,
+      precioPlan: true,
+      saldo: true,
+      crmAction: true,
+      crmActionReason: true,
+    },
+  });
+
+  const candidates = [];
+  for (const cl of clients) {
+    const invoice = await findLatestPendingInvoiceForClient(cl.idServicio);
+    const dueDate = parseFechaCorte(invoice?.fechaVencimiento || cl.fechaCorte || '');
+    const overdueDays = daysOverdue(dueDate);
+    if (overdueDays === null || overdueDays < config.overdueDays) continue;
+    candidates.push({
+      idServicio: cl.idServicio,
+      nombre: cl.nombre,
+      ip: cl.ip,
+      estado: cl.estado,
+      estadoFacturas: cl.estadoFacturas,
+      fechaCorte: cl.fechaCorte,
+      overdueDays,
+      crmAction: cl.crmAction,
+      crmActionReason: cl.crmActionReason,
+      invoice: invoice ? {
+        idFactura: invoice.idFactura,
+        folio: invoice.folio,
+        estado: invoice.estado,
+        fechaVencimiento: invoice.fechaVencimiento,
+        total: invoice.total,
+        saldo: invoice.saldo,
+      } : null,
+      amountDue: formatDop(invoice?.saldo || cl.saldo || cl.precioPlan),
+      wouldDo: cl.crmAction === 'block' ? 'skip_blocked' : cl.crmAction === 'moroso' ? 'already_moroso' : 'moroso',
+    });
+  }
+  return candidates;
+}
+
+async function cleanupResolvedPaymentWarnings(currentCandidateIds) {
+  const autoMorosos = await prisma.client.findMany({
+    where: {
+      crmAction: 'moroso',
+      crmActionReason: { startsWith: PAYMENT_WARNING_PREFIX },
+      ip: { not: null },
+    },
+    select: { idServicio: true, nombre: true, ip: true },
+  });
+  const cleared = [];
+  for (const cl of autoMorosos) {
+    if (currentCandidateIds.has(cl.idServicio)) continue;
+    const result = await applyClientAction(cl.idServicio, 'clear', 'Auto: factura regularizada o sin mora vigente', { username: 'system' });
+    cleared.push({ idServicio: cl.idServicio, nombre: cl.nombre, ip: cl.ip, ok: result.ok });
+  }
+  return cleared;
+}
+
+async function reconcileResolvedPaymentWarnings() {
+  const config = await getPaymentWarningConfig().catch(() => ({
+    enabled: false,
+    overdueDays: parseInt(PAYMENT_WARNING_DEFAULTS.paymentWarningOverdueDays, 10),
+    runHour: parseInt(PAYMENT_WARNING_DEFAULTS.paymentWarningRunHour, 10),
+    mode: 'moroso',
+  }));
+  const candidates = await buildPaymentWarningCandidates(config);
+  return cleanupResolvedPaymentWarnings(new Set(candidates.map((c) => c.idServicio)));
+}
+
+async function runPaymentWarningCheck({ manual = false, ignoreEnabled = false } = {}) {
+  const config = await getPaymentWarningConfig();
+  if (!config.enabled && !ignoreEnabled) {
+    return { ran: false, reason: 'paymentWarningEnabled=false', config };
+  }
+
+  const startedAt = new Date();
+  const candidates = await buildPaymentWarningCandidates(config);
+  const currentCandidateIds = new Set(candidates.map((c) => c.idServicio));
+  const actions = [];
+  let applied = 0;
+  let alreadyMoroso = 0;
+  let skippedBlocked = 0;
+
+  for (const item of candidates) {
+    if (item.wouldDo === 'skip_blocked') {
+      skippedBlocked++;
+      actions.push({ ...item, ok: false, skipped: true, reason: 'already_blocked' });
+      continue;
+    }
+    if (item.wouldDo === 'already_moroso') {
+      alreadyMoroso++;
+      actions.push({ ...item, ok: true, skipped: true, reason: 'already_moroso' });
+      continue;
+    }
+    const invoiceLabel = item.invoice?.folio || item.invoice?.idFactura || 'sin numero';
+    const reason = `${PAYMENT_WARNING_PREFIX} ${item.overdueDays} dias vencido (factura ${invoiceLabel}, ${item.amountDue || 'saldo pendiente'})`;
+    const result = await applyClientAction(item.idServicio, 'moroso', reason, { username: manual ? 'manual-run' : 'system' });
+    if (result.ok) applied++;
+    actions.push({ ...item, ok: result.ok, error: result.error || null });
+  }
+
+  const clearedRows = await cleanupResolvedPaymentWarnings(currentCandidateIds);
+  const result = {
+    ran: true,
+    manual,
+    startedAt: startedAt.toISOString(),
+    durationMs: Date.now() - startedAt.getTime(),
+    config,
+    candidates: candidates.length,
+    applied,
+    alreadyMoroso,
+    skippedBlocked,
+    cleared: clearedRows.length,
+    clearedRows,
+    actions,
+  };
+  lastPaymentWarningRun = result;
+  console.log(`[payment-warning] tick: candidates=${candidates.length} applied=${applied} already=${alreadyMoroso} cleared=${clearedRows.length}`);
+  return result;
+}
+
+paymentWarningRouter.get('/status', requireAnyRole(['cobranza']), asyncHandler(async (req, res) => {
+  res.json({ ok: true, config: await getPaymentWarningConfig(), lastRun: lastPaymentWarningRun });
+}));
+
+paymentWarningRouter.put('/settings', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const data = {};
+  if (req.body?.enabled !== undefined) data.paymentWarningEnabled = req.body.enabled === true ? 'true' : 'false';
+  if (req.body?.overdueDays !== undefined) data.paymentWarningOverdueDays = Math.max(1, parseInt(req.body.overdueDays) || 15);
+  if (req.body?.runHour !== undefined) data.paymentWarningRunHour = Math.max(0, Math.min(23, parseInt(req.body.runHour) || 9));
+  data.paymentWarningMode = 'moroso';
+  await setSettingsMap(data);
+  const config = await getPaymentWarningConfig();
+  await logActivity(req, {
+    action: 'payment_warning_settings_updated',
+    entityType: 'setting',
+    entityName: 'payment-warning',
+    details: { config },
+  });
+  res.json({ ok: true, config });
+}));
+
+paymentWarningRouter.get('/preview', requireAnyRole(['cobranza']), asyncHandler(async (req, res) => {
+  const config = await getPaymentWarningConfig();
+  const candidates = await buildPaymentWarningCandidates(config);
+  res.json({ ok: true, config, count: candidates.length, candidates });
+}));
+
+paymentWarningRouter.post('/run', requireAnyRole(['cobranza']), asyncHandler(async (req, res) => {
+  const result = await runPaymentWarningCheck({ manual: true });
+  await logActivity(req, {
+    action: 'payment_warning_run',
+    entityType: 'automation',
+    entityName: 'payment-warning',
+    details: { ran: result.ran, candidates: result.candidates || 0, applied: result.applied || 0, cleared: result.cleared || 0 },
+  });
+  res.json(result);
+}));
+
+function startPaymentWarningLoop() {
+  if (paymentWarningTimer) return;
+  console.log('[payment-warning] scheduler ready');
+  let lastCheckDay = null;
+  paymentWarningTimer = setInterval(async () => {
+    const config = await getPaymentWarningConfig().catch(() => null);
+    if (!config?.enabled) return;
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    if (now.getHours() === config.runHour && lastCheckDay !== today) {
+      lastCheckDay = today;
+      runPaymentWarningCheck().catch((e) => console.error('[payment-warning] error:', e.message));
+    }
+  }, 60 * 60 * 1000);
+}
+
 const NOTIF_ENABLED = process.env.NOTIF_ENABLED === 'true';
 const NOTIF_RUN_HOUR = parseInt(process.env.NOTIF_RUN_HOUR || '10');
 let notifTimer = null;
@@ -3354,25 +4593,15 @@ async function alreadyNotifiedToday(idServicio, type) {
 }
 
 async function sendWhatsappNotification(idServicio, phone, message, type, clientName) {
-  if (waStatus !== 'connected' || !waSocket) {
-    return { ok: false, error: 'WhatsApp no conectado' };
-  }
-  let jid = phone.replace(/[\s\-\+\(\)]/g, '');
-  if (!jid.startsWith('1') && jid.length === 10) jid = '1' + jid;
-  jid = jid + '@s.whatsapp.net';
-
-  try {
-    await waSocket.sendMessage(jid, { text: message });
-    await prisma.whatsappLog.create({
-      data: { phone, message, idServicio, clientName, messageType: type, status: 'sent' },
-    });
-    return { ok: true };
-  } catch (err) {
-    await prisma.whatsappLog.create({
-      data: { phone, message, idServicio, clientName, messageType: type, status: 'failed', errorMessage: err.message },
-    });
-    return { ok: false, error: err.message };
-  }
+  const sent = await sendWhatsappRaw(phone, message);
+  await prisma.whatsappLog.create({
+    data: {
+      phone, message, idServicio, clientName, messageType: type,
+      status: sent.ok ? 'sent' : 'failed',
+      errorMessage: sent.ok ? null : (sent.error || 'unknown'),
+    },
+  }).catch(() => {});
+  return sent;
 }
 
 async function runNotifCheck() {
@@ -3475,46 +4704,68 @@ notifRouter.post('/run', asyncHandler(async (req, res) => {
 // ─── AUTO-DETECT IP PUBLICA + UPDATE NAT/FILTER EN MIKROTIK ───
 // Cuando corre en Railway, la IP de salida puede cambiar. Al boot detecta su IP
 // publica y reescribe las reglas NAT del MikroTik para que el captive funcione.
+async function runSurveyReminderCheck() {
+  const startedAt = new Date();
+  const due = await prisma.surveyResponse.findMany({
+    where: {
+      status: 'pending',
+      nextReminderAt: { lte: startedAt },
+    },
+    orderBy: { nextReminderAt: 'asc' },
+    take: 50,
+  });
+
+  const stats = { total: due.length, sent: 0, skipped: 0, errors: 0 };
+  for (const row of due) {
+    const result = await sendSurveyReminderById(row.id).catch((e) => ({ ok: false, error: e.message }));
+    if (result.ok) stats.sent++;
+    else if (result.skipped) stats.skipped++;
+    else stats.errors++;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  lastSurveyReminderRun = {
+    ran: true,
+    startedAt: startedAt.toISOString(),
+    durationMs: Date.now() - startedAt.getTime(),
+    ...stats,
+  };
+  if (stats.total > 0) {
+    console.log(`[survey-reminder] tick: sent=${stats.sent} skipped=${stats.skipped} errors=${stats.errors}`);
+  }
+  return lastSurveyReminderRun;
+}
+
+function startSurveyReminderLoop() {
+  if (surveyReminderTimer) return;
+  console.log(`[survey-reminder] enabled. interval=${SURVEY_REMINDER_INTERVAL_HOURS}h poll=${SURVEY_REMINDER_POLL_MS}ms`);
+  surveyReminderTimer = setInterval(() => {
+    runSurveyReminderCheck().catch((e) => console.error('[survey-reminder] error:', e.message));
+  }, SURVEY_REMINDER_POLL_MS);
+}
+
+surveyRouter.get('/reminders/status', (req, res) => {
+  res.json({
+    ok: true,
+    intervalHours: SURVEY_REMINDER_INTERVAL_HOURS,
+    pollMs: SURVEY_REMINDER_POLL_MS,
+    whatsapp: waStatus,
+    lastRun: lastSurveyReminderRun,
+  });
+});
+
+surveyRouter.post('/reminders/run', asyncHandler(async (req, res) => {
+  const result = await runSurveyReminderCheck();
+  res.json(result);
+}));
+
 async function autoConfigureCaptive() {
   if (process.env.CAPTIVE_AUTOCONFIG !== 'true') return;
   if (!MT_HOST) return;
   try {
-    const r = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(5000) });
-    const { ip: publicIp } = await r.json();
-    const port = parseInt(process.env.CAPTIVE_PORT || PORT);
-    console.log(`[captive] auto-config: public IP=${publicIp}, port=${port}`);
-
     const c = await getMtConnection();
-
-    // 1. Verificar si las reglas NAT estan apuntando a la IP correcta
-    const natRules = await c.write('/ip/firewall/nat/print', '?comment=morosos-crm-redirect');
-    const needsUpdate = natRules.length === 0 || natRules[0]['to-addresses'] !== publicIp || natRules[0]['to-ports'] !== String(port);
-
-    if (needsUpdate) {
-      console.log('[captive] regenerating MikroTik rules...');
-      // Quitar reglas viejas
-      await removeRuleByComment(c, '/ip/firewall/nat', 'morosos-crm-redirect');
-      await removeRuleByComment(c, '/ip/firewall/nat', 'bloqueados-crm-redirect');
-      await removeRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-allow-dns');
-      await removeRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-allow-captive');
-      await removeRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-drop-rest');
-
-      // Recrear con la IP correcta
-      await ensureNatRedirect(c, LIST_MOROSOS, 'morosos-crm-redirect', { host: publicIp, port });
-      await ensureNatRedirect(c, LIST_BLOQUEADOS, 'bloqueados-crm-redirect', { host: publicIp, port });
-      await ensureFilterRule(c, 'bloqueados-crm-drop-rest', {
-        chain: 'forward', 'src-address-list': LIST_BLOQUEADOS, action: 'drop',
-      }, { placeAtTop: true });
-      await ensureFilterRule(c, 'bloqueados-crm-allow-captive', {
-        chain: 'forward', 'src-address-list': LIST_BLOQUEADOS, 'dst-address': publicIp, action: 'accept',
-      }, { placeAtTop: true });
-      await ensureFilterRule(c, 'bloqueados-crm-allow-dns', {
-        chain: 'forward', 'src-address-list': LIST_BLOQUEADOS, protocol: 'udp', 'dst-port': '53', action: 'accept',
-      }, { placeAtTop: true });
-      console.log('[captive] rules updated to', publicIp);
-    } else {
-      console.log('[captive] rules already up-to-date');
-    }
+    const rules = await ensureClientBlockCaptiveRules(c);
+    console.log(`[captive] rules ready: ${rules.target.host} -> ${rules.target.address}:${rules.target.port}`);
   } catch (e) {
     console.error('[captive] auto-config failed:', e.message);
   }
@@ -3534,6 +4785,8 @@ const server = app.listen(PORT, () => {
   if (MT_HOST && process.env.WEB_ACTIVITY_ENABLED !== 'false') startWebActivityLoop();
   if (MT_HOST && API_KEY) startAutoBlockLoop();
   startNotifLoop();
+  startPaymentWarningLoop();
+  startSurveyReminderLoop();
   startMetricsLoop();
   ensureTemplatesSeeded().catch((e) => console.error('[templates] seed error:', e.message));
   ensureSuperAdmin().catch((e) => console.error('[auth] seed error:', e.message));

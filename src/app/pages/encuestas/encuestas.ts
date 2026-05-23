@@ -53,7 +53,9 @@ import { ToastService } from '../../services/toast.service';
                 <th>Telefono respondido</th>
                 <th>Enviada</th>
                 <th>Respondida</th>
+                <th>Proximo aviso</th>
                 <th>Activo por</th>
+                <th>Enlace</th>
                 <th>Acciones</th>
               </tr>
             </thead>
@@ -76,9 +78,27 @@ import { ToastService } from '../../services/toast.service';
                   <td>{{ r.phone || '-' }}</td>
                   <td class="date">{{ r.sentAt | date:'dd/MM HH:mm' }}</td>
                   <td class="date">{{ r.submittedAt ? (r.submittedAt | date:'dd/MM HH:mm') : '-' }}</td>
+                  <td class="date">
+                    @if (r.status === 'pending' && r.nextReminderAt) {
+                      {{ r.nextReminderAt | date:'dd/MM HH:mm' }}
+                      <div class="muted">{{ r.reminderCount || 0 }} aviso(s)</div>
+                    } @else {
+                      -
+                    }
+                  </td>
                   <td>{{ r.sentBy }}</td>
                   <td>
+                    @if (r.status === 'pending' && r.publicUrl) {
+                      <button class="btn-link" (click)="copyLink(r.publicUrl)">Copiar link</button>
+                    } @else {
+                      <span class="muted">-</span>
+                    }
+                  </td>
+                  <td>
                     @if (r.status === 'pending') {
+                      <button class="btn-resend" [disabled]="resendingId() === r.id" (click)="resend(r)" title="Reenviar por WhatsApp">
+                        @if (resendingId() === r.id) { ... } @else { 📱 WhatsApp }
+                      </button>
                       <button class="btn-cancel" (click)="cancel(r)">Cancelar</button>
                     }
                     <button class="btn-delete" (click)="del(r)" title="Eliminar registro">🗑</button>
@@ -145,6 +165,11 @@ import { ToastService } from '../../services/toast.service';
     .btn-cancel:hover { background: #fde68a; }
     .btn-delete { background: #fee2e2; color: #b91c1c; }
     .btn-delete:hover { background: #fecaca; }
+    .btn-link { border: 1px solid #bfdbfe; background: #eff6ff; color: #2563eb; padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600; }
+    .btn-link:hover { background: #dbeafe; border-color: #60a5fa; }
+    .btn-resend { border: 1px solid #86efac; background: #dcfce7; color: #166534; padding: 5px 10px; border-radius: 6px; font-size: 11px; cursor: pointer; font-weight: 600; margin-right: 4px; }
+    .btn-resend:hover:not(:disabled) { background: #bbf7d0; border-color: #22c55e; }
+    .btn-resend:disabled { opacity: 0.6; cursor: wait; }
 
     @media (max-width: 768px) {
       .page { padding: 16px; }
@@ -161,6 +186,7 @@ export class EncuestasComponent implements OnInit {
   rows = signal<SurveyResponse[]>([]);
   loading = signal(true);
   statusFilter = signal<string>('');
+  resendingId = signal<number | null>(null);
 
   filteredRows = computed(() => {
     const f = this.statusFilter();
@@ -202,8 +228,29 @@ export class EncuestasComponent implements OnInit {
     }
   }
 
+  resend(r: SurveyResponse) {
+    if (r.status !== 'pending') return;
+    if (!confirm(`Reenviar el mensaje de WhatsApp${r.client?.nombre ? ' a ' + r.client.nombre : ''} (${r.client?.telefono || 'sin telefono'})?`)) return;
+    this.resendingId.set(r.id);
+    this.survey.resend(r.id).subscribe({
+      next: (resp) => {
+        this.resendingId.set(null);
+        if (resp.ok) {
+          this.toast.success('WhatsApp enviado');
+          this.load();
+        } else {
+          this.toast.error(resp.error || 'No se pudo enviar');
+        }
+      },
+      error: (e) => {
+        this.resendingId.set(null);
+        this.toast.error(e.error?.error || e.message || 'Error al reenviar');
+      },
+    });
+  }
+
   cancel(r: SurveyResponse) {
-    if (!confirm(`Cancelar encuesta para IP ${r.clientIp}?\n\nEsto saca la IP del address-list de MikroTik (el cliente vuelve a navegar normal sin haber respondido).`)) return;
+    if (!confirm(`Cancelar encuesta para IP ${r.clientIp}?\n\nEl enlace dejara de aceptar respuestas. Si hubiera una regla antigua en MikroTik, tambien se limpia.`)) return;
     this.survey.cancel(r.id).subscribe({
       next: () => {
         this.toast.success('Encuesta cancelada');
@@ -222,5 +269,11 @@ export class EncuestasComponent implements OnInit {
       },
       error: e => this.toast.error(e.error?.error || 'No se pudo eliminar')
     });
+  }
+
+  copyLink(url: string | null | undefined) {
+    if (!url) return;
+    navigator.clipboard.writeText(url);
+    this.toast.success('Enlace copiado');
   }
 }
