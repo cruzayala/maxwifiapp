@@ -6,11 +6,15 @@ import { Router } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { ToastService } from '../../services/toast.service';
 
-// MapLibre GL JS - vector tiles, 3D buildings, sin API key.
-// JS se carga via CDN dinamicamente para no inflar el bundle de Angular.
+// MapLibre GL JS - vector tiles 3D, sin API key.
+// JS via CDN lazy load.
 declare const maplibregl: any;
 const MAPLIBRE_JS = 'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js';
 const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+
+// Default: zona norte RD (Cibao) - entre Santiago y Puerto Plata
+const DEFAULT_CENTER: [number, number] = [-70.6970, 19.6200];
+const DEFAULT_ZOOM = 9;
 
 interface MapClient {
   id: number;
@@ -41,7 +45,7 @@ interface MapClient {
         <div class="kpis">
           <span class="kpi">
             <span class="pulse-dot"></span>
-            EN VIVO · {{ lastUpdate() }}
+            EN VIVO · {{ lastUpdate() || '--:--:--' }}
           </span>
           <span class="kpi"><strong>{{ filtered().length }}</strong> en mapa</span>
           <span class="kpi kpi-green"><strong>{{ countByEstado('Activo') }}</strong> activos</span>
@@ -69,24 +73,36 @@ interface MapClient {
         </div>
       </div>
 
-      @if (loadError()) {
-        <div class="empty">
-          <h3>Error cargando datos</h3>
-          <p>{{ loadError() }}</p>
-        </div>
-      } @else if (loading()) {
-        <div class="empty">
-          <div class="loader"></div>
-          <p>Cargando mapa 3D...</p>
-        </div>
-      } @else if (allClients().length === 0) {
-        <div class="empty">
-          <h3>Sin clientes con GPS</h3>
-          <p>Para que aparezcan, captura ubicacion desde la pagina del cliente: <strong>📍 Capturar mi ubicacion actual</strong></p>
-        </div>
-      }
+      <!-- MAP SIEMPRE VISIBLE. Estados se muestran como overlay encima. -->
+      <div class="map-wrapper">
+        <div #mapEl class="map-container"></div>
 
-      <div #mapEl class="map-container" [class.hidden]="loading() || allClients().length === 0"></div>
+        @if (mapBootError()) {
+          <div class="overlay overlay-error">
+            <h3>No se pudo cargar el mapa</h3>
+            <p>{{ mapBootError() }}</p>
+            <button class="btn-icon" (click)="retryMap()">Reintentar</button>
+          </div>
+        } @else if (mapBooting()) {
+          <div class="overlay overlay-loader">
+            <div class="loader"></div>
+            <p>Cargando mapa 3D...</p>
+          </div>
+        }
+
+        @if (!mapBooting() && !mapBootError()) {
+          @if (loadError()) {
+            <div class="overlay-corner overlay-warn">
+              <strong>Error cargando clientes:</strong> {{ loadError() }}
+            </div>
+          } @else if (allClients().length === 0 && !loading()) {
+            <div class="overlay-corner overlay-info">
+              <strong>Sin clientes con GPS aun.</strong> Captura desde la ficha de cada cliente con
+              <em>📍 Capturar mi ubicacion actual</em>.
+            </div>
+          }
+        }
+      </div>
     </div>
   `,
   styles: [`
@@ -105,7 +121,6 @@ interface MapClient {
     .kpi-green { border-color: #86efac; background: #dcfce7; color: #166534; }
     .kpi-red { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
     .kpi-blue { border-color: #bfdbfe; background: #eff6ff; color: #1e40af; }
-
     .pulse-dot {
       width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
       animation: pulse 1.5s infinite;
@@ -127,38 +142,54 @@ interface MapClient {
     }
     .btn-icon:hover { border-color: #6366f1; color: #6366f1; }
 
+    .map-wrapper {
+      flex: 1; min-height: 500px; position: relative;
+      border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;
+      background: #0a0e27;
+    }
     .map-container {
-      flex: 1; min-height: 500px; border-radius: 12px; overflow: hidden;
-      border: 1px solid #e2e8f0; background: #0a0e27;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
     }
-    .map-container.hidden { display: none; }
 
-    .empty {
-      background: white; border: 1px solid #e2e8f0; border-radius: 12px;
-      padding: 60px 20px; text-align: center; color: #64748b;
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: rgba(15, 23, 42, 0.85); color: white;
+      padding: 40px 20px; text-align: center; z-index: 5;
     }
-    .empty h3 { color: #1e293b; margin-bottom: 8px; }
+    .overlay h3 { margin: 0 0 8px; }
+    .overlay p { color: #cbd5e1; margin: 0 0 14px; }
+    .overlay-error { background: rgba(127, 29, 29, 0.92); }
     .loader {
-      width: 40px; height: 40px; border: 3px solid #e2e8f0;
-      border-top-color: #6366f1; border-radius: 50%; margin: 0 auto 14px;
+      width: 40px; height: 40px; border: 3px solid rgba(255,255,255,.15);
+      border-top-color: white; border-radius: 50%; margin-bottom: 14px;
       animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Markers custom */
+    .overlay-corner {
+      position: absolute; top: 12px; left: 12px;
+      max-width: 360px; padding: 10px 14px;
+      border-radius: 10px; font-size: 12px; line-height: 1.5; z-index: 5;
+      box-shadow: 0 4px 12px rgba(0,0,0,.2);
+    }
+    .overlay-warn { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .overlay-info { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .overlay-corner em { font-style: normal; font-weight: 700; }
+
+    /* Markers custom (pin estilo gota) */
     :host ::ng-deep .marker-pin {
       width: 28px; height: 28px; border-radius: 50% 50% 50% 0;
       transform: rotate(-45deg);
       border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,.4);
-      cursor: pointer;
-      transition: transform 0.2s;
+      cursor: pointer; transition: transform 0.2s;
     }
     :host ::ng-deep .marker-pin:hover { transform: rotate(-45deg) scale(1.2); }
     :host ::ng-deep .marker-pin.active { background: #22c55e; }
     :host ::ng-deep .marker-pin.suspended { background: #ef4444; animation: pinPulse 2s infinite; }
     :host ::ng-deep .marker-pin.cut { background: #94a3b8; }
     :host ::ng-deep .marker-pin.other { background: #6366f1; }
-
     @keyframes pinPulse {
       0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6), 0 3px 8px rgba(0,0,0,.4); }
       50% { box-shadow: 0 0 0 12px rgba(239,68,68,0), 0 3px 8px rgba(0,0,0,.4); }
@@ -196,9 +227,13 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
 
   allClients = signal<MapClient[]>([]);
   filtered = signal<MapClient[]>([]);
-  loading = signal(true);
+  loading = signal(false);          // data fetch state
   loadError = signal<string | null>(null);
   lastUpdate = signal('');
+
+  // Estado del mapa (independiente de la data)
+  mapBooting = signal(true);        // true mientras MapLibre carga + initMap
+  mapBootError = signal<string | null>(null);
 
   search = '';
   estadoFilter = '';
@@ -218,14 +253,9 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   async ngOnInit() {
-    try {
-      await this.loadMapLibre();
-    } catch (e: any) {
-      this.loadError.set('No se pudo cargar MapLibre: ' + e.message);
-      this.loading.set(false);
-      return;
-    }
+    // Iniciar carga de data en paralelo con MapLibre
     this.reload();
+    await this.bootMap();
     // Auto-refresh cada 30s
     this.refreshTimer = setInterval(() => this.reload(true), 30000);
   }
@@ -235,6 +265,33 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   ngOnDestroy() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
     if (this.map) { this.map.remove(); this.map = null; }
+  }
+
+  // Carga MapLibre + inicializa mapa SIEMPRE (independiente de data)
+  private async bootMap() {
+    this.mapBooting.set(true);
+    this.mapBootError.set(null);
+    try {
+      await this.loadMapLibre();
+    } catch (e: any) {
+      this.mapBootError.set('No se pudo descargar MapLibre desde CDN');
+      this.mapBooting.set(false);
+      return;
+    }
+    // Esperar al siguiente frame para asegurar que el div #mapEl tiene dimensiones
+    requestAnimationFrame(() => {
+      try {
+        this.initMap();
+      } catch (e: any) {
+        this.mapBootError.set('Error inicializando mapa: ' + (e?.message || e));
+      } finally {
+        this.mapBooting.set(false);
+      }
+    });
+  }
+
+  retryMap() {
+    this.bootMap();
   }
 
   private loadMapLibre(): Promise<void> {
@@ -248,42 +305,17 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       s.async = true;
       s.crossOrigin = '';
       s.onload = () => { this.maplibreLoaded = true; resolve(); };
-      s.onerror = () => reject(new Error('CDN no disponible'));
+      s.onerror = () => reject(new Error('CDN MapLibre no disponible'));
       document.head.appendChild(s);
     });
   }
 
-  reload(silent = false) {
-    if (!silent) this.loading.set(true);
-    this.loadError.set(null);
-    this.http.get<any>('/db/clients/map').subscribe({
-      next: (r) => {
-        this.allClients.set(r.clients || []);
-        this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
-        if (!silent) this.loading.set(false);
-        setTimeout(() => this.initOrRender(), 0);
-      },
-      error: (e) => {
-        if (!silent) this.loading.set(false);
-        this.loadError.set(e.error?.error || e.message || 'Error de red');
-      },
-    });
-  }
-
-  private initOrRender() {
-    if (!this.maplibreLoaded || typeof (window as any).maplibregl === 'undefined') return;
-    if (this.allClients().length === 0) return;
-    if (!this.map) this.initMap();
-    else this.render();
-  }
-
   private initMap() {
+    if (this.map) return;
     const ml: any = (window as any).maplibregl;
-    // Default: zona norte de Republica Dominicana (Cibao)
-    // Centrado entre Santiago (19.45, -70.70) y Puerto Plata (19.79, -70.69)
-    // Zoom 9 para ver toda la region norte
-    const DEFAULT_CENTER: [number, number] = [-70.6970, 19.6200];
-    const DEFAULT_ZOOM = 9;
+    if (!ml) throw new Error('maplibregl no esta disponible');
+    if (!this.mapEl?.nativeElement) throw new Error('Contenedor del mapa no encontrado');
+
     this.map = new ml.Map({
       container: this.mapEl.nativeElement,
       style: STYLE_URL,
@@ -292,37 +324,27 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       pitch: this.viewMode === '3d' ? 55 : 0,
       bearing: 0,
       antialias: true,
-      maxBounds: [
-        [-72.5, 17.3], // SW: limites RD aprox
-        [-68.0, 20.2], // NE
-      ],
+      maxBounds: [[-72.5, 17.3], [-68.0, 20.2]],
     });
 
-    // Navigation controls (zoom, pitch, compass)
     this.map.addControl(new ml.NavigationControl({ visualizePitch: true }), 'top-right');
 
-    // Cuando el mapa carga, añadir 3D buildings y los markers
-    // NO hacemos fitAll automatico: queremos que el usuario vea zona norte primero
     this.map.on('load', () => {
       this.add3DBuildings();
+      // Render markers si ya hay data; sino el primer reload los renderea
       this.render();
     });
 
-    // Error de tiles
     this.map.on('error', (e: any) => {
-      console.warn('[mapa] error:', e?.error?.message || e);
+      console.warn('[mapa] tile/style error:', e?.error?.message || e);
     });
   }
 
   private add3DBuildings() {
-    // El estilo Liberty de OpenFreeMap ya incluye una capa de buildings 3D ('building-3d').
-    // Si no esta, intentamos agregar una capa fill-extrusion sobre la capa "building"
     try {
       const layers = this.map.getStyle().layers || [];
       const buildLayer = layers.find((l: any) => l.id === 'building-3d' || l.id === 'building');
-      if (!buildLayer) return;
-      // Ya viene en el style, solo asegurarse de que sea visible
-      this.map.setLayoutProperty(buildLayer.id, 'visibility', 'visible');
+      if (buildLayer) this.map.setLayoutProperty(buildLayer.id, 'visibility', 'visible');
     } catch {}
   }
 
@@ -334,7 +356,6 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
       this.currentBearing = 0;
     } else if (this.viewMode === 'satellite') {
-      // El estilo Liberty no es satelite, simulamos con pitch alto + brillo bajo
       this.map.easeTo({ pitch: 70, bearing: this.currentBearing, duration: 800 });
     }
   }
@@ -349,17 +370,37 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.map) return;
     this.currentBearing = 0;
     this.map.easeTo({
-      center: [-70.6970, 19.6200],
-      zoom: 9,
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
       pitch: this.viewMode === '3d' ? 55 : 0,
       bearing: 0,
       duration: 1000,
     });
   }
 
+  reload(silent = false) {
+    if (!silent) this.loading.set(true);
+    this.loadError.set(null);
+    this.http.get<any>('/db/clients/map').subscribe({
+      next: (r) => {
+        this.allClients.set(r.clients || []);
+        this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
+        if (!silent) this.loading.set(false);
+        // Si el mapa ya esta listo, renderear markers; sino lo hara el 'load' del mapa
+        if (this.map) this.render();
+      },
+      error: (e) => {
+        if (!silent) this.loading.set(false);
+        this.loadError.set(e.error?.error || e.message || 'Error de red');
+      },
+    });
+  }
+
   render() {
     if (!this.map) return;
     const ml: any = (window as any).maplibregl;
+    if (!ml) return;
+
     // Limpiar markers anteriores
     for (const m of this.markers) m.remove();
     this.markers = [];
@@ -404,12 +445,14 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   fitAll() {
-    if (!this.map || this.markers.length === 0) return;
+    if (!this.map || this.filtered().length === 0) {
+      this.toast.info('No hay clientes con GPS para encuadrar');
+      return;
+    }
     const ml: any = (window as any).maplibregl;
     const bounds = new ml.LngLatBounds();
     for (const c of this.filtered()) bounds.extend([c.lng, c.lat]);
     if (this.filtered().length === 1) {
-      // Un solo marker -> centrarlo
       const c = this.filtered()[0];
       this.map.easeTo({ center: [c.lng, c.lat], zoom: 17, pitch: this.viewMode === '3d' ? 55 : 0, duration: 800 });
     } else {
