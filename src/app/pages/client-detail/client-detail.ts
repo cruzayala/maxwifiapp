@@ -1,12 +1,13 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
 import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
-import { DecimalPipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { ReceiptService } from '../../services/receipt.service';
 import { ToastService } from '../../services/toast.service';
 import { ClientExtrasComponent } from '../../components/client-extras/client-extras';
@@ -15,7 +16,7 @@ import { ClientMetricsComponent } from '../../components/client-metrics/client-m
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [NavbarComponent, RouterLink, DecimalPipe, FormsModule, ClientExtrasComponent, ClientMetricsComponent],
+  imports: [NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, ClientExtrasComponent, ClientMetricsComponent],
   template: `
     <app-navbar [pageTitle]="clientName()" />
 
@@ -48,7 +49,7 @@ import { ClientMetricsComponent } from '../../components/client-metrics/client-m
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
               Ping
             </button>
-            @if (client()!.estado.toLowerCase() === 'activo') {
+            @if ((client()!.estado || '').toLowerCase() === 'activo') {
               <button class="btn btn-red" (click)="deactivateClient()">Suspender</button>
             } @else {
               <button class="btn btn-green" (click)="activateClient()">Activar</button>
@@ -223,6 +224,37 @@ import { ClientMetricsComponent } from '../../components/client-metrics/client-m
           </div>
         </div>
 
+        <!-- GPS DEL CLIENTE -->
+        <div class="card gps-section">
+          <h3>📍 Ubicacion GPS</h3>
+          @if (gpsLat() && gpsLng()) {
+            <div class="gps-saved">
+              <div class="gps-coords">
+                <span class="gps-label">Latitud</span><span class="gps-val mono">{{ gpsLat() }}</span>
+                <span class="gps-label">Longitud</span><span class="gps-val mono">{{ gpsLng() }}</span>
+                @if (gpsAccuracy()) {
+                  <span class="gps-label">Precision</span><span class="gps-val">±{{ gpsAccuracy() }}m</span>
+                }
+                @if (gpsCapturedAt()) {
+                  <span class="gps-label">Capturado</span><span class="gps-val">{{ gpsCapturedAt() | date:'dd/MM/yyyy HH:mm' }}{{ gpsCapturedBy() ? ' por ' + gpsCapturedBy() : '' }}</span>
+                }
+              </div>
+              <div class="gps-actions">
+                <a [href]="googleMapsUrl()" target="_blank" rel="noopener" class="btn btn-outline">🗺 Ver en Google Maps</a>
+                <button class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
+                  @if (capturingGps()) { Capturando... } @else { Actualizar ubicacion }
+                </button>
+              </div>
+            </div>
+          } @else {
+            <p class="gps-empty">Este cliente no tiene ubicacion GPS guardada.</p>
+            <button class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
+              @if (capturingGps()) { Capturando... } @else { 📍 Capturar mi ubicacion actual }
+            </button>
+            <p class="gps-hint">El navegador pedira permiso de ubicacion. Para mejor precision, captura desde el sitio del cliente con el celular.</p>
+          }
+        </div>
+
         <!-- MÉTRICAS (auto-refresh cada 30s) -->
         <app-client-metrics [idServicio]="client()!.id_servicio" />
 
@@ -244,7 +276,7 @@ import { ClientMetricsComponent } from '../../components/client-metrics/client-m
                     <td>{{ inv.fecha_emision }}</td>
                     <td>{{ inv.fecha_vencimiento }}</td>
                     <td class="money">RD$ {{ inv.total | number:'1.2-2' }}</td>
-                    <td><span class="badge" [class]="'badge-' + getInvStatusClass(inv.estado)">{{ inv.estado }}</span></td>
+                    <td><span class="badge" [class]="'badge-' + getInvStatusClass(inv.estado)">{{ inv.estado || '-' }}</span></td>
                     <td>{{ inv.forma_pago?.nombre || '-' }}</td>
                     <td>
                       <button class="btn-icon" (click)="printReceipt(inv)">
@@ -344,6 +376,20 @@ import { ClientMetricsComponent } from '../../components/client-metrics/client-m
 
     /* INVOICES */
     .invoices-section { overflow-x: auto; }
+
+    .gps-section { padding: 18px 22px; }
+    .gps-section h3 { margin: 0 0 14px; font-size: 16px; color: #0f172a; }
+    .gps-saved { display: flex; flex-direction: column; gap: 14px; }
+    .gps-coords {
+      display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px;
+      background: #f8fafc; padding: 12px 16px; border-radius: 10px;
+    }
+    .gps-label { color: #64748b; font-size: 12px; font-weight: 600; }
+    .gps-val { color: #0f172a; font-size: 13px; }
+    .gps-val.mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .gps-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    .gps-empty { color: #94a3b8; font-size: 13px; margin: 0 0 12px; }
+    .gps-hint { color: #94a3b8; font-size: 12px; margin: 10px 0 0; }
     .data-table { width: 100%; border-collapse: collapse; }
     .data-table th { text-align: left; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
     .data-table td { padding: 10px 12px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; }
@@ -374,6 +420,7 @@ export class ClientDetailComponent implements OnInit {
   private db = inject(LocalDbService);
   private receiptSvc = inject(ReceiptService);
   private toast = inject(ToastService);
+  private http = inject(HttpClient);
 
   client = signal<WispHubClient | null>(null);
   clientName = signal('Cliente');
@@ -382,6 +429,19 @@ export class ClientDetailComponent implements OnInit {
   saving = signal(false);
   pingResult = signal('');
   pingSuccess = signal(false);
+
+  // GPS
+  gpsLat = signal<number | null>(null);
+  gpsLng = signal<number | null>(null);
+  gpsAccuracy = signal<number | null>(null);
+  gpsCapturedAt = signal<string | null>(null);
+  gpsCapturedBy = signal<string | null>(null);
+  capturingGps = signal(false);
+  googleMapsUrl = computed(() => {
+    const lat = this.gpsLat(), lng = this.gpsLng();
+    if (lat == null || lng == null) return '';
+    return `https://www.google.com/maps?q=${lat},${lng}`;
+  });
 
   // Edit profile state
   editingProfile = signal(false);
@@ -415,8 +475,68 @@ export class ClientDetailComponent implements OnInit {
         i.articulos?.some(a => a.servicio?.id_servicio === id) ||
         i.cliente?.nombre?.toLowerCase() === c?.nombre?.toLowerCase()
       ));
+      // Cargar GPS guardado (del server, no del cache local)
+      this.loadGps(id);
     }
     this.loading.set(false);
+  }
+
+  private loadGps(idServicio: number) {
+    // Usamos el endpoint generico /db/clients/:id que ya existe (devuelve el cliente completo
+    // incluyendo gpsLat/gpsLng/gpsAccuracy/gpsCapturedAt/gpsCapturedBy)
+    this.http.get<any>(`/db/clients/${idServicio}`).subscribe({
+      next: (c) => { if (c) this.applyGps(c); },
+      error: () => {},
+    });
+  }
+
+  private applyGps(c: any) {
+    this.gpsLat.set(c.gpsLat ?? null);
+    this.gpsLng.set(c.gpsLng ?? null);
+    this.gpsAccuracy.set(c.gpsAccuracy ?? null);
+    this.gpsCapturedAt.set(c.gpsCapturedAt ?? null);
+    this.gpsCapturedBy.set(c.gpsCapturedBy ?? null);
+  }
+
+  captureGps() {
+    const c = this.client();
+    if (!c) return;
+    if (!('geolocation' in navigator)) {
+      this.toast.error('Este navegador no soporta GPS');
+      return;
+    }
+    this.capturingGps.set(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        this.http.post<any>(`/db/clients/${c.id_servicio}/gps`, {
+          lat: latitude, lng: longitude, accuracy,
+        }).subscribe({
+          next: (r) => {
+            this.capturingGps.set(false);
+            if (r?.client) {
+              this.applyGps(r.client);
+              this.toast.success(`Ubicacion guardada (precision ±${Math.round(accuracy)}m)`);
+            } else {
+              this.toast.error(r?.error || 'No se pudo guardar');
+            }
+          },
+          error: (e) => {
+            this.capturingGps.set(false);
+            this.toast.error(e.error?.error || 'Error al guardar GPS');
+          },
+        });
+      },
+      (err) => {
+        this.capturingGps.set(false);
+        let msg = 'No se pudo obtener GPS';
+        if (err.code === 1) msg = 'Permiso de ubicacion denegado. Habilitalo en el navegador.';
+        else if (err.code === 2) msg = 'GPS no disponible. Verifica que esta activado.';
+        else if (err.code === 3) msg = 'Timeout obteniendo ubicacion';
+        this.toast.error(msg);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
   }
 
   // ─── EDIT PROFILE ───
@@ -566,7 +686,7 @@ export class ClientDetailComponent implements OnInit {
     return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase();
   }
 
-  getStatusClass(estado: string): string {
+  getStatusClass(estado: string | null | undefined): string {
     const s = estado?.toLowerCase();
     if (s === 'activo') return 'active';
     if (s === 'suspendido' || s === 'cortado' || s === 'retirado') return 'suspended';
@@ -574,13 +694,13 @@ export class ClientDetailComponent implements OnInit {
     return 'default';
   }
 
-  getFacturaClass(e: string): string {
+  getFacturaClass(e: string | null | undefined): string {
     if (e?.toLowerCase() === 'pagadas') return 'paid';
     if (e?.toLowerCase().includes('pendiente')) return 'pending';
     return 'default';
   }
 
-  getInvStatusClass(e: string): string {
+  getInvStatusClass(e: string | null | undefined): string {
     if (e?.toLowerCase() === 'pagada') return 'paid';
     if (e?.toLowerCase().includes('pendiente')) return 'pending';
     return 'default';

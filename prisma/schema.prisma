@@ -88,6 +88,14 @@ model Client {
   aliasTelefono   String?    // telefono real, si Wisphub lo tiene mal
   aliasNotas      String?    // notas internas del admin
 
+  // GPS preciso capturado en sitio por el tecnico (separado de "coordenadas" de WispHub
+  // para no perderse en el sync). Se usa en el mapa de clientes /mapa.
+  gpsLat          Float?
+  gpsLng          Float?
+  gpsAccuracy     Float?     // metros segun navigator.geolocation
+  gpsCapturedAt   DateTime?
+  gpsCapturedBy   String?    // username del admin que lo capturo
+
   // Bloqueo manual desde el CRM (independiente del estado WispHub)
   crmAction       String?    // "moroso" | "block" | null
   crmActionReason String?
@@ -130,6 +138,7 @@ model Client {
   @@index([planInternetId])
   @@index([estadoFacturas])
   @@index([fechaCorte])
+  @@index([gpsLat, gpsLng])
 }
 
 /// Factura - mirror completo de WispHub /api/facturas/

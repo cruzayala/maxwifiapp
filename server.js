@@ -581,6 +581,75 @@ dbRouter.delete('/notes/:id', asyncHandler(async (req, res) => {
   res.json({ success: true });
 }));
 
+// GPS capturado por el tecnico en sitio. Idempotente.
+dbRouter.post('/clients/:idServicio/gps', asyncHandler(async (req, res) => {
+  const idServicio = parseInt(req.params.idServicio);
+  const { lat, lng, accuracy } = req.body || {};
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+    return res.status(400).json({ error: 'lat/lng invalidos' });
+  }
+  if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+    return res.status(400).json({ error: 'lat/lng fuera de rango' });
+  }
+  const updated = await prisma.client.update({
+    where: { idServicio },
+    data: {
+      gpsLat: latNum,
+      gpsLng: lngNum,
+      gpsAccuracy: Number.isFinite(Number(accuracy)) ? Number(accuracy) : null,
+      gpsCapturedAt: new Date(),
+      gpsCapturedBy: req.session?.username || 'admin',
+    },
+    select: { idServicio: true, nombre: true, gpsLat: true, gpsLng: true, gpsAccuracy: true, gpsCapturedAt: true, gpsCapturedBy: true },
+  });
+  res.json({ ok: true, client: updated });
+}));
+
+// Listado para mapa: solo clientes con GPS valido (capturado por tecnico o desde WispHub)
+// Devuelve solo los campos que necesita el mapa para minimizar payload
+dbRouter.get('/clients/map', asyncHandler(async (req, res) => {
+  // Preferimos gpsLat/gpsLng (del tecnico). Si no, intentamos parsear coordenadas (WispHub) "lat,lng"
+  const all = await prisma.client.findMany({
+    where: {
+      OR: [
+        { AND: [ { gpsLat: { not: null } }, { gpsLng: { not: null } } ] },
+        { coordenadas: { not: null } },
+      ],
+    },
+    select: {
+      idServicio: true, nombre: true, telefono: true, ip: true,
+      planInternetName: true, estado: true, estadoFacturas: true,
+      zonaNombre: true, direccion: true,
+      gpsLat: true, gpsLng: true, gpsAccuracy: true, gpsCapturedAt: true,
+      coordenadas: true,
+    },
+  });
+  const out = [];
+  for (const c of all) {
+    let lat = c.gpsLat, lng = c.gpsLng;
+    let source = c.gpsLat != null ? 'tecnico' : null;
+    if ((lat == null || lng == null) && c.coordenadas) {
+      const parts = c.coordenadas.split(/[,\s]+/).filter(Boolean);
+      if (parts.length >= 2) {
+        const a = Number(parts[0]), b = Number(parts[1]);
+        if (Number.isFinite(a) && Number.isFinite(b) && a >= -90 && a <= 90 && b >= -180 && b <= 180) {
+          lat = a; lng = b; source = 'wisphub';
+        }
+      }
+    }
+    if (lat == null || lng == null) continue;
+    out.push({
+      id: c.idServicio, nombre: c.nombre, telefono: c.telefono, ip: c.ip,
+      plan: c.planInternetName, estado: c.estado, estadoFacturas: c.estadoFacturas,
+      zona: c.zonaNombre, direccion: c.direccion,
+      lat, lng, accuracy: c.gpsAccuracy, capturedAt: c.gpsCapturedAt, source,
+    });
+  }
+  res.json({ ok: true, count: out.length, clients: out });
+}));
+
 // SPEED TESTS
 dbRouter.get('/speedtests', asyncHandler(async (req, res) => {
   const where = req.query.idServicio ? { idServicio: parseInt(req.query.idServicio) } : {};
