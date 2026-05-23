@@ -271,22 +271,34 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   private async bootMap() {
     this.mapBooting.set(true);
     this.mapBootError.set(null);
+    console.log('[mapa] booting...');
     try {
       await this.loadMapLibre();
+      console.log('[mapa] MapLibre JS loaded, global maplibregl:', typeof (window as any).maplibregl);
     } catch (e: any) {
-      this.mapBootError.set('No se pudo descargar MapLibre desde CDN');
+      console.error('[mapa] CDN fail:', e);
+      this.mapBootError.set('No se pudo descargar MapLibre desde CDN: ' + (e?.message || e));
       this.mapBooting.set(false);
       return;
     }
-    // Esperar al siguiente frame para asegurar que el div #mapEl tiene dimensiones
+    // Doble RAF para asegurar 100% que Angular flusheo el DOM y el div tiene tamaño
     requestAnimationFrame(() => {
-      try {
-        this.initMap();
-      } catch (e: any) {
-        this.mapBootError.set('Error inicializando mapa: ' + (e?.message || e));
-      } finally {
-        this.mapBooting.set(false);
-      }
+      requestAnimationFrame(() => {
+        try {
+          const rect = this.mapEl?.nativeElement?.getBoundingClientRect();
+          console.log('[mapa] container rect:', rect?.width, 'x', rect?.height);
+          if (!rect || rect.width === 0 || rect.height === 0) {
+            // Fallback: forzar dimension via style si el flex no funcionó
+            this.mapEl.nativeElement.style.height = '600px';
+          }
+          this.initMap();
+        } catch (e: any) {
+          console.error('[mapa] init error:', e);
+          this.mapBootError.set('Error inicializando mapa: ' + (e?.message || e));
+        } finally {
+          this.mapBooting.set(false);
+        }
+      });
     });
   }
 

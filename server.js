@@ -4039,8 +4039,22 @@ app.use('/ops', opsRouter);
 // ─── STATIC FILES (Angular build) ───
 const distPath = path.join(__dirname, 'dist/wishub-admin/browser');
 if (fs.existsSync(distPath)) {
-  app.use(express.static(distPath, { maxAge: IS_PROD ? '1d' : 0 }));
+  // Assets con hash (chunk-XXX.js, styles-YYY.css, etc) -> cache largo
+  // index.html NO debe cachear, sino el navegador sigue cargando referencias viejas a JS borrado.
+  app.use(express.static(distPath, {
+    maxAge: IS_PROD ? '1y' : 0,
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+      }
+    },
+  }));
   app.get(/.*/, (req, res) => {
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(distPath, 'index.html'));
   });
 }
