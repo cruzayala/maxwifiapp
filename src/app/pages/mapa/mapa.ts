@@ -187,6 +187,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   private markers: Marker[] = [];
   private refreshTimer: any = null;
   private currentBearing = 0;
+  private didAutoFit = false;
 
   countByEstado(e: string): number { return this.allClients().filter(c => c.estado === e).length; }
   countBySource(s: string): number { return this.allClients().filter(c => c.source === s).length; }
@@ -335,27 +336,49 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     });
     this.filtered.set(filtered);
 
+    console.log('[mapa] rendering', filtered.length, 'markers');
     for (const c of filtered) {
-      const el = document.createElement('div');
-      el.className = 'marker-pin ' + this.classFor(c);
-
-      const popup = new Popup({ offset: 18, closeButton: true }).setHTML(`
-        <div class="popup-name">${this.escape(c.nombre || '-')}${this.badgeFor(c)}</div>
-        <div class="popup-meta">
-          ${c.plan ? '<strong>Plan:</strong> ' + this.escape(c.plan) + '<br>' : ''}
-          ${c.estado ? '<strong>Estado:</strong> ' + this.escape(c.estado) + '<br>' : ''}
-          ${c.estadoFacturas ? '<strong>Facturas:</strong> ' + this.escape(c.estadoFacturas) + '<br>' : ''}
-          ${c.ip ? '<strong>IP:</strong> ' + this.escape(c.ip) + '<br>' : ''}
-          ${c.telefono ? '<strong>Tel:</strong> ' + this.escape(c.telefono) + '<br>' : ''}
-          ${c.zona ? '<strong>Zona:</strong> ' + this.escape(c.zona) + '<br>' : ''}
+      // Usamos el marker nativo de MapLibre (sin custom HTML) para garantizar
+      // que se vea siempre, sin problemas de encapsulacion CSS de Angular.
+      const color = this.colorFor(c);
+      const popupHtml = `
+        <div style="font-weight:700;color:#0f172a;font-size:14px;margin-bottom:6px">
+          ${this.escape(c.nombre || '-')} ${this.badgeFor(c)}
+        </div>
+        <div style="font-size:12px;color:#64748b;line-height:1.6">
+          ${c.plan ? '<strong style="color:#0f172a">Plan:</strong> ' + this.escape(c.plan) + '<br>' : ''}
+          ${c.estado ? '<strong style="color:#0f172a">Estado:</strong> ' + this.escape(c.estado) + '<br>' : ''}
+          ${c.estadoFacturas ? '<strong style="color:#0f172a">Facturas:</strong> ' + this.escape(c.estadoFacturas) + '<br>' : ''}
+          ${c.ip ? '<strong style="color:#0f172a">IP:</strong> ' + this.escape(c.ip) + '<br>' : ''}
+          ${c.telefono ? '<strong style="color:#0f172a">Tel:</strong> ' + this.escape(c.telefono) + '<br>' : ''}
+          ${c.zona ? '<strong style="color:#0f172a">Zona:</strong> ' + this.escape(c.zona) + '<br>' : ''}
           ${c.direccion ? '<em>' + this.escape(c.direccion) + '</em><br>' : ''}
           <small style="color:#94a3b8">GPS: ${c.source === 'tecnico' ? 'tecnico' : 'WispHub'}${c.accuracy ? ' · ±' + Math.round(c.accuracy) + 'm' : ''}</small>
         </div>
-        <a class="popup-btn" href="/clients/${c.id}">Ver ficha del cliente</a>
-      `);
-      const marker = new Marker({ element: el }).setLngLat([c.lng, c.lat]).setPopup(popup).addTo(this.map);
+        <a href="/clients/${c.id}" style="display:inline-block;background:#6366f1;color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-top:10px">Ver ficha del cliente</a>
+      `;
+      const popup = new Popup({ offset: 25, closeButton: true }).setHTML(popupHtml);
+      const marker = new Marker({ color })
+        .setLngLat([c.lng, c.lat])
+        .setPopup(popup)
+        .addTo(this.map);
       this.markers.push(marker);
     }
+    console.log('[mapa] markers attached:', this.markers.length);
+
+    // Primera vez con data: auto-encuadrar para que el usuario vea los pins de cerca
+    if (!this.didAutoFit && filtered.length > 0) {
+      this.didAutoFit = true;
+      setTimeout(() => this.fitAll(), 300);
+    }
+  }
+
+  // Color HEX para el marker nativo de MapLibre
+  private colorFor(c: MapClient): string {
+    if (c.estado === 'Suspendido' || c.estadoFacturas?.includes('endiente')) return '#ef4444'; // rojo
+    if (c.estado === 'Activo') return '#22c55e'; // verde
+    if (c.estado === 'Cortado') return '#94a3b8'; // gris
+    return '#6366f1'; // indigo (otros: Gratis, Retirado, etc.)
   }
 
   fitAll() {
