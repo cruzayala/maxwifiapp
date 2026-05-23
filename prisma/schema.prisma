@@ -762,6 +762,7 @@ model SurveyResponse {
   clientIp     String              // IP del cliente (en address-list survey-pending)
   idServicio   Int?                // si se pudo mapear a cliente WispHub
   publicToken  String?             // enlace publico seguro para la encuesta en la nube
+  shortCode    String? @unique     // codigo corto (6 chars) para URL "camuflada" /s/<code>
   fullName     String?             // lo que llena el cliente
   phone        String?             // lo que llena el cliente
   status       String    @default("pending")  // pending | submitted | expired | cancelled

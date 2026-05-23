@@ -2059,6 +2059,26 @@ function generateSurveyToken() {
   return crypto.randomBytes(24).toString('base64url');
 }
 
+// Codigo corto 6 chars base36 (a-z0-9), 2.1 mil millones combinaciones. Unique en DB.
+// Generamos hasta 5 intentos por si hay colision (extremadamente improbable).
+async function generateUniqueShortCode() {
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let code = '';
+    const bytes = crypto.randomBytes(6);
+    for (let i = 0; i < 6; i++) code += alphabet[bytes[i] % alphabet.length];
+    const exists = await prisma.surveyResponse.findUnique({ where: { shortCode: code } }).catch(() => null);
+    if (!exists) return code;
+  }
+  // Fallback: usar randomBytes mas largo si todos colisionaron (no deberia pasar)
+  return crypto.randomBytes(5).toString('hex');
+}
+
+function buildSurveyShortUrl(req, shortCode) {
+  if (!shortCode) return null;
+  return `${getPublicBaseUrl(req)}/s/${shortCode}`;
+}
+
 function addHours(date, hours) {
   return new Date(date.getTime() + hours * 60 * 60 * 1000);
 }
@@ -2084,14 +2104,44 @@ function withSurveyPublicUrl(req, row) {
   return {
     ...row,
     publicUrl: row.publicToken ? buildSurveyUrl(req, row.publicToken) : null,
+    shortUrl: row.shortCode ? buildSurveyShortUrl(req, row.shortCode) : null,
     portalUrl: buildSurveyPortalUrl(req, row.clientIp),
   };
 }
 
-function buildSurveyReminderMessage(client, publicUrl) {
-  const business = process.env.INVOICE_BUSINESS_NAME || 'MaxWiFi';
-  const name = client?.nombre || 'Cliente';
-  return `Hola ${name}, somos ${business}.\n\nNecesitamos que confirmes tus datos de contacto para mantener tu cuenta actualizada.\n\nLlena este formulario seguro:\n${publicUrl}\n\nTu internet no sera bloqueado por esta encuesta. Si ya lo llenaste, puedes ignorar este mensaje.`;
+const SURVEY_MESSAGE_DEFAULT = `Hola {nombre}, somos {negocio}.
+
+Necesitamos que confirmes tus datos de contacto para mantener tu cuenta actualizada.
+
+Llena este formulario seguro:
+{url}
+
+Tu internet no sera bloqueado por esta encuesta. Si ya lo llenaste, puedes ignorar este mensaje.`;
+
+async function getSurveyMessageTemplate() {
+  const row = await prisma.appSetting.findUnique({ where: { key: 'survey_message_template' } }).catch(() => null);
+  return (row && row.value) || SURVEY_MESSAGE_DEFAULT;
+}
+
+function applySurveyMessageTemplate(template, vars) {
+  return String(template || SURVEY_MESSAGE_DEFAULT)
+    .replace(/\{nombre\}/g, vars.nombre || 'Cliente')
+    .replace(/\{negocio\}/g, vars.negocio || 'MaxWiFi')
+    .replace(/\{url\}/g, vars.url || '')
+    .replace(/\{telefono\}/g, vars.telefono || '')
+    .replace(/\{ip\}/g, vars.ip || '')
+    .replace(/\{plan\}/g, vars.plan || '');
+}
+
+async function buildSurveyReminderMessage(client, urlForMessage) {
+  const template = await getSurveyMessageTemplate();
+  return applySurveyMessageTemplate(template, {
+    nombre: client?.nombre,
+    negocio: process.env.INVOICE_BUSINESS_NAME || 'MaxWiFi',
+    url: urlForMessage,
+    telefono: client?.telefono,
+    ip: client?.ip,
+  });
 }
 
 async function sendSurveyReminderById(id, req = null) {
@@ -2102,12 +2152,21 @@ async function sendSurveyReminderById(id, req = null) {
   if (!survey || survey.status !== 'pending') return { ok: false, skipped: true, reason: 'not_pending' };
 
   let publicToken = survey.publicToken;
+  let shortCode = survey.shortCode;
   let current = survey;
+  const dataToUpdate = {};
   if (!publicToken) {
     publicToken = generateSurveyToken();
+    dataToUpdate.publicToken = publicToken;
+  }
+  if (!shortCode) {
+    shortCode = await generateUniqueShortCode();
+    dataToUpdate.shortCode = shortCode;
+  }
+  if (Object.keys(dataToUpdate).length > 0) {
     current = await prisma.surveyResponse.update({
       where: { id: survey.id },
-      data: { publicToken },
+      data: dataToUpdate,
       include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
     });
   }
@@ -2117,6 +2176,7 @@ async function sendSurveyReminderById(id, req = null) {
   const retryAt = addHours(now, SURVEY_REMINDER_INTERVAL_HOURS);
   const baseUrl = (process.env.PUBLIC_APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app'}`).replace(/\/$/, '');
   const publicUrl = req ? buildSurveyUrl(req, publicToken) : `${baseUrl}/survey/landing/${encodeURIComponent(publicToken)}`;
+  const shortUrl = req ? buildSurveyShortUrl(req, shortCode) : `${baseUrl}/s/${shortCode}`;
 
   if (!phone || phone.length < 7) {
     await prisma.surveyResponse.update({
@@ -2133,7 +2193,9 @@ async function sendSurveyReminderById(id, req = null) {
     return { ok: false, reason: `whatsapp_${waStatus}`, publicUrl };
   }
 
-  const message = buildSurveyReminderMessage(current.client, publicUrl);
+  // Usar URL corto/camuflado si shortCode existe, sino el largo
+  const urlForMessage = shortCode ? shortUrl : publicUrl;
+  const message = await buildSurveyReminderMessage(current.client, urlForMessage);
   const sent = await sendWhatsappNotification(current.idServicio, phone, message, 'survey_reminder', current.client?.nombre || null);
   await prisma.surveyResponse.update({
     where: { id: current.id },
@@ -2144,7 +2206,7 @@ async function sendSurveyReminderById(id, req = null) {
       lastReminderStatus: sent.ok ? 'sent' : `failed: ${sent.error || 'unknown'}`.slice(0, 180),
     },
   });
-  return { ...sent, publicUrl };
+  return { ...sent, publicUrl, shortUrl };
 }
 
 function buildSurveyForm({ ip, name, alreadySubmitted, token }) {
@@ -2269,6 +2331,19 @@ async function renderSurveyLanding(req, res) {
 
 app.get('/survey/landing/:token', asyncHandler(renderSurveyLanding));
 app.get('/survey/landing', asyncHandler(renderSurveyLanding));
+
+// Short URL "camuflado" /s/:code -> redirige al landing seguro
+// Sirve para mandar links cortos por WhatsApp sin exponer el token completo.
+app.get('/s/:code', asyncHandler(async (req, res) => {
+  const code = (req.params.code || '').toLowerCase().trim();
+  if (!code || code.length > 16) return res.status(400).send('Codigo invalido');
+  const row = await prisma.surveyResponse.findUnique({
+    where: { shortCode: code },
+    select: { publicToken: true, status: true },
+  });
+  if (!row || !row.publicToken) return res.status(404).send('Enlace no encontrado o expirado');
+  return res.redirect(302, `/survey/landing/${encodeURIComponent(row.publicToken)}`);
+}));
 app.get('/survey', asyncHandler(renderSurveyLanding));
 
 // Portal suave para MikroTik/Hotspot. El router debe abrir esta URL incluyendo
@@ -2598,6 +2673,29 @@ surveyRouter.post('/clear', asyncHandler(async (req, res) => {
     reminderIntervalHours: SURVEY_REMINDER_INTERVAL_HOURS,
     mikrotik,
   });
+}));
+
+// Plantilla del mensaje WhatsApp para encuestas (editable)
+surveyRouter.get('/template', asyncHandler(async (req, res) => {
+  const template = await getSurveyMessageTemplate();
+  res.json({
+    ok: true,
+    template,
+    default: SURVEY_MESSAGE_DEFAULT,
+    placeholders: ['{nombre}', '{negocio}', '{url}', '{telefono}', '{ip}', '{plan}'],
+  });
+}));
+
+surveyRouter.put('/template', asyncHandler(async (req, res) => {
+  const tpl = (req.body?.template || '').toString();
+  if (tpl.length > 2000) return res.status(400).json({ ok: false, error: 'Demasiado largo (max 2000 chars)' });
+  if (!tpl.includes('{url}')) return res.status(400).json({ ok: false, error: 'El template debe contener {url} para incluir el enlace' });
+  await prisma.appSetting.upsert({
+    where: { key: 'survey_message_template' },
+    create: { key: 'survey_message_template', value: tpl },
+    update: { value: tpl },
+  });
+  res.json({ ok: true, template: tpl });
 }));
 
 // Listar respuestas
@@ -3434,14 +3532,39 @@ waRouter.get('/history', asyncHandler(async (req, res) => {
   res.json(msgs);
 }));
 
+let waDisconnecting = false;
 waRouter.post('/disconnect', async (req, res) => {
-  waManuallyDisconnected = true;
-  if (waRetryTimer) { clearTimeout(waRetryTimer); waRetryTimer = null; }
-  if (waSocket) { await waSocket.logout().catch(() => {}); waSocket = null; }
-  // Limpiar credenciales en DB para que la proxima conexion pida QR nuevo
-  if (waAuthHandle) { await waAuthHandle.clearAll().catch(() => {}); waAuthHandle = null; }
-  waStatus = 'disconnected'; waQR = null; waRetryCount = 0;
-  res.json({ status: 'disconnected' });
+  // Guard contra doble click rapido
+  if (waDisconnecting) {
+    return res.json({ status: 'disconnecting', message: 'Ya en proceso' });
+  }
+  waDisconnecting = true;
+  try {
+    waManuallyDisconnected = true;
+    if (waRetryTimer) { clearTimeout(waRetryTimer); waRetryTimer = null; }
+
+    // Cerrar socket en cualquier estado (connected/qr/connecting/error)
+    if (waSocket) {
+      try { await waSocket.logout(); } catch (e) { console.log('[WA] logout error (continuando):', e.message); }
+      try { waSocket.end?.(undefined); } catch {}
+      try { waSocket.ws?.close?.(); } catch {}
+      waSocket = null;
+    }
+
+    // Limpiar credenciales en DB para forzar QR nuevo la proxima vez
+    if (waAuthHandle) {
+      try { await waAuthHandle.clearAll(); } catch (e) { console.log('[WA] clearAll error:', e.message); }
+      waAuthHandle = null;
+    }
+
+    waStatus = 'disconnected';
+    waQR = null;
+    waRetryCount = 0;
+    console.log('[WA] desconectado manualmente');
+    res.json({ status: 'disconnected' });
+  } finally {
+    waDisconnecting = false;
+  }
 });
 
 waRouter.post('/connect', (req, res) => {

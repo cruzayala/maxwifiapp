@@ -22,6 +22,8 @@ export interface SurveyResponse {
   notes: string | null;
   publicToken?: string | null;
   publicUrl?: string | null;
+  shortCode?: string | null;
+  shortUrl?: string | null;
   portalUrl?: string | null;
   client?: {
     idServicio: number;
@@ -52,6 +54,14 @@ export class SurveyService {
 
   resend(id: number): Observable<{ ok: boolean; message?: string; error?: string; publicUrl?: string }> {
     return this.http.post<any>(`/api/survey/resend/${id}`, {});
+  }
+
+  getTemplate(): Observable<{ ok: boolean; template: string; default: string; placeholders: string[] }> {
+    return this.http.get<any>('/api/survey/template');
+  }
+
+  saveTemplate(template: string): Observable<{ ok: boolean; template?: string; error?: string }> {
+    return this.http.put<any>('/api/survey/template', { template });
   }
 
   clear(ip?: string | null, idServicio?: number | null): Observable<{ ok: boolean; snoozed: number; cancelled: number; reminderIntervalHours?: number; nextReminderAt?: string | null; mikrotik?: any; error?: string }> {

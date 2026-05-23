@@ -27,12 +27,38 @@ import { ToastService } from '../../services/toast.service';
           </button>
         </div>
         <div class="actions">
+          <button class="btn-icon" (click)="openTemplate()" title="Editar mensaje WhatsApp">
+            ✏️ Mensaje WhatsApp
+          </button>
           <button class="btn-icon" (click)="load()" title="Refrescar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
             Refrescar
           </button>
         </div>
       </div>
+
+      <!-- Modal editor template -->
+      @if (showTemplate()) {
+        <div class="modal-backdrop" (click)="closeTemplate()">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h3>Mensaje de WhatsApp</h3>
+              <button class="modal-close" (click)="closeTemplate()">✕</button>
+            </div>
+            <p class="modal-help">
+              Variables disponibles: <code>{{ '{nombre}' }}</code> <code>{{ '{negocio}' }}</code> <code>{{ '{url}' }}</code> <code>{{ '{telefono}' }}</code> <code>{{ '{ip}' }}</code> <code>{{ '{plan}' }}</code><br>
+              <strong>{{ '{url}' }}</strong> es obligatorio. Sera el enlace corto camuflado del estilo <code>/s/abc12d</code>.
+            </p>
+            <textarea class="template-input" [(ngModel)]="templateDraft" rows="10"></textarea>
+            <div class="modal-actions">
+              <button class="btn-cancel" (click)="resetToDefault()">Restaurar default</button>
+              <button class="btn-link" (click)="saveTemplate()" [disabled]="savingTemplate()">
+                @if (savingTemplate()) { Guardando... } @else { Guardar }
+              </button>
+            </div>
+          </div>
+        </div>
+      }
 
       @if (loading()) {
         <div class="loader">Cargando...</div>
@@ -88,8 +114,10 @@ import { ToastService } from '../../services/toast.service';
                   </td>
                   <td>{{ r.sentBy }}</td>
                   <td>
-                    @if (r.status === 'pending' && r.publicUrl) {
-                      <button class="btn-link" (click)="copyLink(r.publicUrl)">Copiar link</button>
+                    @if (r.status === 'pending' && (r.shortUrl || r.publicUrl)) {
+                      <button class="btn-link" (click)="copyLink(r.shortUrl || r.publicUrl)" [title]="r.shortUrl || r.publicUrl">
+                        @if (r.shortUrl) { 🔗 {{ r.shortCode }} } @else { Copiar link }
+                      </button>
                     } @else {
                       <span class="muted">-</span>
                     }
@@ -171,6 +199,36 @@ import { ToastService } from '../../services/toast.service';
     .btn-resend:hover:not(:disabled) { background: #bbf7d0; border-color: #22c55e; }
     .btn-resend:disabled { opacity: 0.6; cursor: wait; }
 
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(15, 23, 42, 0.6); z-index: 100;
+      display: flex; align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal {
+      background: white; border-radius: 14px; max-width: 600px; width: 100%;
+      padding: 24px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .modal-header h3 { margin: 0; color: #0f172a; font-size: 18px; }
+    .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: #94a3b8; }
+    .modal-close:hover { color: #ef4444; }
+    .modal-help {
+      font-size: 12px; color: #64748b; line-height: 1.6;
+      background: #f8fafc; border-radius: 8px; padding: 10px 14px; margin: 8px 0 14px;
+    }
+    .modal-help code {
+      background: white; padding: 2px 6px; border-radius: 4px; font-size: 11px;
+      border: 1px solid #e2e8f0; color: #2563eb;
+    }
+    .template-input {
+      width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+      padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
+      resize: vertical; min-height: 180px; outline: none;
+    }
+    .template-input:focus { border-color: #6366f1; }
+    .modal-actions {
+      display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px;
+    }
+
     @media (max-width: 768px) {
       .page { padding: 16px; }
       .toolbar { flex-direction: column; align-items: stretch; }
@@ -187,6 +245,12 @@ export class EncuestasComponent implements OnInit {
   loading = signal(true);
   statusFilter = signal<string>('');
   resendingId = signal<number | null>(null);
+
+  // Editor de plantilla WhatsApp
+  showTemplate = signal(false);
+  savingTemplate = signal(false);
+  templateDraft = '';
+  templateDefault = '';
 
   filteredRows = computed(() => {
     const f = this.statusFilter();
@@ -226,6 +290,41 @@ export class EncuestasComponent implements OnInit {
       case 'expired': return 'Expirada';
       default: return s;
     }
+  }
+
+  openTemplate() {
+    this.survey.getTemplate().subscribe({
+      next: (r) => {
+        this.templateDraft = r.template || '';
+        this.templateDefault = r.default || '';
+        this.showTemplate.set(true);
+      },
+      error: (e) => this.toast.error(e.error?.error || 'No se pudo cargar la plantilla'),
+    });
+  }
+  closeTemplate() { this.showTemplate.set(false); }
+  resetToDefault() { this.templateDraft = this.templateDefault; }
+  saveTemplate() {
+    if (!this.templateDraft.includes('{url}')) {
+      this.toast.error('La plantilla debe contener {url}');
+      return;
+    }
+    this.savingTemplate.set(true);
+    this.survey.saveTemplate(this.templateDraft).subscribe({
+      next: (r) => {
+        this.savingTemplate.set(false);
+        if (r.ok) {
+          this.toast.success('Plantilla guardada');
+          this.closeTemplate();
+        } else {
+          this.toast.error(r.error || 'No se pudo guardar');
+        }
+      },
+      error: (e) => {
+        this.savingTemplate.set(false);
+        this.toast.error(e.error?.error || 'Error al guardar');
+      },
+    });
   }
 
   resend(r: SurveyResponse) {

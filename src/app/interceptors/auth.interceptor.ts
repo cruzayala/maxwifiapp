@@ -15,6 +15,7 @@ const PUBLIC_PATHS = [
   '/captive',
   '/survey/landing',
   '/survey/submit',
+  '/s/',
 ];
 
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
@@ -23,6 +24,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const token = auth.getToken();
 
   const isPublic = PUBLIC_PATHS.some((p) => req.url.startsWith(p));
+  const isWisphubProxy = req.url.startsWith('/api/') && !req.url.startsWith('/api/survey/');
 
   let modifiedReq = req;
   if (token && !isPublic) {
@@ -31,8 +33,8 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(modifiedReq).pipe(
     catchError((err) => {
-      if (err.status === 401 && !isPublic) {
-        auth.logout();
+      if (err.status === 401 && !isPublic && !isWisphubProxy) {
+        auth.clearSession();
         router.navigate(['/login']);
       }
       return throwError(() => err);
