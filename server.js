@@ -3164,15 +3164,23 @@ async function initWhatsApp() {
       if (connection === 'close') {
         const reason = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut = reason === DisconnectReason.loggedOut;
-        waStatus = isLoggedOut ? 'logged_out' : 'disconnected';
+        // Reason 440 = "conflict/replaced" -> hay otra sesion activa usando la misma cuenta.
+        // Reintentar empeora el problema (cada reconexion genera otro replace).
+        const isConflict = reason === DisconnectReason.connectionReplaced || reason === 440;
         waSocket = null;
-        console.log(`[WA] connection close (reason=${reason}, loggedOut=${isLoggedOut})`);
+        if (isConflict) {
+          waStatus = 'conflict';
+          console.log(`[WA] CONFLICT (reason=${reason}): otra sesion WhatsApp Web/Desktop reemplazo la nuestra. NO reintentando automaticamente.`);
+        } else {
+          waStatus = isLoggedOut ? 'logged_out' : 'disconnected';
+          console.log(`[WA] connection close (reason=${reason}, loggedOut=${isLoggedOut})`);
+        }
         // Si fue logout real (sesion invalidada en el telefono), limpiar DB para forzar QR nuevo
         if (isLoggedOut && waAuthHandle) {
           waAuthHandle.clearAll().catch(() => {});
           waAuthHandle = null;
         }
-        if (!isLoggedOut && !waManuallyDisconnected) scheduleWaRetry();
+        if (!isLoggedOut && !isConflict && !waManuallyDisconnected) scheduleWaRetry();
       }
     });
 
