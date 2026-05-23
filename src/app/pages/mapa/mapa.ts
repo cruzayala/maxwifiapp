@@ -63,6 +63,7 @@ interface MapClient {
             <option value="satellite">Satelite-like</option>
           </select>
           <button class="btn-icon" (click)="reload()" title="Recargar">⟳</button>
+          <button class="btn-icon" (click)="goHome()" title="Volver a zona norte RD">🏠 Norte RD</button>
           <button class="btn-icon" (click)="fitAll()" title="Ajustar a todos">🎯</button>
           <button class="btn-icon" (click)="rotateView()" title="Rotar vista">↻ Rotar</button>
         </div>
@@ -278,26 +279,33 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private initMap() {
     const ml: any = (window as any).maplibregl;
-    const first = this.allClients()[0];
-    const center: [number, number] = first ? [first.lng, first.lat] : [-69.9312, 18.4861];
+    // Default: zona norte de Republica Dominicana (Cibao)
+    // Centrado entre Santiago (19.45, -70.70) y Puerto Plata (19.79, -70.69)
+    // Zoom 9 para ver toda la region norte
+    const DEFAULT_CENTER: [number, number] = [-70.6970, 19.6200];
+    const DEFAULT_ZOOM = 9;
     this.map = new ml.Map({
       container: this.mapEl.nativeElement,
       style: STYLE_URL,
-      center,
-      zoom: 15,
+      center: DEFAULT_CENTER,
+      zoom: DEFAULT_ZOOM,
       pitch: this.viewMode === '3d' ? 55 : 0,
       bearing: 0,
       antialias: true,
+      maxBounds: [
+        [-72.5, 17.3], // SW: limites RD aprox
+        [-68.0, 20.2], // NE
+      ],
     });
 
     // Navigation controls (zoom, pitch, compass)
     this.map.addControl(new ml.NavigationControl({ visualizePitch: true }), 'top-right');
 
     // Cuando el mapa carga, añadir 3D buildings y los markers
+    // NO hacemos fitAll automatico: queremos que el usuario vea zona norte primero
     this.map.on('load', () => {
       this.add3DBuildings();
       this.render();
-      this.fitAll();
     });
 
     // Error de tiles
@@ -335,6 +343,18 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.map) return;
     this.currentBearing = (this.currentBearing + 45) % 360;
     this.map.easeTo({ bearing: this.currentBearing, duration: 600 });
+  }
+
+  goHome() {
+    if (!this.map) return;
+    this.currentBearing = 0;
+    this.map.easeTo({
+      center: [-70.6970, 19.6200],
+      zoom: 9,
+      pitch: this.viewMode === '3d' ? 55 : 0,
+      bearing: 0,
+      duration: 1000,
+    });
   }
 
   render() {
