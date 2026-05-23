@@ -729,6 +729,16 @@ model WebActivity {
   @@index([domain])
 }
 
+/// BaileysAuth - sesion WhatsApp persistida en DB para sobrevivir a redeploys
+/// Reemplaza useMultiFileAuthState que guardaba en ./wa-auth/ (volatil en Railway)
+/// key = 'creds' o '<type>-<id>' (ej 'pre-key-AAAA', 'session-xx@yy')
+/// value = JSON serializado con BufferJSON.replacer (preserva Buffer)
+model BaileysAuth {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
 /// Session - tokens de auth persistidos en DB para sobrevivir a redeploys
 /// Antes estaban en memoria (Map) -> redeploy de Railway tumbaba a todos
 model Session {
@@ -751,12 +761,19 @@ model SurveyResponse {
   id           Int       @id @default(autoincrement())
   clientIp     String              // IP del cliente (en address-list survey-pending)
   idServicio   Int?                // si se pudo mapear a cliente WispHub
+  publicToken  String?             // enlace publico seguro para la encuesta en la nube
   fullName     String?             // lo que llena el cliente
   phone        String?             // lo que llena el cliente
   status       String    @default("pending")  // pending | submitted | expired | cancelled
   sentBy       String              // username admin que activo
   sentAt       DateTime  @default(now())
   submittedAt  DateTime?
+  lastReminderAt DateTime?
+  nextReminderAt DateTime?
+  reminderCount  Int      @default(0)
+  lastReminderStatus String?
+  snoozedAt    DateTime?
+  snoozeCount  Int        @default(0)
   userAgent    String?             // navegador del cliente al enviar
   notes        String?             // notas internas
 
@@ -766,4 +783,6 @@ model SurveyResponse {
   @@index([status])
   @@index([sentAt])
   @@index([idServicio])
+  @@index([publicToken])
+  @@index([nextReminderAt])
 }

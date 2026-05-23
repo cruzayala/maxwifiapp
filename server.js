@@ -2926,6 +2926,72 @@ const WA_MAX_RETRY_MS = 5 * 60_000;
 
 const { handleIncomingMessage } = require('./lib/whatsapp-bot');
 
+// ─── Baileys AuthenticationState persistido en Postgres ───
+// Sobrevive a redeploys (antes useMultiFileAuthState guardaba en ./wa-auth/ volatil)
+async function usePostgresAuthState() {
+  const { BufferJSON, initAuthCreds, proto } = require('@whiskeysockets/baileys');
+
+  const writeData = async (key, data) => {
+    const value = JSON.stringify(data, BufferJSON.replacer);
+    await prisma.baileysAuth.upsert({
+      where: { key },
+      create: { key, value },
+      update: { value },
+    });
+  };
+  const readData = async (key) => {
+    const row = await prisma.baileysAuth.findUnique({ where: { key } }).catch(() => null);
+    if (!row) return null;
+    try {
+      return JSON.parse(row.value, BufferJSON.reviver);
+    } catch {
+      return null;
+    }
+  };
+  const removeData = async (key) => {
+    await prisma.baileysAuth.delete({ where: { key } }).catch(() => {});
+  };
+
+  const creds = (await readData('creds')) || initAuthCreds();
+
+  return {
+    state: {
+      creds,
+      keys: {
+        get: async (type, ids) => {
+          const data = {};
+          await Promise.all(
+            ids.map(async (id) => {
+              let value = await readData(`${type}-${id}`);
+              if (type === 'app-state-sync-key' && value) {
+                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+              }
+              data[id] = value;
+            })
+          );
+          return data;
+        },
+        set: async (data) => {
+          const tasks = [];
+          for (const type in data) {
+            for (const id in data[type]) {
+              const value = data[type][id];
+              const k = `${type}-${id}`;
+              tasks.push(value ? writeData(k, value) : removeData(k));
+            }
+          }
+          await Promise.all(tasks);
+        },
+      },
+    },
+    saveCreds: () => writeData('creds', creds),
+    // Util para reset (logout limpio) — borra TODO desde DB
+    clearAll: async () => {
+      await prisma.baileysAuth.deleteMany({}).catch(() => {});
+    },
+  };
+}
+
 // Normaliza un telefono a JID Baileys. Idempotente: si ya viene con @s.whatsapp.net no lo dobla.
 // Acepta formatos: '8095551234', '(809) 555-1234', '+1 809 555 1234', '18095551234', '18095551234@s.whatsapp.net'
 function normalizeJid(rawPhone) {
@@ -2974,13 +3040,16 @@ function scheduleWaRetry() {
   waRetryTimer = setTimeout(() => { waRetryTimer = null; initWhatsApp(); }, delay);
 }
 
+let waAuthHandle = null; // referencia al state actual (para clearAll en logout)
+
 async function initWhatsApp() {
   // Evitar arrancar dos veces simultaneo
   if (waSocket && waStatus === 'connected') return;
   waManuallyDisconnected = false;
   try {
-    const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
-    const { state, saveCreds } = await useMultiFileAuthState('./wa-auth');
+    const { default: makeWASocket, DisconnectReason } = require('@whiskeysockets/baileys');
+    waAuthHandle = await usePostgresAuthState();
+    const { state, saveCreds } = waAuthHandle;
 
     waSocket = makeWASocket({ auth: state, printQRInTerminal: false });
     waSocket.ev.on('creds.update', saveCreds);
@@ -2992,7 +3061,7 @@ async function initWhatsApp() {
         waStatus = 'connected';
         waQR = null;
         waRetryCount = 0;
-        console.log('[WA] Connected');
+        console.log('[WA] Connected (auth: Postgres)');
       }
       if (connection === 'close') {
         const reason = lastDisconnect?.error?.output?.statusCode;
@@ -3000,6 +3069,11 @@ async function initWhatsApp() {
         waStatus = isLoggedOut ? 'logged_out' : 'disconnected';
         waSocket = null;
         console.log(`[WA] connection close (reason=${reason}, loggedOut=${isLoggedOut})`);
+        // Si fue logout real (sesion invalidada en el telefono), limpiar DB para forzar QR nuevo
+        if (isLoggedOut && waAuthHandle) {
+          waAuthHandle.clearAll().catch(() => {});
+          waAuthHandle = null;
+        }
         if (!isLoggedOut && !waManuallyDisconnected) scheduleWaRetry();
       }
     });
@@ -3360,10 +3434,12 @@ waRouter.get('/history', asyncHandler(async (req, res) => {
   res.json(msgs);
 }));
 
-waRouter.post('/disconnect', (req, res) => {
+waRouter.post('/disconnect', async (req, res) => {
   waManuallyDisconnected = true;
   if (waRetryTimer) { clearTimeout(waRetryTimer); waRetryTimer = null; }
-  if (waSocket) { waSocket.logout().catch(() => {}); waSocket = null; }
+  if (waSocket) { await waSocket.logout().catch(() => {}); waSocket = null; }
+  // Limpiar credenciales en DB para que la proxima conexion pida QR nuevo
+  if (waAuthHandle) { await waAuthHandle.clearAll().catch(() => {}); waAuthHandle = null; }
   waStatus = 'disconnected'; waQR = null; waRetryCount = 0;
   res.json({ status: 'disconnected' });
 });
