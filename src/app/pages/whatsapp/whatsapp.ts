@@ -32,16 +32,55 @@ import { ConfigService } from '../../services/config.service';
           @if (waStatus() === 'connected') {
             <button class="btn btn-red" (click)="disconnect()">Desconectar</button>
           }
+          @if (waStatus() === 'conflict' || waStatus() === 'logged_out') {
+            <button class="btn btn-green" (click)="reconnect()">Limpiar y reconectar</button>
+          }
         </div>
       </div>
+
+      @if (waStatus() === 'conflict') {
+        <div class="conflict-card">
+          <div class="conflict-header">
+            <span class="conflict-icon">⚠️</span>
+            <h3>Otra sesion de WhatsApp esta usando esta cuenta</h3>
+          </div>
+          <p>WhatsApp detecto que hay <strong>otro dispositivo o WhatsApp Web</strong> usando este mismo numero. Por eso te desconecto.</p>
+          <ol class="conflict-steps">
+            <li>Abre WhatsApp en tu telefono</li>
+            <li>Toca <strong>⋮ Menu</strong> (Android) o <strong>Configuracion</strong> (iPhone) → <strong>Dispositivos vinculados</strong></li>
+            <li>Cierra TODAS las sesiones que aparezcan (incluso si las reconoces)</li>
+            <li>Vuelve aqui y toca <strong>"Limpiar y reconectar"</strong> arriba</li>
+            <li>Escanea el QR nuevo desde el telefono</li>
+          </ol>
+          <p class="conflict-tip">
+            💡 Tip: Si vas a usar WhatsApp Web en tu navegador, ten en cuenta que esta app se desconectara.
+            Esta app es para envios automaticos del sistema, no compite con WhatsApp Web.
+          </p>
+        </div>
+      }
+
+      @if (waStatus() === 'logged_out') {
+        <div class="conflict-card">
+          <div class="conflict-header">
+            <span class="conflict-icon">🚪</span>
+            <h3>Sesion cerrada desde el telefono</h3>
+          </div>
+          <p>Cerraste la sesion de esta app desde tu WhatsApp. Para volver a conectar:</p>
+          <ol class="conflict-steps">
+            <li>Toca <strong>"Limpiar y reconectar"</strong> arriba</li>
+            <li>Escanea el QR nuevo</li>
+          </ol>
+        </div>
+      }
 
       @if (waStatus() === 'qr') {
         <div class="qr-card">
           <h3>Escanea el codigo QR con WhatsApp</h3>
           <p>Abre WhatsApp > Menu > Dispositivos vinculados > Vincular dispositivo</p>
           <div class="qr-box">
-            <img [src]="qrImage()" alt="QR Code" *ngIf="qrImage()" />
-            @if (!qrImage()) {
+            @if (qrImage()) {
+              <img [src]="qrImage()" alt="QR Code" />
+            } @else {
               <p>Generando QR...</p>
             }
           </div>
@@ -137,6 +176,24 @@ import { ConfigService } from '../../services/config.service';
     .status-connected .status-left { color: #22c55e; }
     .status-disconnected .status-left { color: #ef4444; }
     .status-qr .status-left { color: #f59e0b; }
+    .status-conflict .status-left { color: #d97706; }
+    .status-logged_out .status-left { color: #94a3b8; }
+
+    .conflict-card {
+      background: #fef3c7; border: 1px solid #fcd34d;
+      border-radius: 14px; padding: 20px 24px; margin-bottom: 20px;
+    }
+    .conflict-header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .conflict-icon { font-size: 28px; }
+    .conflict-header h3 { margin: 0; color: #78350f; font-size: 17px; }
+    .conflict-card p { color: #78350f; font-size: 14px; line-height: 1.55; margin: 8px 0; }
+    .conflict-steps { color: #78350f; padding-left: 22px; margin: 12px 0; line-height: 1.8; }
+    .conflict-steps li { font-size: 14px; }
+    .conflict-tip {
+      background: rgba(255,255,255,0.5); border-radius: 8px;
+      padding: 10px 14px; font-size: 13px !important;
+      margin-top: 14px !important;
+    }
 
     .status-left h3 { margin: 0; font-size: 18px; color: #0f172a; }
     .status-text { font-size: 13px; color: #64748b; }
@@ -271,6 +328,22 @@ export class WhatsappComponent implements OnInit, OnDestroy {
     });
   }
 
+  // Limpia la sesion actual y reconecta (recomendado tras conflict o logout)
+  reconnect() {
+    this.toast.info('Limpiando sesion anterior...');
+    this.http.post<any>('/wa/disconnect', {}).subscribe({
+      next: () => {
+        setTimeout(() => {
+          this.http.post<any>('/wa/connect', {}).subscribe({
+            next: () => this.toast.info('Generando QR nuevo...'),
+            error: () => this.toast.error('Error al reconectar'),
+          });
+        }, 1500);
+      },
+      error: () => this.toast.error('Error limpiando sesion previa'),
+    });
+  }
+
   useTemplate(type: string) {
     const company = this.cfg.companyName();
     const phone = this.cfg.companyPhone();
@@ -344,6 +417,8 @@ export class WhatsappComponent implements OnInit, OnDestroy {
       case 'connected': return 'Conectado y listo para enviar';
       case 'qr': return 'Esperando escaneo del QR';
       case 'disconnected': return 'Desconectado';
+      case 'conflict': return 'Otra sesion WhatsApp Web esta usando esta cuenta';
+      case 'logged_out': return 'Sesion cerrada desde el telefono';
       default: return 'Error de conexion';
     }
   }

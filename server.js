@@ -1012,6 +1012,15 @@ let mtConn = null;
 let mtConnecting = false;
 let mtLastError = null;
 
+// Wrapper que envuelve c.write con timeout. Si el MikroTik cuelga, devuelve error
+// en vez de quedarse esperando indefinido. Uso: await mtWrite(c, 5000, '/ip/arp/print')
+async function mtWrite(c, timeoutMs, ...args) {
+  return await Promise.race([
+    c.write(...args),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`MikroTik timeout ${timeoutMs}ms`)), timeoutMs)),
+  ]);
+}
+
 async function getMtConnection() {
   if (!MT_HOST || !MT_USER || !MT_PASS) {
     throw new Error('MikroTik no configurado en .env');
@@ -1167,8 +1176,8 @@ const bandwidthCache = new Map(); // ip → { upload, download, timestamp }
 mtRouter.get('/clients-live', asyncHandler(async (req, res) => {
   const c = await getMtConnection();
 
-  // 1. Get queues with stats (incluye rate actual calculado por MikroTik)
-  const queues = await c.write('/queue/simple/print', '=stats=');
+  // 1. Get queues with stats (incluye rate actual calculado por MikroTik) - timeout 8s
+  const queues = await mtWrite(c, 8000, '/queue/simple/print', '=stats=');
 
   // 2. Get clients from local DB cache (mas rapido que pegarle a WispHub)
   const clients = await prisma.client.findMany({
@@ -1312,7 +1321,7 @@ mtRouter.get('/wan-traffic', asyncHandler(async (req, res) => {
   const wanIface = process.env.MIKROTIK_WAN_IFACE || 'sfp2';
   const maxMbps = parseInt(process.env.MIKROTIK_WAN_MAX_MBPS || '1000');
   const c = await getMtConnection();
-  const result = await c.write('/interface/monitor-traffic', '=interface=' + wanIface, '=once=');
+  const result = await mtWrite(c, 5000, '/interface/monitor-traffic', '=interface=' + wanIface, '=once=');
   const r = result[0] || {};
   res.json({
     ifaceName: wanIface,
@@ -2154,21 +2163,48 @@ async function sendSurveyReminderById(id, req = null) {
   let publicToken = survey.publicToken;
   let shortCode = survey.shortCode;
   let current = survey;
-  const dataToUpdate = {};
-  if (!publicToken) {
-    publicToken = generateSurveyToken();
-    dataToUpdate.publicToken = publicToken;
-  }
-  if (!shortCode) {
-    shortCode = await generateUniqueShortCode();
-    dataToUpdate.shortCode = shortCode;
-  }
-  if (Object.keys(dataToUpdate).length > 0) {
-    current = await prisma.surveyResponse.update({
-      where: { id: survey.id },
-      data: dataToUpdate,
-      include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
-    });
+
+  // Asignar publicToken y shortCode si faltan. Reintentar hasta 3 veces en caso de
+  // colision de shortCode unique (P2002) cuando 2 threads concurrentes generen el mismo.
+  if (!publicToken || !shortCode) {
+    let lastErr = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const dataToUpdate = {};
+      if (!publicToken) {
+        publicToken = generateSurveyToken();
+        dataToUpdate.publicToken = publicToken;
+      }
+      if (!shortCode) {
+        shortCode = await generateUniqueShortCode();
+        dataToUpdate.shortCode = shortCode;
+      }
+      try {
+        current = await prisma.surveyResponse.update({
+          where: { id: survey.id },
+          data: dataToUpdate,
+          include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
+        });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        // P2002 = unique constraint violation. Resetear shortCode y reintentar.
+        if (e?.code === 'P2002') {
+          shortCode = null;
+          continue;
+        }
+        throw e;
+      }
+    }
+    if (lastErr) {
+      console.error('[survey] No se pudo asignar shortCode tras 3 intentos:', lastErr.message);
+      // Si falla 3 veces consecutivas, dejarlo solo con publicToken (sin shortCode)
+      current = await prisma.surveyResponse.update({
+        where: { id: survey.id },
+        data: { publicToken },
+        include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
+      }).catch(() => survey);
+    }
   }
 
   const phone = current.client?.telefono;
@@ -2411,14 +2447,31 @@ app.post('/survey/submit', asyncHandler(async (req, res) => {
   if (fullName.length < 3 || phone.length < 7) {
     return res.status(400).json({ ok: false, error: 'Nombre y telefono son obligatorios' });
   }
-  const pending = await prisma.surveyResponse.findFirst({
-    where: token
-      ? { publicToken: token, status: 'pending' }
-      : { clientIp: ip, status: 'pending' },
-    orderBy: { sentAt: 'desc' },
-  });
-  if (!pending) {
-    return res.status(404).json({ ok: false, error: 'No hay encuesta pendiente para tu IP' });
+
+  // Si se envia token, REQUIERE coincidencia exacta (no fallback a IP)
+  // Solo permite IP-only en el flujo captive (sin token) y con exactamente 1 pending para esa IP
+  let pending = null;
+  if (token) {
+    pending = await prisma.surveyResponse.findFirst({
+      where: { publicToken: token, status: 'pending' },
+    });
+    if (!pending) {
+      return res.status(401).json({ ok: false, error: 'Token invalido o encuesta no encontrada' });
+    }
+  } else {
+    const pendingsForIp = await prisma.surveyResponse.findMany({
+      where: { clientIp: ip, status: 'pending' },
+      orderBy: { sentAt: 'desc' },
+      take: 2,
+    });
+    if (pendingsForIp.length === 0) {
+      return res.status(404).json({ ok: false, error: 'No hay encuesta pendiente para tu IP' });
+    }
+    if (pendingsForIp.length > 1) {
+      // Ambiguo: hay multiples encuestas para la misma IP -> obligar a usar token del link
+      return res.status(400).json({ ok: false, error: 'Multiples encuestas pendientes. Usa el link de WhatsApp para identificarte.' });
+    }
+    pending = pendingsForIp[0];
   }
   // Guardar
   await prisma.surveyResponse.update({
@@ -3575,10 +3628,16 @@ waRouter.post('/disconnect', async (req, res) => {
   }
 });
 
-waRouter.post('/connect', (req, res) => {
+waRouter.post('/connect', async (req, res) => {
   if (waStatus === 'connected') return res.json({ status: 'already connected' });
+  // Si veniamos de conflict o logged_out, limpiar credenciales para forzar QR limpio
+  if ((waStatus === 'conflict' || waStatus === 'logged_out') && waAuthHandle) {
+    try { await waAuthHandle.clearAll(); } catch {}
+    waAuthHandle = null;
+  }
   waManuallyDisconnected = false;
   waRetryCount = 0;
+  if (waRetryTimer) { clearTimeout(waRetryTimer); waRetryTimer = null; }
   initWhatsApp();
   res.json({ status: 'connecting' });
 });

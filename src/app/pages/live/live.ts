@@ -235,15 +235,18 @@ const ALERT_TTL_MS = 2 * 60 * 1000; // 2 min
 
             <!-- INLINE ACTIONS -->
             @if (c.client) {
-              <div class="card-actions">
-                <button class="act-btn block" (click)="actBlock(c)" [disabled]="actLoading() === c.ip" title="Bloquear cliente">
+              <div class="card-actions" (click)="$event.stopPropagation()">
+                <button class="act-btn block" (click)="$event.stopPropagation(); actBlock(c)" [disabled]="actLoading() === c.ip" title="Desactivar cliente y mostrar pagina informativa">
                   🚫 Bloquear
                 </button>
-                <button class="act-btn moroso" (click)="actMoroso(c)" [disabled]="actLoading() === c.ip" title="Marcar moroso (captive)">
+                <button class="act-btn moroso" (click)="$event.stopPropagation(); actMoroso(c)" [disabled]="actLoading() === c.ip" title="Marcar moroso (captive)">
                   ⏰ Moroso
                 </button>
-                <button class="act-btn survey" (click)="actSurvey(c)" [disabled]="actLoading() === c.ip" title="Mostrar encuesta al abrir un sitio HTTP">
+                <button class="act-btn survey" (click)="$event.stopPropagation(); actSurvey(c)" [disabled]="actLoading() === c.ip" title="Crear enlace seguro de encuesta sin tocar internet">
                   📝 Encuesta
+                </button>
+                <button class="act-btn clear-survey" (click)="$event.stopPropagation(); clearSurvey(c)" [disabled]="actLoading() === c.ip" title="Quitar encuesta pendiente">
+                  Quitar encuesta
                 </button>
               </div>
             }
@@ -493,6 +496,8 @@ const ALERT_TTL_MS = 2 * 60 * 1000; // 2 min
     .act-btn.moroso:hover:not(:disabled) { background: #fde68a; }
     .act-btn.survey { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
     .act-btn.survey:hover:not(:disabled) { background: #dbeafe; }
+    .act-btn.clear-survey { background: #f8fafc; color: #475569; border-color: #cbd5e1; }
+    .act-btn.clear-survey:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
 
     .empty { text-align: center; padding: 60px; color: #94a3b8; }
 
@@ -555,10 +560,18 @@ export class LiveComponent implements OnInit, OnDestroy {
 
   private interval: any;
 
+  // Safe localStorage helpers — tolerantes a QuotaExceeded, modo privado, SSR, etc.
+  private lsGet(k: string): string | null {
+    try { return localStorage.getItem(k); } catch { return null; }
+  }
+  private lsSet(k: string, v: string): void {
+    try { localStorage.setItem(k, v); } catch {}
+  }
+
   ngOnInit() {
-    // Restore localStorage prefs
-    this.paused.set(localStorage.getItem(STORAGE_PAUSED) === '1');
-    const savedMs = parseInt(localStorage.getItem(STORAGE_INTERVAL) || '3000');
+    // Restore localStorage prefs (defensivo)
+    this.paused.set(this.lsGet(STORAGE_PAUSED) === '1');
+    const savedMs = parseInt(this.lsGet(STORAGE_INTERVAL) || '3000');
     if ([1000, 3000, 10000, 30000].includes(savedMs)) this.refreshMs = savedMs;
 
     this.mt.getStatus().subscribe({ next: s => this.status.set(s) });
@@ -585,13 +598,13 @@ export class LiveComponent implements OnInit, OnDestroy {
   togglePause() {
     const p = !this.paused();
     this.paused.set(p);
-    localStorage.setItem(STORAGE_PAUSED, p ? '1' : '0');
+    this.lsSet(STORAGE_PAUSED, p ? '1' : '0');
     if (p) this.stopInterval();
     else { this.refresh(); this.startInterval(); }
   }
 
   changeInterval() {
-    localStorage.setItem(STORAGE_INTERVAL, String(this.refreshMs));
+    this.lsSet(STORAGE_INTERVAL, String(this.refreshMs));
     if (!this.paused()) this.startInterval();
   }
 
@@ -709,11 +722,11 @@ export class LiveComponent implements OnInit, OnDestroy {
   // Inline actions
   actBlock(c: LiveClient) {
     const name = c.client?.name || c.queueName;
-    if (!confirm(`Bloquear a ${name} (${c.ip})?\nNo podra navegar hasta que lo desbloquees.`)) return;
+    if (!confirm(`Desactivar a ${name} (${c.ip})?\nNo podra navegar. Al abrir HTTP vera una pagina con sus datos y el aviso de contactar administracion.`)) return;
     this.actLoading.set(c.ip);
-    this.actions.apply(c.client.id, 'block', 'Bloqueado desde En Vivo').subscribe({
-      next: r => { this.actLoading.set(null); if (r.ok) this.toast.success(`Bloqueado: ${name}`); else this.toast.error(r.error || 'Fallo bloqueo'); },
-      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo bloqueo'); },
+    this.actions.apply(c.client.id, 'block', 'Desactivado desde En Vivo').subscribe({
+      next: r => { this.actLoading.set(null); if (r.ok) this.toast.success(`Desactivado: ${name}`); else this.toast.error(r.error || 'Fallo desactivar'); },
+      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo desactivar'); },
     });
   }
   actMoroso(c: LiveClient) {
@@ -727,16 +740,37 @@ export class LiveComponent implements OnInit, OnDestroy {
   }
   actSurvey(c: LiveClient) {
     const name = c.client?.name || c.queueName;
-    if (!confirm(`Activar encuesta para ${name} (${c.ip})?\nLe aparecera el form al abrir un sitio HTTP.`)) return;
+    if (!confirm(`Crear encuesta para ${name} (${c.ip})?\nSe creara un enlace seguro y recordatorios, sin tocar MikroTik ni el internet.`)) return;
     this.actLoading.set(c.ip);
     this.survey.start(c.ip, c.client?.id).subscribe({
       next: r => {
         this.actLoading.set(null);
-        if (r.alreadyPending) this.toast.info('Ya hay encuesta pendiente para este cliente');
-        else if (r.ok) this.toast.success(`Encuesta activa para ${name}`);
+        if (r.publicUrl) navigator.clipboard?.writeText(r.publicUrl).catch(() => {});
+        if (r.alreadySubmitted) this.toast.info('Este cliente ya lleno la encuesta.');
+        else if (r.alreadyPending) this.toast.info('Ya hay encuesta pendiente. Enlace copiado y recordatorio reactivado.');
+        else if (r.ok) this.toast.success(`Encuesta creada para ${name}. Enlace copiado y recordatorios activos, sin tocar internet.`);
         else this.toast.error(r.error || 'Fallo activar encuesta');
       },
       error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo'); },
+    });
+  }
+
+  clearSurvey(c: LiveClient) {
+    const name = c.client?.name || c.queueName;
+    if (!confirm(`Pausar encuesta para ${name}?\nEl cliente navega normal. Si no la llena, el sistema volvera a recordarle en unas horas.`)) return;
+    this.actLoading.set(c.ip);
+    this.survey.clear(c.ip, c.client?.id).subscribe({
+      next: r => {
+        this.actLoading.set(null);
+        if (!r.ok) {
+          this.toast.error(r.error || 'No se pudo quitar');
+          return;
+        }
+        const mtCleaned = r.mikrotik?.removed?.some((x: any) => x.wasInList);
+        const detail = r.snoozed > 0 ? `${r.snoozed} pausada(s) por ${r.reminderIntervalHours || 4}h` : 'sin pendientes';
+        this.toast.success(`Encuesta pausada: ${detail}${mtCleaned ? ', MikroTik limpio' : ''}`);
+      },
+      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo quitar encuesta'); },
     });
   }
 
