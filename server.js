@@ -610,7 +610,14 @@ dbRouter.post('/clients/:idServicio/gps', asyncHandler(async (req, res) => {
 // Listado para mapa: solo clientes con GPS valido (capturado por tecnico o desde WispHub)
 // Devuelve solo los campos que necesita el mapa para minimizar payload
 dbRouter.get('/clients/map', asyncHandler(async (req, res) => {
-  // Preferimos gpsLat/gpsLng (del tecnico). Si no, intentamos parsear coordenadas (WispHub) "lat,lng"
+  // 1) Stats de debug: cuantos clientes hay y cuantos tienen GPS de cada origen
+  const [totalClients, withGpsTecnico, withCoordsWispHub] = await Promise.all([
+    prisma.client.count(),
+    prisma.client.count({ where: { AND: [ { gpsLat: { not: null } }, { gpsLng: { not: null } } ] } }),
+    prisma.client.count({ where: { coordenadas: { not: null } } }),
+  ]);
+
+  // 2) Traer clientes con cualquier tipo de coords
   const all = await prisma.client.findMany({
     where: {
       OR: [
@@ -627,6 +634,7 @@ dbRouter.get('/clients/map', asyncHandler(async (req, res) => {
     },
   });
   const out = [];
+  const skippedBadCoords = [];
   for (const c of all) {
     let lat = c.gpsLat, lng = c.gpsLng;
     let source = c.gpsLat != null ? 'tecnico' : null;
@@ -639,7 +647,10 @@ dbRouter.get('/clients/map', asyncHandler(async (req, res) => {
         }
       }
     }
-    if (lat == null || lng == null) continue;
+    if (lat == null || lng == null) {
+      skippedBadCoords.push({ id: c.idServicio, nombre: c.nombre, coordenadas: c.coordenadas });
+      continue;
+    }
     out.push({
       id: c.idServicio, nombre: c.nombre, telefono: c.telefono, ip: c.ip,
       plan: c.planInternetName, estado: c.estado, estadoFacturas: c.estadoFacturas,
@@ -647,7 +658,19 @@ dbRouter.get('/clients/map', asyncHandler(async (req, res) => {
       lat, lng, accuracy: c.gpsAccuracy, capturedAt: c.gpsCapturedAt, source,
     });
   }
-  res.json({ ok: true, count: out.length, clients: out });
+  res.json({
+    ok: true,
+    count: out.length,
+    stats: {
+      totalClients,
+      withGpsTecnico,
+      withCoordsWispHub,
+      shownInMap: out.length,
+      skippedBadCoords: skippedBadCoords.length,
+    },
+    clients: out,
+    skipped: skippedBadCoords.slice(0, 10), // primeros 10 con coords invalidas (debug)
+  });
 }));
 
 // SPEED TESTS

@@ -108,8 +108,21 @@ interface MapClient {
             </div>
           } @else if (allClients().length === 0 && !loading()) {
             <div class="overlay-corner overlay-info">
-              <strong>Sin clientes con GPS aun.</strong> Captura desde la ficha de cada cliente con
-              <em>📍 Capturar mi ubicacion actual</em>.
+              <strong>Sin clientes con GPS aun.</strong>
+              @if (stats(); as s) {
+                <br>De {{ s.totalClients }} clientes en DB, 0 tienen GPS capturado.
+              }
+              <br>Captura desde la ficha de cada cliente con <em>📍 Capturar mi ubicacion actual</em>.
+            </div>
+          } @else if (stats(); as s) {
+            <div class="overlay-corner overlay-debug">
+              <strong>{{ s.totalClients }}</strong> clientes en DB ·
+              <span style="color:#16a34a;font-weight:700">{{ s.withGpsTecnico }} con GPS tecnico</span> ·
+              {{ s.withCoordsWispHub }} con coords WispHub ·
+              <strong>{{ s.shownInMap }} en mapa</strong>
+              @if (s.skippedBadCoords > 0) {
+                · <span style="color:#ef4444">{{ s.skippedBadCoords }} con coords invalidas</span>
+              }
             </div>
           }
         }
@@ -143,6 +156,7 @@ interface MapClient {
     .overlay-corner { position: absolute; top: 12px; left: 12px; max-width: 360px; padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.5; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
     .overlay-warn { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
     .overlay-info { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+    .overlay-debug { background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; max-width: 520px !important; }
     .overlay-corner em { font-style: normal; font-weight: 700; }
     :host ::ng-deep .marker-pin { width: 28px; height: 28px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,.4); cursor: pointer; transition: transform 0.2s; }
     :host ::ng-deep .marker-pin:hover { transform: rotate(-45deg) scale(1.2); }
@@ -178,6 +192,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   lastUpdate = signal('');
   mapBooting = signal(true);
   mapBootError = signal<string | null>(null);
+  stats = signal<{ totalClients: number; withGpsTecnico: number; withCoordsWispHub: number; shownInMap: number; skippedBadCoords: number } | null>(null);
 
   search = '';
   estadoFilter = '';
@@ -307,7 +322,9 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     this.http.get<any>('/db/clients/map').subscribe({
       next: (r) => {
         this.allClients.set(r.clients || []);
+        this.stats.set(r.stats || null);
         this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
+        console.log('[mapa] data cargada:', r.stats, 'clients:', (r.clients || []).length);
         if (!silent) this.loading.set(false);
         if (this.map) this.render();
       },
