@@ -2,7 +2,6 @@ import { ApplicationConfig, APP_INITIALIZER, provideBrowserGlobalErrorListeners,
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes } from './app.routes';
-import { apiInterceptor } from './interceptors/api.interceptor';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { LocalDbService } from './services/local-db.service';
 
@@ -10,7 +9,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(withInterceptors([authInterceptor, apiInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor])),
     {
       provide: APP_INITIALIZER,
       useFactory: () => {

@@ -1,6 +1,7 @@
 import { Component, inject } from '@angular/core';
 import { ReceiptService, PaperSize } from '../../services/receipt.service';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 
 @Component({
   selector: 'app-receipt-preview',
@@ -9,22 +10,25 @@ import { FormsModule } from '@angular/forms';
   template: `
     @if (receipt.previewVisible()) {
       <div class="overlay" (click)="receipt.closePreview()"></div>
-      <div class="preview-panel">
+      <div class="preview-panel" [class.invoice-mode]="receipt.isInvoiceMode()">
         <div class="preview-header">
-          <h3>Vista Previa del Recibo</h3>
-          <button class="close-btn" (click)="receipt.closePreview()">
+          <h3>{{ receipt.isInvoiceMode() ? 'Vista previa de Factura' : 'Vista previa de Recibo' }}</h3>
+          <button class="close-btn" (click)="receipt.closePreview()" aria-label="Cerrar vista previa">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
-        <!-- CONTROLES -->
         <div class="preview-controls">
           <div class="control-group">
-            <label>Tamano de papel:</label>
-            <div class="paper-toggle">
-              <button [class.active]="receipt.paperSize() === '58mm'" (click)="setPaper('58mm')">58mm</button>
-              <button [class.active]="receipt.paperSize() === '80mm'" (click)="setPaper('80mm')">80mm</button>
-            </div>
+            <label>{{ receipt.isInvoiceMode() ? 'Formato:' : 'Tamano de papel:' }}</label>
+            @if (receipt.isInvoiceMode()) {
+              <div class="format-pill">Carta / A4</div>
+            } @else {
+              <div class="paper-toggle">
+                <button [class.active]="receipt.paperSize() === '58mm'" (click)="setPaper('58mm')">58mm</button>
+                <button [class.active]="receipt.paperSize() === '80mm'" (click)="setPaper('80mm')">80mm</button>
+              </div>
+            }
           </div>
           <div class="control-actions">
             <button class="btn btn-primary" (click)="receipt.printCurrent()">
@@ -35,16 +39,19 @@ import { FormsModule } from '@angular/forms';
           </div>
         </div>
 
-        <!-- PREVIEW AREA -->
-        <div class="preview-body">
-          <div class="paper-simulation" [class]="'paper-' + receipt.paperSize()">
-            <div [innerHTML]="receipt.previewHTML()"></div>
+        <div class="preview-body" [class.invoice-body]="receipt.isInvoiceMode()">
+          <div
+            class="paper-simulation"
+            [class.paper-invoice]="receipt.isInvoiceMode()"
+            [class.paper-58mm]="!receipt.isInvoiceMode() && receipt.paperSize() === '58mm'"
+            [class.paper-80mm]="!receipt.isInvoiceMode() && receipt.paperSize() === '80mm'">
+            <iframe class="preview-frame" [srcdoc]="safePreviewHTML()" title="Vista previa de impresion"></iframe>
           </div>
         </div>
 
         <div class="preview-footer">
           <span class="paper-info">
-            Papel: {{ receipt.paperSize() }} |
+            {{ receipt.isInvoiceMode() ? 'Factura Carta/A4' : 'Recibo ' + receipt.paperSize() }} |
             Factura #{{ receipt.currentInvoice()?.id_factura }} |
             {{ receipt.currentInvoice()?.cliente?.nombre }}
           </span>
@@ -77,6 +84,7 @@ import { FormsModule } from '@angular/forms';
       box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
       animation: slideUp 0.25s ease;
     }
+    .preview-panel.invoice-mode { width: min(980px, 96vw); }
 
     @keyframes slideUp {
       from { transform: translate(-50%, -45%); opacity: 0; }
@@ -90,14 +98,12 @@ import { FormsModule } from '@angular/forms';
       padding: 18px 24px;
       border-bottom: 1px solid #334155;
     }
-
     .preview-header h3 {
       margin: 0;
       font-size: 16px;
       font-weight: 600;
       color: #f8fafc;
     }
-
     .close-btn {
       background: none;
       border: none;
@@ -118,18 +124,8 @@ import { FormsModule } from '@angular/forms';
       gap: 12px;
       flex-wrap: wrap;
     }
-
-    .control-group {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .control-group label {
-      font-size: 13px;
-      color: #94a3b8;
-      font-weight: 500;
-    }
+    .control-group { display: flex; align-items: center; gap: 10px; }
+    .control-group label { font-size: 13px; color: #94a3b8; font-weight: 500; }
 
     .paper-toggle {
       display: flex;
@@ -137,7 +133,6 @@ import { FormsModule } from '@angular/forms';
       border-radius: 8px;
       overflow: hidden;
     }
-
     .paper-toggle button {
       padding: 6px 16px;
       border: none;
@@ -148,17 +143,19 @@ import { FormsModule } from '@angular/forms';
       cursor: pointer;
       transition: all 0.2s;
     }
-
-    .paper-toggle button.active {
-      background: #6366f1;
-      color: white;
+    .paper-toggle button.active { background: #6366f1; color: white; }
+    .format-pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 13px;
+      font-weight: 700;
     }
 
-    .control-actions {
-      display: flex;
-      gap: 8px;
-    }
-
+    .control-actions { display: flex; gap: 8px; }
     .btn {
       display: inline-flex;
       align-items: center;
@@ -171,29 +168,20 @@ import { FormsModule } from '@angular/forms';
       border: none;
       transition: all 0.2s;
     }
-
-    .btn-primary {
-      background: #6366f1;
-      color: white;
-    }
+    .btn-primary { background: #6366f1; color: white; }
     .btn-primary:hover { background: #4f46e5; }
-
-    .btn-outline {
-      background: transparent;
-      border: 1px solid #475569;
-      color: #94a3b8;
-    }
+    .btn-outline { background: transparent; border: 1px solid #475569; color: #94a3b8; }
     .btn-outline:hover { border-color: #94a3b8; color: white; }
 
     .preview-body {
       flex: 1;
-      overflow-y: auto;
+      overflow: auto;
       padding: 24px;
       display: flex;
       justify-content: center;
       background: #0f172a;
     }
-
+    .preview-body.invoice-body { align-items: flex-start; }
     .paper-simulation {
       background: white;
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -201,26 +189,51 @@ import { FormsModule } from '@angular/forms';
       border-radius: 2px;
       min-height: 400px;
     }
-
+    .preview-frame {
+      display: block;
+      width: 100%;
+      border: 0;
+      background: white;
+    }
     .paper-58mm { width: 220px; }
+    .paper-58mm .preview-frame { height: 720px; }
     .paper-80mm { width: 310px; }
+    .paper-80mm .preview-frame { height: 760px; }
+    .paper-invoice {
+      width: 794px;
+      min-height: 1123px;
+      padding: 0;
+      transform-origin: top center;
+    }
+    .paper-invoice .preview-frame { height: 1123px; }
 
     .preview-footer {
       padding: 10px 24px;
       border-top: 1px solid #334155;
     }
+    .paper-info { font-size: 11px; color: #64748b; }
 
-    .paper-info {
-      font-size: 11px;
-      color: #64748b;
+    @media (max-width: 860px) {
+      .paper-invoice { transform: scale(0.72); margin-bottom: -300px; }
+      .preview-body.invoice-body { justify-content: flex-start; }
+    }
+    @media (max-width: 640px) {
+      .preview-controls, .control-actions { width: 100%; }
+      .control-actions .btn { flex: 1; justify-content: center; }
+      .paper-invoice { transform: scale(0.52); margin-bottom: -520px; }
     }
   `]
 })
 export class ReceiptPreviewComponent {
   receipt = inject(ReceiptService);
+  private sanitizer = inject(DomSanitizer);
 
   setPaper(size: PaperSize) {
     this.receipt.paperSize.set(size);
     this.receipt.updatePreview();
+  }
+
+  safePreviewHTML(): SafeHtml {
+    return this.sanitizer.bypassSecurityTrustHtml(this.receipt.previewHTML());
   }
 }

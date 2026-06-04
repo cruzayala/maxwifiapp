@@ -5,6 +5,8 @@ import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { ToastService } from '../../services/toast.service';
+import { LocalDbService } from '../../services/local-db.service';
+import { WispHubClient } from '../../models/client.model';
 
 // MapLibre GL JS bundled (no CDN). Estilo Liberty de OpenFreeMap (vector tiles 3D, sin API key).
 import maplibregl, { Map as MapLibreMap, Marker, Popup, NavigationControl, LngLatBounds } from 'maplibre-gl';
@@ -43,7 +45,13 @@ interface MapClient {
   lng: number;
   accuracy: number | null;
   capturedAt: string | null;
-  source: 'tecnico' | 'wisphub' | null;
+  source: 'tecnico' | 'local' | 'wisphub' | null;
+}
+
+interface RenderMapClient extends MapClient {
+  renderLat: number;
+  renderLng: number;
+  overlapCount: number;
 }
 
 @Component({
@@ -158,6 +166,17 @@ interface MapClient {
     .overlay-info { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
     .overlay-debug { background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; max-width: 520px !important; }
     .overlay-corner em { font-style: normal; font-weight: 700; }
+    :host ::ng-deep .maplibregl-map { position: relative; overflow: hidden; width: 100%; height: 100%; }
+    :host ::ng-deep .maplibregl-canvas-container { position: absolute; inset: 0; width: 100%; height: 100%; }
+    :host ::ng-deep .maplibregl-canvas { position: absolute; inset: 0; }
+    :host ::ng-deep .maplibregl-marker { position: absolute; top: 0; left: 0; will-change: transform; }
+    :host ::ng-deep .maplibregl-control-container { position: absolute; inset: 0; pointer-events: none; }
+    :host ::ng-deep .maplibregl-ctrl-top-right,
+    :host ::ng-deep .maplibregl-ctrl-bottom-right,
+    :host ::ng-deep .maplibregl-ctrl-bottom-left { position: absolute; pointer-events: auto; }
+    :host ::ng-deep .maplibregl-ctrl-top-right { top: 10px; right: 10px; }
+    :host ::ng-deep .maplibregl-ctrl-bottom-right { right: 10px; bottom: 10px; }
+    :host ::ng-deep .maplibregl-ctrl-bottom-left { left: 10px; bottom: 10px; }
     :host ::ng-deep .marker-pin { width: 28px; height: 28px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,.4); cursor: pointer; transition: transform 0.2s; }
     :host ::ng-deep .marker-pin:hover { transform: rotate(-45deg) scale(1.2); }
     :host ::ng-deep .marker-pin.active { background: #22c55e; }
@@ -182,6 +201,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   private http = inject(HttpClient);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private db = inject(LocalDbService);
 
   @ViewChild('mapEl') mapEl!: ElementRef<HTMLDivElement>;
 
@@ -192,7 +212,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   lastUpdate = signal('');
   mapBooting = signal(true);
   mapBootError = signal<string | null>(null);
-  stats = signal<{ totalClients: number; withGpsTecnico: number; withCoordsWispHub: number; shownInMap: number; skippedBadCoords: number } | null>(null);
+  stats = signal<{ totalClients: number; withGpsTecnico: number; withCoordsWispHub: number; shownInMap: number; skippedBadCoords: number; localGps?: number; localFallback?: number } | null>(null);
 
   search = '';
   estadoFilter = '';
@@ -203,9 +223,14 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   private refreshTimer: any = null;
   private currentBearing = 0;
   private didAutoFit = false;
+  private mapGeneration = 0;
+  private fallbackActive = false;
+  private fallbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
   countByEstado(e: string): number { return this.allClients().filter(c => c.estado === e).length; }
-  countBySource(s: string): number { return this.allClients().filter(c => c.source === s).length; }
+  countBySource(s: string): number {
+    return this.allClients().filter(c => s === 'tecnico' ? c.source === 'tecnico' || c.source === 'local' : c.source === s).length;
+  }
 
   ngOnInit() {
     this.reload();
@@ -219,12 +244,26 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
 
   ngOnDestroy() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
+    if (this.fallbackTimeout) clearTimeout(this.fallbackTimeout);
     if (this.map) { this.map.remove(); this.map = null; }
   }
 
   private bootMap() {
     this.mapBooting.set(true);
     this.mapBootError.set(null);
+    this.fallbackActive = false;
+    this.mapGeneration += 1;
+    const generation = this.mapGeneration;
+    if (this.fallbackTimeout) {
+      clearTimeout(this.fallbackTimeout);
+      this.fallbackTimeout = null;
+    }
+    for (const marker of this.markers) marker.remove();
+    this.markers = [];
+    if (this.map) {
+      this.map.remove();
+      this.map = null;
+    }
     try {
       const el = this.mapEl?.nativeElement;
       if (!el) throw new Error('Contenedor del mapa no encontrado');
@@ -233,7 +272,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       if (rect.width === 0 || rect.height === 0) {
         el.style.minHeight = '600px';
       }
-      this.initMap(STYLE_URL);
+      this.initMap(STYLE_URL, generation, false);
     } catch (e: any) {
       console.error('[mapa] boot error:', e);
       this.mapBootError.set('Error inicializando mapa: ' + (e?.message || e));
@@ -242,12 +281,11 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   retryMap() {
-    if (this.map) { this.map.remove(); this.map = null; }
     this.bootMap();
   }
 
-  private initMap(style: any) {
-    this.map = new maplibregl.Map({
+  private initMap(style: any, generation: number, isFallback: boolean) {
+    const map = new maplibregl.Map({
       container: this.mapEl.nativeElement,
       style,
       center: DEFAULT_CENTER,
@@ -257,37 +295,50 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       antialias: true,
       maxBounds: [[-72.5, 17.3], [-68.0, 20.2]],
     });
+    this.map = map;
 
-    this.map.addControl(new NavigationControl({ visualizePitch: true }), 'top-right');
+    map.addControl(new NavigationControl({ visualizePitch: true }), 'top-right');
 
-    let fallbackUsed = style === FALLBACK_STYLE;
+    const isCurrentMap = () => generation === this.mapGeneration && this.map === map;
+    const switchToFallback = () => {
+      if (!isCurrentMap() || this.fallbackActive) return;
+      console.warn('[mapa] retrying with raster fallback');
+      this.fallbackActive = true;
+      if (this.fallbackTimeout) {
+        clearTimeout(this.fallbackTimeout);
+        this.fallbackTimeout = null;
+      }
+      map.remove();
+      if (this.map === map) this.map = null;
+      this.initMap(FALLBACK_STYLE, generation, true);
+    };
 
-    this.map.on('load', () => {
-      console.log('[mapa] map loaded with', fallbackUsed ? 'raster fallback' : 'vector style');
+    map.on('load', () => {
+      if (!isCurrentMap()) return;
+      console.log('[mapa] map loaded with', isFallback ? 'raster fallback' : 'vector style');
       this.mapBooting.set(false);
       this.render();
     });
 
-    this.map.on('error', (e: any) => {
+    map.on('error', (e: any) => {
+      if (!isCurrentMap()) return;
       const msg = e?.error?.message || String(e?.error || e);
       console.warn('[mapa] error:', msg);
-      // Si el style URL falla (CORS, red, etc.), reintentar con raster fallback
-      if (!fallbackUsed && /Failed to fetch|NetworkError|CORS|404|Unable to/i.test(msg)) {
-        console.warn('[mapa] retrying with raster fallback');
-        if (this.map) { this.map.remove(); this.map = null; }
-        fallbackUsed = true;
-        this.initMap(FALLBACK_STYLE);
+      const networkStyleError = /Failed to fetch|NetworkError|CORS|404|Unable to/i.test(msg);
+      if (!isFallback && networkStyleError && this.mapBooting()) {
+        switchToFallback();
       }
     });
 
     // Safety net: si en 8s no carga, forzar fallback raster
-    setTimeout(() => {
-      if (this.mapBooting() && !fallbackUsed) {
-        console.warn('[mapa] timeout cargando vector, forzando raster');
-        if (this.map) { this.map.remove(); this.map = null; }
-        this.initMap(FALLBACK_STYLE);
-      }
-    }, 8000);
+    if (!isFallback) {
+      this.fallbackTimeout = setTimeout(() => {
+        if (isCurrentMap() && this.mapBooting()) {
+          console.warn('[mapa] timeout cargando vector, forzando raster');
+          switchToFallback();
+        }
+      }, 8000);
+    }
   }
 
   changeView() {
@@ -321,18 +372,126 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     this.loadError.set(null);
     this.http.get<any>('/db/clients/map').subscribe({
       next: (r) => {
-        this.allClients.set(r.clients || []);
-        this.stats.set(r.stats || null);
-        this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
-        console.log('[mapa] data cargada:', r.stats, 'clients:', (r.clients || []).length);
-        if (!silent) this.loading.set(false);
-        if (this.map) this.render();
+        void this.loadLocalMapClients().then((localClients) => {
+          const serverClients = this.normalizeMapClients(r.clients || []);
+          const merged = this.mergeMapClients(serverClients, localClients);
+          const localFallback = merged.filter((c) => c.source === 'local').length;
+          const localGps = localClients.filter((c) => c.source === 'local').length;
+          const stats = {
+            ...(r.stats || {}),
+            totalClients: Math.max(r.stats?.totalClients || 0, localClients.length),
+            withGpsTecnico: Math.max(r.stats?.withGpsTecnico || 0, localGps),
+            shownInMap: merged.length,
+            localGps,
+            localFallback,
+          };
+          this.allClients.set(merged);
+          this.stats.set(stats);
+          this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
+          console.log('[mapa] data cargada:', stats, 'clients:', merged.length);
+          if (!silent) this.loading.set(false);
+          if (this.map) this.render();
+        }).catch(() => {
+          this.allClients.set(this.normalizeMapClients(r.clients || []));
+          this.stats.set(r.stats || null);
+          this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
+          if (!silent) this.loading.set(false);
+          if (this.map) this.render();
+        });
       },
       error: (e) => {
-        if (!silent) this.loading.set(false);
-        this.loadError.set(e.error?.error || e.message || 'Error de red');
+        void this.loadLocalMapClients().then((localClients) => {
+          this.allClients.set(localClients);
+          this.stats.set({
+            totalClients: localClients.length,
+            withGpsTecnico: localClients.filter((c) => c.source === 'local').length,
+            withCoordsWispHub: localClients.filter((c) => c.source === 'wisphub').length,
+            shownInMap: localClients.length,
+            skippedBadCoords: 0,
+            localGps: localClients.filter((c) => c.source === 'local').length,
+            localFallback: localClients.length,
+          });
+          this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
+          this.loadError.set(localClients.length ? null : (e.error?.error || e.message || 'Error de red'));
+          if (!silent) this.loading.set(false);
+          if (this.map) this.render();
+        }).catch(() => {
+          if (!silent) this.loading.set(false);
+          this.loadError.set(e.error?.error || e.message || 'Error de red');
+        });
       },
     });
+  }
+
+  private normalizeMapClients(clients: any[]): MapClient[] {
+    return clients
+      .map((c) => ({
+        ...c,
+        lat: Number(c.lat),
+        lng: Number(c.lng),
+        source: c.source || 'tecnico',
+      }))
+      .filter((c) => this.isValidLatLng(c.lat, c.lng));
+  }
+
+  private async loadLocalMapClients(): Promise<MapClient[]> {
+    const clients = await this.db.getClients();
+    return clients.map((c) => this.localClientToMap(c)).filter((c): c is MapClient => !!c);
+  }
+
+  private localClientToMap(c: WispHubClient): MapClient | null {
+    let lat = typeof c.gpsLat === 'number' ? c.gpsLat : null;
+    let lng = typeof c.gpsLng === 'number' ? c.gpsLng : null;
+    let source: MapClient['source'] = lat != null && lng != null ? 'local' : null;
+
+    if ((lat == null || lng == null) && c.coordenadas) {
+      const parsed = this.parseCoords(c.coordenadas);
+      if (parsed) {
+        lat = parsed.lat;
+        lng = parsed.lng;
+        source = 'wisphub';
+      }
+    }
+
+    if (lat == null || lng == null || !this.isValidLatLng(lat, lng)) return null;
+    return {
+      id: c.id_servicio,
+      nombre: c.nombre,
+      telefono: c.telefono || null,
+      ip: c.ip || null,
+      plan: c.plan_internet?.nombre || null,
+      estado: c.estado || null,
+      estadoFacturas: c.estado_facturas || null,
+      zona: c.zona?.nombre || null,
+      direccion: c.direccion || null,
+      lat,
+      lng,
+      accuracy: c.gpsAccuracy ?? null,
+      capturedAt: c.gpsCapturedAt ?? null,
+      source,
+    };
+  }
+
+  private mergeMapClients(serverClients: MapClient[], localClients: MapClient[]): MapClient[] {
+    const byId = new Map<number, MapClient>();
+    for (const c of serverClients) byId.set(c.id, c);
+    for (const c of localClients) {
+      const existing = byId.get(c.id);
+      if (!existing || c.source === 'local') byId.set(c.id, c);
+    }
+    return Array.from(byId.values());
+  }
+
+  private parseCoords(value: string): { lat: number; lng: number } | null {
+    const parts = value.split(/[,\s]+/).filter(Boolean);
+    if (parts.length < 2) return null;
+    const lat = Number(parts[0]);
+    const lng = Number(parts[1]);
+    return this.isValidLatLng(lat, lng) ? { lat, lng } : null;
+  }
+
+  private isValidLatLng(lat: number, lng: number): boolean {
+    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
   }
 
   render() {
@@ -353,10 +512,10 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     });
     this.filtered.set(filtered);
 
-    console.log('[mapa] rendering', filtered.length, 'markers');
-    for (const c of filtered) {
-      // Usamos el marker nativo de MapLibre (sin custom HTML) para garantizar
-      // que se vea siempre, sin problemas de encapsulacion CSS de Angular.
+    const renderClients = this.withVisualOffsets(filtered);
+
+    console.log('[mapa] rendering', renderClients.length, 'markers');
+    for (const c of renderClients) {
       const color = this.colorFor(c);
       const popupHtml = `
         <div style="font-weight:700;color:#0f172a;font-size:14px;margin-bottom:6px">
@@ -370,13 +529,14 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
           ${c.telefono ? '<strong style="color:#0f172a">Tel:</strong> ' + this.escape(c.telefono) + '<br>' : ''}
           ${c.zona ? '<strong style="color:#0f172a">Zona:</strong> ' + this.escape(c.zona) + '<br>' : ''}
           ${c.direccion ? '<em>' + this.escape(c.direccion) + '</em><br>' : ''}
-          <small style="color:#94a3b8">GPS: ${c.source === 'tecnico' ? 'tecnico' : 'WispHub'}${c.accuracy ? ' · ±' + Math.round(c.accuracy) + 'm' : ''}</small>
+          ${c.overlapCount > 1 ? '<strong style="color:#d97706">Nota:</strong> hay ' + c.overlapCount + ' clientes en este mismo punto; los pins se separaron visualmente.<br>' : ''}
+          <small style="color:#94a3b8">GPS: ${c.source === 'wisphub' ? 'WispHub' : 'tecnico'}${c.accuracy ? ' · ±' + Math.round(c.accuracy) + 'm' : ''}</small>
         </div>
         <a href="/clients/${c.id}" style="display:inline-block;background:#6366f1;color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-top:10px">Ver ficha del cliente</a>
       `;
       const popup = new Popup({ offset: 25, closeButton: true }).setHTML(popupHtml);
-      const marker = new Marker({ color })
-        .setLngLat([c.lng, c.lat])
+      const marker = new Marker({ element: this.createMarkerElement(color, c.nombre), anchor: 'bottom' })
+        .setLngLat([c.renderLng, c.renderLat])
         .setPopup(popup)
         .addTo(this.map);
       this.markers.push(marker);
@@ -390,7 +550,71 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // Color HEX para el marker nativo de MapLibre
+  private withVisualOffsets(clients: MapClient[]): RenderMapClient[] {
+    const groups = new Map<string, MapClient[]>();
+    for (const c of clients) {
+      // Agrupa clientes a ~11m para evitar pins montados cuando se capturan en el mismo sitio.
+      const key = `${c.lat.toFixed(4)},${c.lng.toFixed(4)}`;
+      const group = groups.get(key) || [];
+      group.push(c);
+      groups.set(key, group);
+    }
+
+    const out: RenderMapClient[] = [];
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        const c = group[0];
+        out.push({ ...c, renderLat: c.lat, renderLng: c.lng, overlapCount: 1 });
+        continue;
+      }
+
+      const radius = 0.00018; // ~19m visuales, suficiente para distinguir pins en zoom 17.
+      group.forEach((c, index) => {
+        const angle = (Math.PI * 2 * index) / group.length;
+        out.push({
+          ...c,
+          renderLat: c.lat + Math.sin(angle) * radius,
+          renderLng: c.lng + Math.cos(angle) * radius,
+          overlapCount: group.length,
+        });
+      });
+    }
+    return out;
+  }
+
+  private createMarkerElement(color: string, label: string): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.setAttribute('aria-label', `Cliente GPS: ${label || '-'}`);
+    wrapper.title = label || 'Cliente GPS';
+    wrapper.style.width = '30px';
+    wrapper.style.height = '36px';
+    wrapper.style.display = 'flex';
+    wrapper.style.alignItems = 'flex-start';
+    wrapper.style.justifyContent = 'center';
+    wrapper.style.cursor = 'pointer';
+
+    const pin = document.createElement('div');
+    pin.style.width = '24px';
+    pin.style.height = '24px';
+    pin.style.background = color;
+    pin.style.border = '2px solid #ffffff';
+    pin.style.borderRadius = '50% 50% 50% 0';
+    pin.style.boxShadow = '0 3px 10px rgba(15, 23, 42, 0.45)';
+    pin.style.transform = 'rotate(-45deg)';
+    pin.style.transformOrigin = 'center';
+
+    const dot = document.createElement('div');
+    dot.style.width = '8px';
+    dot.style.height = '8px';
+    dot.style.borderRadius = '50%';
+    dot.style.background = '#ffffff';
+    dot.style.margin = '7px';
+    pin.appendChild(dot);
+    wrapper.appendChild(pin);
+    return wrapper;
+  }
+
+  // Color HEX para el pin del cliente
   private colorFor(c: MapClient): string {
     if (c.estado === 'Suspendido' || c.estadoFacturas?.includes('endiente')) return '#ef4444'; // rojo
     if (c.estado === 'Activo') return '#22c55e'; // verde
@@ -403,13 +627,14 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.toast.info('No hay clientes con GPS para encuadrar');
       return;
     }
+    const renderClients = this.withVisualOffsets(this.filtered());
     const bounds = new LngLatBounds();
-    for (const c of this.filtered()) bounds.extend([c.lng, c.lat]);
-    if (this.filtered().length === 1) {
-      const c = this.filtered()[0];
-      this.map.easeTo({ center: [c.lng, c.lat], zoom: 17, pitch: this.viewMode === '3d' ? 55 : 0, duration: 800 });
+    for (const c of renderClients) bounds.extend([c.renderLng, c.renderLat]);
+    if (renderClients.length === 1) {
+      const c = renderClients[0];
+      this.map.easeTo({ center: [c.renderLng, c.renderLat], zoom: 17, pitch: this.viewMode === '3d' ? 55 : 0, duration: 800 });
     } else {
-      this.map.fitBounds(bounds, { padding: 80, pitch: this.viewMode === '3d' ? 50 : 0, duration: 800 });
+      this.map.fitBounds(bounds, { padding: 110, pitch: this.viewMode === '3d' ? 50 : 0, duration: 800, maxZoom: 17 });
     }
   }
 

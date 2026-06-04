@@ -39,4 +39,4 @@ RUN npm ci --omit=dev
 
 # Postgres en Railway (no requiere volume; DB es un servicio aparte)
 EXPOSE 7400
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss --skip-generate && node server.js"]
+CMD ["npm", "run", "start:prod"]

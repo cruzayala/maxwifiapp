@@ -128,6 +128,8 @@ model Client {
   blockEvents BlockEvent[]
   webActivity WebActivity[]
   surveys     SurveyResponse[]
+  equipment   Equipment[]   @relation("EquipmentAssignedClient")
+  expenses    Expense[]     @relation("ExpenseClient")
 
   @@index([nombre])
   @@index([estado])
@@ -795,4 +797,179 @@ model SurveyResponse {
   @@index([idServicio])
   @@index([publicToken])
   @@index([nextReminderAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 10. INVENTARIO DE EQUIPOS (routers WiFi, cables, ONUs, antenas, etc.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Categoria de equipo - se reusa: "Router WiFi", "Cable UTP", "ONU", "Antena", etc.
+model EquipmentType {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  category    String   // wifi | cable | onu | antena | otro
+  unit        String   @default("u")   // u (unidad), m (metros), kg, etc.
+  description String?
+  createdAt   DateTime @default(now())
+
+  equipment   Equipment[]
+  purchaseItems PurchaseItem[]
+
+  @@index([category])
+}
+
+/// Compra de equipos - un comprobante con varios items
+model Purchase {
+  id           Int      @id @default(autoincrement())
+  supplier     String?              // proveedor
+  invoiceRef   String?              // # factura del proveedor
+  purchasedAt  DateTime
+  total        Float    @default(0)
+  notes        String?
+  createdBy    String?              // username admin
+  createdAt    DateTime @default(now())
+
+  items        PurchaseItem[]
+  equipment    Equipment[]
+  expense      Expense?             // gasto auto-generado
+
+  @@index([purchasedAt])
+  @@index([supplier])
+}
+
+/// Item de compra - cantidad y precio unitario por tipo
+model PurchaseItem {
+  id            Int     @id @default(autoincrement())
+  purchaseId    Int
+  typeId        Int
+  quantity      Float   @default(1)
+  unitPrice     Float   @default(0)
+  subtotal      Float   @default(0)
+  notes         String?
+
+  purchase      Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  type          EquipmentType @relation(fields: [typeId], references: [id])
+
+  @@index([purchaseId])
+  @@index([typeId])
+}
+
+/// Equipo individual con serial - 1 fila = 1 unidad rastreable
+/// Para items por metros (cable) se crea 1 fila por rollo o por tramo asignado.
+model Equipment {
+  id              Int      @id @default(autoincrement())
+  typeId          Int
+  serialNumber    String?  @unique         // serial / SN / MAC del fabricante
+  macAddress      String?
+  brand           String?
+  model           String?
+  status          String   @default("stock")  // stock | assigned | rma | lost | retired
+  purchaseId      Int?                        // origen
+  unitCost        Float    @default(0)        // copia del unitPrice de la compra
+  notes           String?
+
+  // Asignacion a cliente
+  assignedToClientId Int?                     // Client.idServicio
+  assignedAt         DateTime?
+  assignedBy         String?
+  installNotes       String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  type            EquipmentType @relation(fields: [typeId], references: [id])
+  purchase        Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  client          Client?       @relation("EquipmentAssignedClient", fields: [assignedToClientId], references: [idServicio], onDelete: SetNull)
+
+  @@index([typeId])
+  @@index([status])
+  @@index([assignedToClientId])
+  @@index([purchaseId])
+  @@index([serialNumber])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 11. GASTOS (compras, sueldos, servicios, etc.)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Gasto - cualquier salida de dinero. Puede o no estar ligado a una compra/cliente/empleado.
+model Expense {
+  id            Int      @id @default(autoincrement())
+  category      String   // inventario | nomina | servicios | transporte | otros
+  description   String
+  amount        Float    @default(0)
+  expenseDate   DateTime
+  paymentMethod String?  // efectivo | transferencia | tarjeta | etc.
+  reference     String?  // # comprobante
+
+  // Vinculaciones opcionales
+  purchaseId    Int?     @unique            // si proviene de una Purchase
+  payrollId     Int?                         // si proviene de PayrollEntry
+  clientIdServicio Int?                      // gasto dirigido a un cliente especifico
+
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  purchase      Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  payroll       PayrollEntry? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+  client        Client?       @relation("ExpenseClient", fields: [clientIdServicio], references: [idServicio], onDelete: SetNull)
+
+  @@index([category])
+  @@index([expenseDate])
+  @@index([clientIdServicio])
+  @@index([payrollId])
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 12. NOMINA (empleados y pagos)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Empleado de la empresa
+model Employee {
+  id            Int      @id @default(autoincrement())
+  fullName      String
+  documentId    String?  @unique    // cedula / id fiscal
+  position      String?              // tecnico, cajero, gerente
+  email         String?
+  phone         String?
+  baseSalary    Float    @default(0)
+  hiredAt       DateTime?
+  terminatedAt  DateTime?
+  active        Boolean  @default(true)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payroll       PayrollEntry[]
+
+  @@index([active])
+  @@index([position])
+}
+
+/// Pago de nomina - una fila por empleado por periodo
+model PayrollEntry {
+  id            Int      @id @default(autoincrement())
+  employeeId    Int
+  period        String                       // "2026-06" o "2026-Q2" o "2026-06-15"
+  periodStart   DateTime
+  periodEnd     DateTime
+  baseAmount    Float    @default(0)
+  bonus         Float    @default(0)
+  deductions    Float    @default(0)
+  netAmount     Float    @default(0)         // baseAmount + bonus - deductions
+  paidAt        DateTime?
+  paymentMethod String?
+  status        String   @default("pending") // pending | paid | cancelled
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime @default(now())
+
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  expenses      Expense[]                    // gasto(s) generado(s)
+
+  @@index([employeeId])
+  @@index([period])
+  @@index([status])
+  @@index([periodStart, periodEnd])
 }

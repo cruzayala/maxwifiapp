@@ -62,3 +62,10 @@ baileys-store.json
 # Backups locales
 backups/
 *.bak
+
+# Logs locales y artefactos de mocks/tests
+*.err.log
+*.out.log
+mock-api-clients.*.log
+.playwright-mcp/
+wisphub_speed_*.bin

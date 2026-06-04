@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, tap } from 'rxjs';
+import { Observable, catchError, map, of, tap } from 'rxjs';
 
 export type UserRole = 'super_admin' | 'admin' | 'tecnico' | 'cobranza' | 'viewer';
 
@@ -46,12 +46,40 @@ export class AuthService {
     );
   }
 
+  validateSession(): Observable<boolean> {
+    const token = this.getToken();
+    if (!token) {
+      this.clearSession();
+      return of(false);
+    }
+
+    return this.http.get<{ ok: boolean; userId: number; username: string; role: UserRole }>('/auth/me').pipe(
+      tap((res) => {
+        const current = this.currentUser();
+        const user: CurrentUser = {
+          id: res.userId,
+          username: res.username,
+          fullName: current?.fullName ?? null,
+          role: res.role,
+        };
+        localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+        this.currentUser.set(user);
+        this.isAuthenticated.set(true);
+      }),
+      map(() => true),
+      catchError(() => {
+        this.clearSession();
+        return of(false);
+      })
+    );
+  }
+
   logout() {
     this.http.post('/auth/logout', {}).subscribe({ next: () => {}, error: () => {} });
     this.clearSession();
   }
 
-  private clearSession() {
+  clearSession() {
     localStorage.removeItem(this.TOKEN_KEY);
     localStorage.removeItem(this.USER_KEY);
     this.currentUser.set(null);

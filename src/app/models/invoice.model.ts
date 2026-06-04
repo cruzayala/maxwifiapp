@@ -4,9 +4,9 @@ export interface Invoice {
   fecha_emision: string;
   fecha_vencimiento: string;
   fecha_pago: string | null;
-  estado: string;
+  estado: string | null;
   tipo: number;
-  zona: { id: number; nombre: string };
+  zona: { id: number; nombre: string } | null;
   sub_total: number;
   descuento: number;
   saldo: number;
@@ -19,7 +19,7 @@ export interface Invoice {
   total_pasarela: number;
   retencion_porcentaje: number;
   retenciones_total: number;
-  forma_pago: { id: number; nombre: string };
+  forma_pago: { id: number; nombre: string } | null;
   cajero: { id: number; nombre: string } | null;
   cliente: {
     usuario: string;
@@ -30,7 +30,7 @@ export interface Invoice {
     localidad: string;
     telefono: string;
     rfc: string;
-  };
+  } | null;
   articulos: InvoiceArticle[];
 }
 

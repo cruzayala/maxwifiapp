@@ -9,6 +9,9 @@ export interface ClientActionResult {
   ip?: string;
   error?: string;
   mt?: { alreadyIn?: boolean; wasIn?: boolean };
+  captiveUrl?: string;
+  connectionsKilled?: number;
+  rules?: unknown;
 }
 
 export interface BlockListSnapshot {

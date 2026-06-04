@@ -22,6 +22,9 @@ export const routes: Routes = [
   { path: 'morosos', canActivate: [authGuard], loadComponent: () => import('./pages/morosos/morosos').then(m => m.MorososComponent) },
   { path: 'encuestas', canActivate: [authGuard], loadComponent: () => import('./pages/encuestas/encuestas').then(m => m.EncuestasComponent) },
   { path: 'mapa', canActivate: [authGuard], loadComponent: () => import('./pages/mapa/mapa').then(m => m.MapaComponent) },
+  { path: 'inventory', canActivate: [authGuard], loadComponent: () => import('./pages/inventory/inventory').then(m => m.InventoryComponent) },
+  { path: 'expenses', canActivate: [authGuard], loadComponent: () => import('./pages/expenses/expenses').then(m => m.ExpensesComponent) },
+  { path: 'payroll', canActivate: [authGuard], loadComponent: () => import('./pages/payroll/payroll').then(m => m.PayrollComponent) },
   { path: 'settings', canActivate: [authGuard], loadComponent: () => import('./pages/settings/settings').then(m => m.SettingsComponent) },
   { path: '**', redirectTo: 'dashboard' }
 ];

@@ -36,6 +36,11 @@ export interface WispHubClient {
   password_ssid_router_wifi: string;
   comentarios: string;
   coordenadas: string;
+  gpsLat?: number | null;
+  gpsLng?: number | null;
+  gpsAccuracy?: number | null;
+  gpsCapturedAt?: string | null;
+  gpsCapturedBy?: string | null;
   costo_instalacion: string;
   precio_plan: string;
   forma_contratacion: string;
@@ -45,9 +50,9 @@ export interface WispHubClient {
   fecha_cancelacion: string | null;
   fecha_corte: string;
   ultimo_cambio: string;
-  plan_internet: { id: number; nombre: string };
-  zona: { id: number; nombre: string };
-  router: { id: number; nombre: string; falla_general: boolean; falla_general_descripcion: string };
+  plan_internet: { id: number; nombre: string } | null;
+  zona: { id: number; nombre: string } | null;
+  router: { id: number; nombre: string; falla_general: boolean; falla_general_descripcion: string | null } | null;
   sectorial: any;
   tecnico: { id: number; nombre: string } | null;
 }

@@ -2,13 +2,12 @@ import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { MikrotikService, MtTraffic, MtConsumer, MtQueue } from '../../services/mikrotik.service';
 import { ToastService } from '../../services/toast.service';
-import { DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
 @Component({
   selector: 'app-mikrotik',
   standalone: true,
-  imports: [NavbarComponent, DecimalPipe, FormsModule],
+  imports: [NavbarComponent, FormsModule],
   template: `
     <app-navbar pageTitle="MikroTik" />
 

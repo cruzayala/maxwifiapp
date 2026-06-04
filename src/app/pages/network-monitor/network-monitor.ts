@@ -224,11 +224,6 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
         return;
       }
 
-      fetch(`/api/tasks/${cp.taskId}/`, {
-        headers: { 'Authorization': `Api-Key ${(window as any).__env__?.apiKey || ''}` }
-      }).catch(() => null);
-
-      // Use the Angular HTTP client instead
       this.api.getTaskStatus(cp.taskId!).subscribe({
         next: (res: any) => {
           if (res.task?.status === 'SUCCESS') {

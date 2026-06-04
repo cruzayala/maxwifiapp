@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { WisphubService } from './wisphub.service';
 import { LocalDbService } from './local-db.service';
 import { ToastService } from './toast.service';
+import { AuthService } from './auth.service';
 
 @Injectable({ providedIn: 'root' })
 export class SyncService {
@@ -10,6 +11,7 @@ export class SyncService {
   private api = inject(WisphubService);
   private db = inject(LocalDbService);
   private toast = inject(ToastService);
+  private auth = inject(AuthService);
 
   syncing = signal(false);
   syncMessage = signal('');
@@ -17,6 +19,8 @@ export class SyncService {
   private readonly STALE_HOURS = 4;
 
   async syncIfStale() {
+    if (!this.auth.getToken()) return;
+
     const lastSync = await this.db.getLastSync('clients');
     if (!lastSync) {
       this.syncAll();
@@ -30,6 +34,8 @@ export class SyncService {
 
   syncAll() {
     if (this.syncing()) return;
+    if (!this.auth.getToken()) return;
+
     this.syncing.set(true);
     this.syncMessage.set('Sincronizando clientes...');
 

@@ -12,11 +12,12 @@ import { ReceiptService } from '../../services/receipt.service';
 import { ToastService } from '../../services/toast.service';
 import { ClientExtrasComponent } from '../../components/client-extras/client-extras';
 import { ClientMetricsComponent } from '../../components/client-metrics/client-metrics';
+import { ClientEquipmentComponent } from '../../components/client-equipment/client-equipment';
 
 @Component({
   selector: 'app-client-detail',
   standalone: true,
-  imports: [NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, ClientExtrasComponent, ClientMetricsComponent],
+  imports: [NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, ClientExtrasComponent, ClientMetricsComponent, ClientEquipmentComponent],
   template: `
     <app-navbar [pageTitle]="clientName()" />
 
@@ -260,6 +261,9 @@ import { ClientMetricsComponent } from '../../components/client-metrics/client-m
 
         <!-- ALIAS + WEB ACTIVITY -->
         <app-client-extras [idServicio]="client()!.id_servicio" />
+
+        <!-- EQUIPOS ASIGNADOS + GASTOS DIRIGIDOS -->
+        <app-client-equipment [idServicio]="client()!.id_servicio" />
 
         <!-- FACTURAS DEL CLIENTE -->
         @if (clientInvoices().length > 0) {
@@ -510,12 +514,35 @@ export class ClientDetailComponent implements OnInit {
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
         this.http.post<any>(`/db/clients/${c.id_servicio}/gps`, {
-          lat: latitude, lng: longitude, accuracy,
+          lat: latitude,
+          lng: longitude,
+          accuracy,
+          client: {
+            nombre: c.nombre,
+            telefono: c.telefono,
+            ip: c.ip,
+            planInternetName: c.plan_internet?.nombre,
+            estado: c.estado,
+            estadoFacturas: c.estado_facturas,
+            zonaNombre: c.zona?.nombre,
+            direccion: c.direccion,
+            coordenadas: c.coordenadas,
+          },
         }).subscribe({
           next: (r) => {
             this.capturingGps.set(false);
             if (r?.client) {
               this.applyGps(r.client);
+              const updated = {
+                ...c,
+                gpsLat: r.client.gpsLat ?? latitude,
+                gpsLng: r.client.gpsLng ?? longitude,
+                gpsAccuracy: r.client.gpsAccuracy ?? accuracy,
+                gpsCapturedAt: r.client.gpsCapturedAt ?? new Date().toISOString(),
+                gpsCapturedBy: r.client.gpsCapturedBy ?? null,
+              };
+              this.client.set(updated);
+              this.db.saveClients([updated]).catch(() => {});
               this.toast.success(`Ubicacion guardada (precision ±${Math.round(accuracy)}m)`);
             } else {
               this.toast.error(r?.error || 'No se pudo guardar');

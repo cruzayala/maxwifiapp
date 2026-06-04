@@ -21,7 +21,7 @@ import { ToastService } from '../../services/toast.service';
         [disabled]="busy() !== null"
         (click)="run('block')"
       >
-        {{ busy() === 'block' ? '...' : 'Bloquear' }}
+        {{ busy() === 'block' ? '...' : 'Desactivar' }}
       </button>
       @if (crmAction() === 'moroso' || crmAction() === 'block') {
         <button
@@ -62,8 +62,8 @@ export class ClientBlockActionsComponent {
   busy = signal<ClientAction | null>(null);
 
   run(action: ClientAction) {
-    const verb = action === 'moroso' ? 'Marcar como moroso' : action === 'block' ? 'Bloquear' : 'Reactivar';
-    const def = action === 'moroso' ? 'Falta de pago' : action === 'block' ? 'Bloqueo manual' : 'Reactivado';
+    const verb = action === 'moroso' ? 'Marcar como moroso' : action === 'block' ? 'Desactivar servicio' : 'Reactivar';
+    const def = action === 'moroso' ? 'Falta de pago' : action === 'block' ? 'Desactivado manualmente' : 'Reactivado';
     const reason = window.prompt(`${verb} a ${this.clientName()}\nMotivo:`, def);
     if (reason === null) return;
 
@@ -72,7 +72,8 @@ export class ClientBlockActionsComponent {
       next: (res) => {
         this.busy.set(null);
         if (res.ok) {
-          this.toast.success(`${verb} OK (${res.ip})`);
+          const killed = res.connectionsKilled ? `, sesiones cerradas: ${res.connectionsKilled}` : '';
+          this.toast.success(`${verb} OK (${res.ip})${killed}`);
           this.changed.emit({ action, result: res });
         } else {
           this.toast.error(res.error || 'Error');

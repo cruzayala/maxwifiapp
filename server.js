@@ -584,7 +584,7 @@ dbRouter.delete('/notes/:id', asyncHandler(async (req, res) => {
 // GPS capturado por el tecnico en sitio. Idempotente.
 dbRouter.post('/clients/:idServicio/gps', asyncHandler(async (req, res) => {
   const idServicio = parseInt(req.params.idServicio);
-  const { lat, lng, accuracy } = req.body || {};
+  const { lat, lng, accuracy, client: clientSnapshot = {} } = req.body || {};
   const latNum = Number(lat);
   const lngNum = Number(lng);
   if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
@@ -593,14 +593,28 @@ dbRouter.post('/clients/:idServicio/gps', asyncHandler(async (req, res) => {
   if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
     return res.status(400).json({ error: 'lat/lng fuera de rango' });
   }
-  const updated = await prisma.client.update({
+  const gpsData = {
+    gpsLat: latNum,
+    gpsLng: lngNum,
+    gpsAccuracy: Number.isFinite(Number(accuracy)) ? Number(accuracy) : null,
+    gpsCapturedAt: new Date(),
+    gpsCapturedBy: req.session?.username || 'admin',
+  };
+  const updated = await prisma.client.upsert({
     where: { idServicio },
-    data: {
-      gpsLat: latNum,
-      gpsLng: lngNum,
-      gpsAccuracy: Number.isFinite(Number(accuracy)) ? Number(accuracy) : null,
-      gpsCapturedAt: new Date(),
-      gpsCapturedBy: req.session?.username || 'admin',
+    update: gpsData,
+    create: {
+      idServicio,
+      nombre: clientSnapshot.nombre || `Cliente #${idServicio}`,
+      telefono: clientSnapshot.telefono || null,
+      ip: clientSnapshot.ip || null,
+      planInternetName: clientSnapshot.planInternetName || null,
+      estado: clientSnapshot.estado || null,
+      estadoFacturas: clientSnapshot.estadoFacturas || null,
+      zonaNombre: clientSnapshot.zonaNombre || null,
+      direccion: clientSnapshot.direccion || null,
+      coordenadas: clientSnapshot.coordenadas || null,
+      ...gpsData,
     },
     select: { idServicio: true, nombre: true, gpsLat: true, gpsLng: true, gpsAccuracy: true, gpsCapturedAt: true, gpsCapturedBy: true },
   });
@@ -1104,13 +1118,58 @@ let mtConn = null;
 let mtConnecting = false;
 let mtLastError = null;
 
+const MT_DEFAULT_TIMEOUT_MS = parseInt(process.env.MIKROTIK_TIMEOUT_MS || '6000');
+const MT_CONNECT_RETRIES = 3;
+const MT_CONNECT_BACKOFF_MS = [500, 2000, 5000];
+
 // Wrapper que envuelve c.write con timeout. Si el MikroTik cuelga, devuelve error
 // en vez de quedarse esperando indefinido. Uso: await mtWrite(c, 5000, '/ip/arp/print')
+// Si timeoutMs es null/undefined usa MT_DEFAULT_TIMEOUT_MS.
 async function mtWrite(c, timeoutMs, ...args) {
+  const t = timeoutMs == null ? MT_DEFAULT_TIMEOUT_MS : timeoutMs;
   return await Promise.race([
     c.write(...args),
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`MikroTik timeout ${timeoutMs}ms`)), timeoutMs)),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`MikroTik timeout ${t}ms`)), t)),
   ]);
+}
+
+// Ejecuta fn() y si lanza error lo loguea con contexto y devuelve fallback.
+// Reemplaza los .catch(() => []) silenciosos para que los errores queden en logs.
+async function mtSafe(label, fallback, fn) {
+  try {
+    return await fn();
+  } catch (e) {
+    console.error(`[mikrotik] ${label} failed:`, e.message);
+    return fallback;
+  }
+}
+
+// Cache en memoria con TTL corto para resultados de lectura que se polean alto.
+// Uso: const data = await mtCached('arp', 10000, async () => { ... })
+const mtCache = new Map(); // key -> { data, expiresAt }
+async function mtCached(key, ttlMs, fn) {
+  const cached = mtCache.get(key);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.data;
+  const data = await fn();
+  mtCache.set(key, { data, expiresAt: now + ttlMs });
+  return data;
+}
+function mtInvalidate(prefix) {
+  for (const k of mtCache.keys()) {
+    if (!prefix || k.startsWith(prefix)) mtCache.delete(k);
+  }
+}
+
+// Serializa escrituras a firewall (address-list, nat, filter) para evitar race
+// conditions cuando varios admins bloquean/desbloquean clientes al mismo tiempo.
+// Las lecturas NO pasan por aca.
+let mtWriteChain = Promise.resolve();
+async function mtSerialize(fn) {
+  const next = mtWriteChain.then(fn, fn);
+  // No queremos que un rechazo rompa la cadena para futuras llamadas.
+  mtWriteChain = next.catch(() => {});
+  return next;
 }
 
 async function getMtConnection() {
@@ -1118,12 +1177,13 @@ async function getMtConnection() {
     throw new Error('MikroTik no configurado en .env');
   }
 
+  // Validar que la conexion existente sigue viva.
   if (mtConn?.connected) return mtConn;
 
   if (mtConnecting) {
-    // Esperar conexion en curso
+    // Esperar conexion en curso (hasta ~7s total: ~suma de backoffs).
     let waited = 0;
-    while (mtConnecting && waited < 5000) {
+    while (mtConnecting && waited < 8000) {
       await new Promise(r => setTimeout(r, 100));
       waited += 100;
     }
@@ -1131,19 +1191,31 @@ async function getMtConnection() {
   }
 
   mtConnecting = true;
+  let lastErr = null;
   try {
-    if (mtConn) try { await mtConn.close(); } catch {}
-    mtConn = new RouterOSAPI({
-      host: MT_HOST, user: MT_USER, password: MT_PASS, port: MT_PORT,
-      timeout: 10, keepalive: true,
-    });
-    await mtConn.connect();
-    mtLastError = null;
-    return mtConn;
-  } catch (e) {
-    mtLastError = e.message;
-    mtConn = null;
-    throw e;
+    for (let attempt = 0; attempt < MT_CONNECT_RETRIES; attempt++) {
+      try {
+        if (mtConn) try { await mtConn.close(); } catch {}
+        mtConn = new RouterOSAPI({
+          host: MT_HOST, user: MT_USER, password: MT_PASS, port: MT_PORT,
+          timeout: 10, keepalive: true,
+        });
+        await mtConn.connect();
+        mtLastError = null;
+        if (attempt > 0) console.log(`[mikrotik] reconnected on attempt ${attempt + 1}`);
+        return mtConn;
+      } catch (e) {
+        lastErr = e;
+        mtConn = null;
+        const backoff = MT_CONNECT_BACKOFF_MS[attempt] || 5000;
+        console.warn(`[mikrotik] connect attempt ${attempt + 1}/${MT_CONNECT_RETRIES} failed: ${e.message}; retry in ${backoff}ms`);
+        if (attempt < MT_CONNECT_RETRIES - 1) {
+          await new Promise(r => setTimeout(r, backoff));
+        }
+      }
+    }
+    mtLastError = lastErr?.message || 'unknown error';
+    throw lastErr || new Error('MikroTik connect failed');
   } finally {
     mtConnecting = false;
   }
@@ -1163,101 +1235,121 @@ mtRouter.get('/status', asyncHandler(async (req, res) => {
   });
 }));
 
-// System info
+// System info — cache 5s (cambia poco en escalas humanas)
 mtRouter.get('/system', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const [resource, identity, health] = await Promise.all([
-    c.write('/system/resource/print'),
-    c.write('/system/identity/print'),
-    c.write('/system/health/print').catch(() => []),
-  ]);
-  res.json({ resource: resource[0], identity: identity[0]?.name, health });
+  const data = await mtCached('system', 5000, async () => {
+    const c = await getMtConnection();
+    const [resource, identity, health] = await Promise.all([
+      mtWrite(c, null, '/system/resource/print'),
+      mtWrite(c, null, '/system/identity/print'),
+      mtSafe('system/health', [], () => mtWrite(c, null, '/system/health/print')),
+    ]);
+    return { resource: resource[0], identity: identity[0]?.name, health };
+  });
+  res.json(data);
 }));
 
-// Interfaces
+// Interfaces — cache 10s
 mtRouter.get('/interfaces', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const ifaces = await c.write('/interface/print');
+  const ifaces = await mtCached('interfaces', 10000, async () => {
+    const c = await getMtConnection();
+    return await mtWrite(c, null, '/interface/print');
+  });
   res.json(ifaces);
 }));
 
-// Traffic - bytes en tiempo real
+// Traffic - bytes en tiempo real — cache 3s (counters acumulados, lectura barata)
 mtRouter.get('/traffic', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const ifaces = await c.write('/interface/print');
-  res.json(ifaces.map(i => ({
-    name: i.name,
-    type: i.type,
-    running: i.running === 'true',
-    macAddress: i['mac-address'],
-    rxBytes: parseInt(i['rx-byte'] || '0'),
-    txBytes: parseInt(i['tx-byte'] || '0'),
-    rxPackets: parseInt(i['rx-packet'] || '0'),
-    txPackets: parseInt(i['tx-packet'] || '0'),
-  })));
+  const data = await mtCached('traffic', 3000, async () => {
+    const c = await getMtConnection();
+    const ifaces = await mtWrite(c, null, '/interface/print');
+    return ifaces.map(i => ({
+      name: i.name,
+      type: i.type,
+      running: i.running === 'true',
+      macAddress: i['mac-address'],
+      rxBytes: parseInt(i['rx-byte'] || '0'),
+      txBytes: parseInt(i['tx-byte'] || '0'),
+      rxPackets: parseInt(i['rx-packet'] || '0'),
+      txPackets: parseInt(i['tx-packet'] || '0'),
+    }));
+  });
+  res.json(data);
 }));
 
-// Monitor traffic en vivo de una interface
+// Monitor traffic en vivo de una interface (sin cache — debe ser real-time)
 mtRouter.get('/monitor/:iface', asyncHandler(async (req, res) => {
   const c = await getMtConnection();
-  const result = await c.write('/interface/monitor-traffic', '=interface=' + req.params.iface, '=once=');
+  const result = await mtWrite(c, null, '/interface/monitor-traffic', '=interface=' + req.params.iface, '=once=');
   res.json(result[0] || {});
 }));
 
-// Simple Queues - clientes con limite de banda
+// Simple Queues - clientes con limite de banda — cache 5s
 mtRouter.get('/queues', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const queues = await c.write('/queue/simple/print');
-  res.json(queues.map(q => ({
-    id: q['.id'],
-    name: q.name,
-    target: q.target,
-    maxLimit: q['max-limit'],
-    burstLimit: q['burst-limit'],
-    burstThreshold: q['burst-threshold'],
-    burstTime: q['burst-time'],
-    bytes: q.bytes,  // upload/download
-    packets: q.packets,
-    rate: q.rate,
-    disabled: q.disabled === 'true',
-  })));
+  const data = await mtCached('queues', 5000, async () => {
+    const c = await getMtConnection();
+    const queues = await mtWrite(c, null, '/queue/simple/print');
+    return queues.map(q => ({
+      id: q['.id'],
+      name: q.name,
+      target: q.target,
+      maxLimit: q['max-limit'],
+      burstLimit: q['burst-limit'],
+      burstThreshold: q['burst-threshold'],
+      burstTime: q['burst-time'],
+      bytes: q.bytes,
+      packets: q.packets,
+      rate: q.rate,
+      disabled: q.disabled === 'true',
+    }));
+  });
+  res.json(data);
 }));
 
-// Stats de queue especifica con bandwidth actual
+// Stats de queue con bandwidth actual (sin cache — es el real-time)
 mtRouter.get('/queue-stats', asyncHandler(async (req, res) => {
   const c = await getMtConnection();
-  const queues = await c.write('/queue/simple/print', '=stats=');
+  const queues = await mtWrite(c, null, '/queue/simple/print', '=stats=');
   res.json(queues);
 }));
 
-// IP Addresses
+// IP Addresses — cache 30s (cambia poco)
 mtRouter.get('/addresses', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const addrs = await c.write('/ip/address/print');
+  const addrs = await mtCached('addresses', 30000, async () => {
+    const c = await getMtConnection();
+    return await mtWrite(c, null, '/ip/address/print');
+  });
   res.json(addrs);
 }));
 
-// Active sessions PPPoE / Hotspot
+// Active sessions PPPoE / Hotspot — cache 5s
 mtRouter.get('/active-sessions', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const [pppoe, hotspot] = await Promise.all([
-    c.write('/ppp/active/print').catch(() => []),
-    c.write('/ip/hotspot/active/print').catch(() => []),
-  ]);
-  res.json({ pppoe, hotspot });
+  const data = await mtCached('active-sessions', 5000, async () => {
+    const c = await getMtConnection();
+    const [pppoe, hotspot] = await Promise.all([
+      mtSafe('ppp/active', [], () => mtWrite(c, null, '/ppp/active/print')),
+      mtSafe('hotspot/active', [], () => mtWrite(c, null, '/ip/hotspot/active/print')),
+    ]);
+    return { pppoe, hotspot };
+  });
+  res.json(data);
 }));
 
-// DHCP Leases
+// DHCP Leases — cache 15s
 mtRouter.get('/dhcp-leases', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const leases = await c.write('/ip/dhcp-server/lease/print');
+  const leases = await mtCached('dhcp-leases', 15000, async () => {
+    const c = await getMtConnection();
+    return await mtWrite(c, null, '/ip/dhcp-server/lease/print');
+  });
   res.json(leases);
 }));
 
-// ARP Table
+// ARP Table — cache 10s
 mtRouter.get('/arp', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const arp = await c.write('/ip/arp/print');
+  const arp = await mtCached('arp', 10000, async () => {
+    const c = await getMtConnection();
+    return await mtWrite(c, null, '/ip/arp/print');
+  });
   res.json(arp);
 }));
 
@@ -1268,7 +1360,7 @@ const bandwidthCache = new Map(); // ip → { upload, download, timestamp }
 mtRouter.get('/clients-live', asyncHandler(async (req, res) => {
   const c = await getMtConnection();
 
-  // 1. Get queues with stats (incluye rate actual calculado por MikroTik) - timeout 8s
+  // 1. Get queues with stats (incluye rate actual calculado por MikroTik)
   const queues = await mtWrite(c, 8000, '/queue/simple/print', '=stats=');
 
   // 2. Get clients from local DB cache (mas rapido que pegarle a WispHub)
@@ -1384,7 +1476,7 @@ mtRouter.get('/clients-live', asyncHandler(async (req, res) => {
 // Top consumers (queue ordenadas por bytes)
 mtRouter.get('/top-consumers', asyncHandler(async (req, res) => {
   const c = await getMtConnection();
-  const queues = await c.write('/queue/simple/print');
+  const queues = await mtWrite(c, null, '/queue/simple/print');
   const consumers = queues.map(q => {
     const bytes = (q.bytes || '0/0').split('/');
     return {
@@ -1400,11 +1492,13 @@ mtRouter.get('/top-consumers', asyncHandler(async (req, res) => {
   res.json(consumers.slice(0, parseInt(req.query.limit) || 20));
 }));
 
-// Ping desde el MikroTik
+// Ping desde el MikroTik (timeout proporcional: count * 1500ms + 2s margen)
 mtRouter.post('/ping', asyncHandler(async (req, res) => {
   const c = await getMtConnection();
   const { address, count = 4 } = req.body;
-  const result = await c.write('/ping', '=address=' + address, '=count=' + count);
+  const safeCount = Math.min(Math.max(parseInt(count) || 4, 1), 20);
+  const timeout = safeCount * 1500 + 2000;
+  const result = await mtWrite(c, timeout, '/ping', '=address=' + address, '=count=' + safeCount);
   res.json(result);
 }));
 
@@ -1436,7 +1530,7 @@ const LIST_MOROSOS = 'morosos-crm';
 const LIST_BLOQUEADOS = 'bloqueados-crm';
 
 async function findAddressListEntry(c, list, ip) {
-  const entries = await c.write(
+  const entries = await mtWrite(c, null,
     '/ip/firewall/address-list/print',
     `?list=${list}`,
     `?address=${ip}`,
@@ -1445,47 +1539,55 @@ async function findAddressListEntry(c, list, ip) {
 }
 
 async function addToAddressList(c, list, ip, comment) {
-  const existing = await findAddressListEntry(c, list, ip);
-  if (existing) return { alreadyIn: true, id: existing['.id'] };
-  const res = await c.write(
-    '/ip/firewall/address-list/add',
-    `=list=${list}`,
-    `=address=${ip}`,
-    `=comment=${comment}`,
-  );
-  return { alreadyIn: false, id: res[0]?.ret || null };
+  return mtSerialize(async () => {
+    const existing = await findAddressListEntry(c, list, ip);
+    if (existing) return { alreadyIn: true, id: existing['.id'] };
+    const res = await mtWrite(c, null,
+      '/ip/firewall/address-list/add',
+      `=list=${list}`,
+      `=address=${ip}`,
+      `=comment=${comment}`,
+    );
+    mtInvalidate('blocklist:');
+    return { alreadyIn: false, id: res[0]?.ret || null };
+  });
 }
 
 async function removeFromAddressList(c, list, ip) {
-  const existing = await findAddressListEntry(c, list, ip);
-  if (!existing) return { wasIn: false };
-  await c.write(
-    '/ip/firewall/address-list/remove',
-    `=.id=${existing['.id']}`,
-  );
-  return { wasIn: true };
+  return mtSerialize(async () => {
+    const existing = await findAddressListEntry(c, list, ip);
+    if (!existing) return { wasIn: false };
+    await mtWrite(c, null,
+      '/ip/firewall/address-list/remove',
+      `=.id=${existing['.id']}`,
+    );
+    mtInvalidate('blocklist:');
+    return { wasIn: true };
+  });
 }
 
 async function findRuleByComment(c, path, comment) {
-  const rules = await c.write(`${path}/print`, `?comment=${comment}`);
+  const rules = await mtWrite(c, null, `${path}/print`, `?comment=${comment}`);
   return rules[0] || null;
 }
 
 async function ensureNatRedirect(c, list, comment, captive) {
-  const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
-  if (existing) return { action: 'exists', id: existing['.id'] };
-  const res = await c.write(
-    '/ip/firewall/nat/add',
-    '=chain=dstnat',
-    `=src-address-list=${list}`,
-    '=protocol=tcp',
-    '=dst-port=80',
-    '=action=dst-nat',
-    `=to-addresses=${captive.host}`,
-    `=to-ports=${captive.port}`,
-    `=comment=${comment}`,
-  );
-  return { action: 'created', id: res[0]?.ret || null };
+  return mtSerialize(async () => {
+    const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
+    if (existing) return { action: 'exists', id: existing['.id'] };
+    const res = await mtWrite(c, null,
+      '/ip/firewall/nat/add',
+      '=chain=dstnat',
+      `=src-address-list=${list}`,
+      '=protocol=tcp',
+      '=dst-port=80',
+      '=action=dst-nat',
+      `=to-addresses=${captive.host}`,
+      `=to-ports=${captive.port}`,
+      `=comment=${comment}`,
+    );
+    return { action: 'created', id: res[0]?.ret || null };
+  });
 }
 
 async function ensureSurveySoftPortalNat(c) {
@@ -1495,46 +1597,50 @@ async function ensureSurveySoftPortalNat(c) {
   const serverIp = resolved.address;
   const port = 80;
   const comment = 'WISP RD - Encuesta forzada (HTTP)';
-  const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
-  if (existing) {
-    if (existing['to-addresses'] !== serverIp || existing['to-ports'] !== String(port) || existing.disabled === 'true') {
-      await c.write(
-        '/ip/firewall/nat/set',
-        `=.id=${existing['.id']}`,
-        `=to-addresses=${serverIp}`,
-        `=to-ports=${port}`,
-        '=disabled=no',
-      );
-      return { action: 'updated', id: existing['.id'], serverIp, port };
+  return mtSerialize(async () => {
+    const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
+    if (existing) {
+      if (existing['to-addresses'] !== serverIp || existing['to-ports'] !== String(port) || existing.disabled === 'true') {
+        await mtWrite(c, null,
+          '/ip/firewall/nat/set',
+          `=.id=${existing['.id']}`,
+          `=to-addresses=${serverIp}`,
+          `=to-ports=${port}`,
+          '=disabled=no',
+        );
+        return { action: 'updated', id: existing['.id'], serverIp, port };
+      }
+      return { action: 'exists', id: existing['.id'], serverIp, port };
     }
-    return { action: 'exists', id: existing['.id'], serverIp, port };
-  }
-  const res = await c.write(
-    '/ip/firewall/nat/add',
-    '=chain=dstnat',
-    '=protocol=tcp',
-    '=dst-port=80',
-    `=src-address-list=${LIST_SURVEY}`,
-    '=action=dst-nat',
-    `=to-addresses=${serverIp}`,
-    `=to-ports=${port}`,
-    `=comment=${comment}`,
-  );
-  return { action: 'created', id: res[0]?.ret || null, serverIp, port };
+    const res = await mtWrite(c, null,
+      '/ip/firewall/nat/add',
+      '=chain=dstnat',
+      '=protocol=tcp',
+      '=dst-port=80',
+      `=src-address-list=${LIST_SURVEY}`,
+      '=action=dst-nat',
+      `=to-addresses=${serverIp}`,
+      `=to-ports=${port}`,
+      `=comment=${comment}`,
+    );
+    return { action: 'created', id: res[0]?.ret || null, serverIp, port };
+  });
 }
 
 async function ensureFilterRule(c, comment, params, options) {
-  const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
-  if (existing) return { action: 'exists', id: existing['.id'] };
-  const args = ['/ip/firewall/filter/add', `=comment=${comment}`];
-  for (const [k, v] of Object.entries(params)) args.push(`=${k}=${v}`);
-  if (options?.placeAtTop) {
-    const all = await c.write('/ip/firewall/filter/print');
-    const firstId = all[0]?.['.id'];
-    if (firstId) args.push(`=place-before=${firstId}`);
-  }
-  const res = await c.write(...args);
-  return { action: 'created', id: res[0]?.ret || null };
+  return mtSerialize(async () => {
+    const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
+    if (existing) return { action: 'exists', id: existing['.id'] };
+    const args = ['/ip/firewall/filter/add', `=comment=${comment}`];
+    for (const [k, v] of Object.entries(params)) args.push(`=${k}=${v}`);
+    if (options?.placeAtTop) {
+      const all = await mtWrite(c, null, '/ip/firewall/filter/print');
+      const firstId = all[0]?.['.id'];
+      if (firstId) args.push(`=place-before=${firstId}`);
+    }
+    const res = await mtWrite(c, null, ...args);
+    return { action: 'created', id: res[0]?.ret || null };
+  });
 }
 
 async function resolveCaptiveTarget() {
@@ -1548,53 +1654,57 @@ async function resolveCaptiveTarget() {
 }
 
 async function ensureCaptiveNatRule(c, list, comment, target) {
-  const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
-  if (existing) {
-    if (
-      existing['to-addresses'] !== target.address ||
-      existing['to-ports'] !== String(target.port) ||
-      existing.disabled === 'true'
-    ) {
-      await c.write(
-        '/ip/firewall/nat/set',
-        `=.id=${existing['.id']}`,
-        `=to-addresses=${target.address}`,
-        `=to-ports=${target.port}`,
-        '=disabled=no',
-      );
-      return { action: 'updated', id: existing['.id'] };
+  return mtSerialize(async () => {
+    const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
+    if (existing) {
+      if (
+        existing['to-addresses'] !== target.address ||
+        existing['to-ports'] !== String(target.port) ||
+        existing.disabled === 'true'
+      ) {
+        await mtWrite(c, null,
+          '/ip/firewall/nat/set',
+          `=.id=${existing['.id']}`,
+          `=to-addresses=${target.address}`,
+          `=to-ports=${target.port}`,
+          '=disabled=no',
+        );
+        return { action: 'updated', id: existing['.id'] };
+      }
+      return { action: 'exists', id: existing['.id'] };
     }
-    return { action: 'exists', id: existing['.id'] };
-  }
-  const res = await c.write(
-    '/ip/firewall/nat/add',
-    '=chain=dstnat',
-    `=src-address-list=${list}`,
-    '=protocol=tcp',
-    '=dst-port=80',
-    '=action=dst-nat',
-    `=to-addresses=${target.address}`,
-    `=to-ports=${target.port}`,
-    `=comment=${comment}`,
-  );
-  return { action: 'created', id: res[0]?.ret || null };
+    const res = await mtWrite(c, null,
+      '/ip/firewall/nat/add',
+      '=chain=dstnat',
+      `=src-address-list=${list}`,
+      '=protocol=tcp',
+      '=dst-port=80',
+      '=action=dst-nat',
+      `=to-addresses=${target.address}`,
+      `=to-ports=${target.port}`,
+      `=comment=${comment}`,
+    );
+    return { action: 'created', id: res[0]?.ret || null };
+  });
 }
 
 async function ensureCaptiveFilterRule(c, comment, params, options) {
-  const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
-  if (existing) {
-    const changes = [];
-    for (const [k, v] of Object.entries(params)) {
-      if (existing[k] !== String(v)) changes.push(`=${k}=${v}`);
+  return mtSerialize(async () => {
+    const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
+    if (existing) {
+      const changes = [];
+      for (const [k, v] of Object.entries(params)) {
+        if (existing[k] !== String(v)) changes.push(`=${k}=${v}`);
+      }
+      if (existing.disabled === 'true') changes.push('=disabled=no');
+      if (changes.length) {
+        await mtWrite(c, null, '/ip/firewall/filter/set', `=.id=${existing['.id']}`, ...changes);
+        return { action: 'updated', id: existing['.id'] };
+      }
+      return { action: 'exists', id: existing['.id'] };
     }
-    if (existing.disabled === 'true') changes.push('=disabled=no');
-    if (changes.length) {
-      await c.write('/ip/firewall/filter/set', `=.id=${existing['.id']}`, ...changes);
-      return { action: 'updated', id: existing['.id'] };
-    }
-    return { action: 'exists', id: existing['.id'] };
-  }
-  return ensureFilterRule(c, comment, params, options);
+    return ensureFilterRule(c, comment, params, options);
+  });
 }
 
 async function ensureClientBlockCaptiveRules(c) {
@@ -1630,7 +1740,7 @@ async function inspectClientBlockCaptiveRules(c) {
     findRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-allow-dns'),
     findRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-allow-captive'),
     findRuleByComment(c, '/ip/firewall/filter', 'bloqueados-crm-drop-rest'),
-    c.write('/ip/firewall/address-list/print').catch(() => []),
+    mtSafe('address-list/print', [], () => mtWrite(c, null, '/ip/firewall/address-list/print')),
   ]);
   const ruleState = (rule, expected = {}) => {
     if (!rule) return { exists: false, ok: false };
@@ -1662,44 +1772,53 @@ async function inspectClientBlockCaptiveRules(c) {
 
 // Cierra conexiones activas con src=ip (necesario para que el drop tome efecto inmediato)
 async function killConnectionsFrom(c, ip) {
-  try {
-    const conns = await c.write('/ip/firewall/connection/print');
-    let removed = 0;
-    for (const conn of conns) {
-      const src = (conn['src-address'] || '').split(':')[0];
-      const replSrc = (conn['reply-src-address'] || '').split(':')[0];
-      if (src === ip || replSrc === ip) {
-        await c.write('/ip/firewall/connection/remove', `=.id=${conn['.id']}`).catch(() => {});
-        removed += 1;
+  return mtSerialize(async () => {
+    try {
+      const conns = await mtWrite(c, null, '/ip/firewall/connection/print');
+      let removed = 0;
+      for (const conn of conns) {
+        const src = (conn['src-address'] || '').split(':')[0];
+        const replSrc = (conn['reply-src-address'] || '').split(':')[0];
+        if (src === ip || replSrc === ip) {
+          await mtSafe(`connection/remove ${ip}`, null, () =>
+            mtWrite(c, null, '/ip/firewall/connection/remove', `=.id=${conn['.id']}`));
+          removed += 1;
+        }
       }
+      return removed;
+    } catch (e) {
+      console.error('[mikrotik] killConnectionsFrom failed:', e.message);
+      return 0;
     }
-    return removed;
-  } catch {
-    return 0;
-  }
+  });
 }
 
 const blockRouter = express.Router();
 blockRouter.use(authMiddleware);
 blockRouter.use(requireRole(['admin']));
 
-// Listar IPs en cada lista
+// Listar IPs en cada lista — cache 5s (admin polling es frecuente)
 blockRouter.get('/list', asyncHandler(async (req, res) => {
-  const c = await getMtConnection();
-  const all = await c.write('/ip/firewall/address-list/print');
-  const morosos = all.filter((e) => e.list === LIST_MOROSOS);
-  const bloqueados = all.filter((e) => e.list === LIST_BLOQUEADOS);
-  res.json({
-    morosos: morosos.map((e) => ({ id: e['.id'], address: e.address, comment: e.comment || '' })),
-    bloqueados: bloqueados.map((e) => ({ id: e['.id'], address: e.address, comment: e.comment || '' })),
+  const data = await mtCached('blocklist:list', 5000, async () => {
+    const c = await getMtConnection();
+    const all = await mtWrite(c, null, '/ip/firewall/address-list/print');
+    const morosos = all.filter((e) => e.list === LIST_MOROSOS);
+    const bloqueados = all.filter((e) => e.list === LIST_BLOQUEADOS);
+    return {
+      morosos: morosos.map((e) => ({ id: e['.id'], address: e.address, comment: e.comment || '' })),
+      bloqueados: bloqueados.map((e) => ({ id: e['.id'], address: e.address, comment: e.comment || '' })),
+    };
   });
+  res.json(data);
 }));
 
 async function removeRuleByComment(c, path, comment) {
-  const r = await findRuleByComment(c, path, comment);
-  if (!r) return false;
-  await c.write(`${path}/remove`, `=.id=${r['.id']}`);
-  return true;
+  return mtSerialize(async () => {
+    const r = await findRuleByComment(c, path, comment);
+    if (!r) return false;
+    await mtWrite(c, null, `${path}/remove`, `=.id=${r['.id']}`);
+    return true;
+  });
 }
 
 // Crear las 5 reglas (NAT x2 + filter x3 para bloqueo total)
@@ -2982,7 +3101,7 @@ surveyRouter.get('/stats', asyncHandler(async (req, res) => {
 // AUTO-SYNC LOOP (cada 2 min: WispHub + MikroTik -> SQLite)
 // ═══════════════════════════════════════════════════════════════
 
-const SYNC_INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_MS || '120000');
+const SYNC_INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_MS || '60000');
 let syncTimer = null;
 let lastSyncAt = null;
 let lastSyncResult = null;
@@ -3147,13 +3266,26 @@ syncRouter.post('/run', asyncHandler(async (req, res) => {
 }));
 app.use('/sync', syncRouter);
 
+let syncInProgress = false;
 function startSyncLoop() {
   if (syncTimer) return;
   console.log(`[sync] starting loop. interval=${SYNC_INTERVAL_MS}ms`);
-  syncOnce().catch((e) => console.error('[sync] first run error:', e.message));
-  syncTimer = setInterval(() => {
-    syncOnce().catch((e) => console.error('[sync] tick error:', e.message));
-  }, SYNC_INTERVAL_MS);
+  const safeSync = async () => {
+    if (syncInProgress) {
+      console.warn('[sync] tick skipped: previous run still in progress');
+      return;
+    }
+    syncInProgress = true;
+    try {
+      await syncOnce();
+    } catch (e) {
+      console.error('[sync] tick error:', e.message);
+    } finally {
+      syncInProgress = false;
+    }
+  };
+  safeSync();
+  syncTimer = setInterval(safeSync, SYNC_INTERVAL_MS);
 }
 
 // ─── WHATSAPP BAILEYS ───
@@ -4058,6 +4190,636 @@ opsRouter.post('/repair-captive', requireRole(['admin']), asyncHandler(async (re
   res.json({ ok: true, rules, status: await inspectClientBlockCaptiveRules(c) });
 }));
 app.use('/ops', opsRouter);
+
+// ═══════════════════════════════════════════════════════════════
+// INVENTARIO + GASTOS + NOMINA (CRUD)
+// ═══════════════════════════════════════════════════════════════
+
+// Helper para sumar items de compra
+function sumPurchaseItems(items) {
+  return (items || []).reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unitPrice) || 0), 0);
+}
+
+// Validar que un valor numerico sea finito (no NaN, no Infinity, no negativo donde no aplica)
+function ensureNumber(v, { min = -Infinity, max = Infinity, label = 'value' } = {}) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < min || n > max) {
+    const err = new Error(`${label} debe ser un numero entre ${min} y ${max}`);
+    err.status = 400;
+    throw err;
+  }
+  return n;
+}
+
+const ALLOWED_UNITS = ['u', 'm', 'kg', 'caja', 'rollo'];
+const ALLOWED_EQUIP_CATEGORIES = ['wifi', 'cable', 'onu', 'antena', 'otro'];
+const ALLOWED_EXPENSE_CATEGORIES = ['inventario', 'nomina', 'servicios', 'transporte', 'otros'];
+const ALLOWED_PAYROLL_STATUS = ['pending', 'paid', 'cancelled'];
+const ALLOWED_EQUIP_STATUS = ['stock', 'assigned', 'rma', 'lost', 'retired'];
+
+// ─── EquipmentType ───
+const equipTypeRouter = express.Router();
+equipTypeRouter.use(authMiddleware);
+
+equipTypeRouter.get('/', asyncHandler(async (req, res) => {
+  const types = await prisma.equipmentType.findMany({
+    orderBy: { name: 'asc' },
+    include: { _count: { select: { equipment: true } } },
+  });
+  res.json(types);
+}));
+
+equipTypeRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { name, category, unit, description } = req.body || {};
+  if (!name || !category) return res.status(400).json({ error: 'name y category son requeridos' });
+  if (!ALLOWED_EQUIP_CATEGORIES.includes(category)) return res.status(400).json({ error: `category invalida (permitidas: ${ALLOWED_EQUIP_CATEGORIES.join(', ')})` });
+  if (unit && !ALLOWED_UNITS.includes(unit)) return res.status(400).json({ error: `unit invalida (permitidas: ${ALLOWED_UNITS.join(', ')})` });
+  const created = await prisma.equipmentType.create({
+    data: { name: String(name).trim(), category: String(category).trim(), unit: unit || 'u', description: description || null },
+  });
+  await logActivity(req, { action: 'create_equipment_type', entityType: 'equipmentType', entityId: String(created.id), entityName: created.name });
+  res.json(created);
+}));
+
+equipTypeRouter.put('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { name, category, unit, description } = req.body || {};
+  if (category !== undefined && !ALLOWED_EQUIP_CATEGORIES.includes(category)) return res.status(400).json({ error: 'category invalida' });
+  if (unit !== undefined && !ALLOWED_UNITS.includes(unit)) return res.status(400).json({ error: 'unit invalida' });
+  const updated = await prisma.equipmentType.update({
+    where: { id },
+    data: {
+      ...(name !== undefined && { name: String(name).trim() }),
+      ...(category !== undefined && { category: String(category).trim() }),
+      ...(unit !== undefined && { unit }),
+      ...(description !== undefined && { description }),
+    },
+  });
+  res.json(updated);
+}));
+
+equipTypeRouter.delete('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  await prisma.equipmentType.delete({ where: { id } });
+  res.json({ ok: true });
+}));
+
+app.use('/inventory/types', equipTypeRouter);
+
+// ─── Purchase + auto-generated Expense + auto-generated Equipment rows ───
+const purchaseRouter = express.Router();
+purchaseRouter.use(authMiddleware);
+
+purchaseRouter.get('/', asyncHandler(async (req, res) => {
+  const purchases = await prisma.purchase.findMany({
+    orderBy: { purchasedAt: 'desc' },
+    include: {
+      items: { include: { type: true } },
+      _count: { select: { equipment: true } },
+    },
+    take: Math.min(parseInt(req.query.limit) || 100, 500),
+  });
+  res.json(purchases);
+}));
+
+purchaseRouter.get('/:id', asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const purchase = await prisma.purchase.findUnique({
+    where: { id },
+    include: {
+      items: { include: { type: true } },
+      equipment: { include: { type: true, client: { select: { idServicio: true, nombre: true } } } },
+    },
+  });
+  if (!purchase) return res.status(404).json({ error: 'not found' });
+  res.json(purchase);
+}));
+
+purchaseRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { supplier, invoiceRef, purchasedAt, notes, items = [], createEquipment = true } = req.body || {};
+  if (!purchasedAt) return res.status(400).json({ error: 'purchasedAt es requerido' });
+  if (!Array.isArray(items) || items.length === 0) return res.status(400).json({ error: 'items es requerido' });
+
+  const total = sumPurchaseItems(items);
+  const username = req.session?.username || null;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const purchase = await tx.purchase.create({
+      data: {
+        supplier: supplier || null,
+        invoiceRef: invoiceRef || null,
+        purchasedAt: new Date(purchasedAt),
+        notes: notes || null,
+        total,
+        createdBy: username,
+        items: {
+          create: items.map((it) => ({
+            typeId: parseInt(it.typeId),
+            quantity: Number(it.quantity) || 1,
+            unitPrice: Number(it.unitPrice) || 0,
+            subtotal: (Number(it.quantity) || 1) * (Number(it.unitPrice) || 0),
+            notes: it.notes || null,
+          })),
+        },
+      },
+      include: { items: { include: { type: true } } },
+    });
+
+    // Auto-crear Equipment por unidad (solo para items unitarios, no metros/kg)
+    if (createEquipment) {
+      for (const item of items) {
+        const type = await tx.equipmentType.findUnique({ where: { id: parseInt(item.typeId) } });
+        if (!type) continue;
+        // Solo crear unidades rastreables para tipos unitarios (unit='u'). Cables (m) NO se traquean por unidad.
+        if (type.unit !== 'u') continue;
+        const qty = Math.floor(Number(item.quantity) || 0);
+        const serials = Array.isArray(item.serials) ? item.serials : [];
+        for (let i = 0; i < qty; i++) {
+          await tx.equipment.create({
+            data: {
+              typeId: type.id,
+              serialNumber: serials[i] || null,
+              brand: item.brand || null,
+              model: item.model || null,
+              unitCost: Number(item.unitPrice) || 0,
+              purchaseId: purchase.id,
+              status: 'stock',
+            },
+          });
+        }
+      }
+    }
+
+    // Auto-crear Expense ligado
+    await tx.expense.create({
+      data: {
+        category: 'inventario',
+        description: `Compra ${invoiceRef || ''} ${supplier ? `- ${supplier}` : ''}`.trim() || 'Compra de inventario',
+        amount: total,
+        expenseDate: new Date(purchasedAt),
+        purchaseId: purchase.id,
+        createdBy: username,
+      },
+    });
+
+    return purchase;
+  });
+
+  await logActivity(req, { action: 'create_purchase', entityType: 'purchase', entityId: String(result.id), entityName: supplier || invoiceRef || `#${result.id}`, details: { total, items: items.length } });
+  res.json(result);
+}));
+
+purchaseRouter.delete('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  await prisma.$transaction(async (tx) => {
+    await tx.expense.deleteMany({ where: { purchaseId: id } });
+    await tx.equipment.updateMany({ where: { purchaseId: id }, data: { purchaseId: null } });
+    await tx.purchase.delete({ where: { id } });
+  });
+  res.json({ ok: true });
+}));
+
+app.use('/inventory/purchases', purchaseRouter);
+
+// ─── Equipment (CRUD individual + asignación a cliente) ───
+const equipmentRouter = express.Router();
+equipmentRouter.use(authMiddleware);
+
+equipmentRouter.get('/', asyncHandler(async (req, res) => {
+  const { status, typeId, clientId, q } = req.query;
+  const where = {};
+  if (status) where.status = status;
+  if (typeId) where.typeId = parseInt(typeId);
+  if (clientId) where.assignedToClientId = parseInt(clientId);
+  if (q) {
+    where.OR = [
+      { serialNumber: { contains: q, mode: 'insensitive' } },
+      { macAddress: { contains: q, mode: 'insensitive' } },
+      { brand: { contains: q, mode: 'insensitive' } },
+      { model: { contains: q, mode: 'insensitive' } },
+    ];
+  }
+  const equipment = await prisma.equipment.findMany({
+    where,
+    orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    include: {
+      type: true,
+      client: { select: { idServicio: true, nombre: true, telefono: true } },
+    },
+    take: Math.min(parseInt(req.query.limit) || 200, 1000),
+  });
+  res.json(equipment);
+}));
+
+equipmentRouter.get('/stats', asyncHandler(async (req, res) => {
+  const [total, byStatus, byType, totalCost] = await Promise.all([
+    prisma.equipment.count(),
+    prisma.equipment.groupBy({ by: ['status'], _count: { _all: true } }),
+    prisma.equipment.groupBy({ by: ['typeId'], _count: { _all: true } }),
+    prisma.equipment.aggregate({ _sum: { unitCost: true } }),
+  ]);
+  res.json({
+    total,
+    byStatus: byStatus.reduce((a, b) => ({ ...a, [b.status]: b._count._all }), {}),
+    byType,
+    totalCostInStock: totalCost._sum.unitCost || 0,
+  });
+}));
+
+equipmentRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { typeId, serialNumber, macAddress, brand, model, unitCost, notes } = req.body || {};
+  if (!typeId) return res.status(400).json({ error: 'typeId es requerido' });
+  const cost = unitCost == null ? 0 : ensureNumber(unitCost, { min: 0, max: 1e9, label: 'unitCost' });
+  const created = await prisma.equipment.create({
+    data: {
+      typeId: parseInt(typeId),
+      serialNumber: serialNumber || null,
+      macAddress: macAddress || null,
+      brand: brand || null,
+      model: model || null,
+      unitCost: cost,
+      notes: notes || null,
+      status: 'stock',
+    },
+    include: { type: true },
+  });
+  await logActivity(req, { action: 'create_equipment', entityType: 'equipment', entityId: String(created.id), entityName: created.serialNumber || created.model || `#${created.id}` });
+  res.json(created);
+}));
+
+equipmentRouter.put('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { serialNumber, macAddress, brand, model, unitCost, notes, status } = req.body || {};
+  if (status !== undefined && !ALLOWED_EQUIP_STATUS.includes(status)) {
+    return res.status(400).json({ error: `status invalido (permitidos: ${ALLOWED_EQUIP_STATUS.join(', ')})` });
+  }
+  const updated = await prisma.equipment.update({
+    where: { id },
+    data: {
+      ...(serialNumber !== undefined && { serialNumber }),
+      ...(macAddress !== undefined && { macAddress }),
+      ...(brand !== undefined && { brand }),
+      ...(model !== undefined && { model }),
+      ...(unitCost !== undefined && { unitCost: ensureNumber(unitCost, { min: 0, max: 1e9, label: 'unitCost' }) }),
+      ...(notes !== undefined && { notes }),
+      ...(status !== undefined && { status }),
+    },
+    include: { type: true },
+  });
+  res.json(updated);
+}));
+
+equipmentRouter.post('/:id/assign', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { clientId, notes } = req.body || {};
+  if (!clientId) return res.status(400).json({ error: 'clientId es requerido' });
+  const username = req.session?.username || null;
+  const updated = await prisma.equipment.update({
+    where: { id },
+    data: {
+      assignedToClientId: parseInt(clientId),
+      assignedAt: new Date(),
+      assignedBy: username,
+      installNotes: notes || null,
+      status: 'assigned',
+    },
+    include: { type: true, client: { select: { idServicio: true, nombre: true } } },
+  });
+  await logActivity(req, { action: 'assign_equipment', entityType: 'equipment', entityId: String(id), entityName: updated.serialNumber || updated.model || `#${id}`, details: { clientId } });
+  res.json(updated);
+}));
+
+equipmentRouter.post('/:id/unassign', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const updated = await prisma.equipment.update({
+    where: { id },
+    data: { assignedToClientId: null, assignedAt: null, assignedBy: null, status: 'stock' },
+  });
+  await logActivity(req, { action: 'unassign_equipment', entityType: 'equipment', entityId: String(id) });
+  res.json(updated);
+}));
+
+equipmentRouter.delete('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  await prisma.equipment.delete({ where: { id } });
+  res.json({ ok: true });
+}));
+
+app.use('/inventory/equipment', equipmentRouter);
+
+// Equipos de un cliente especifico (atajo)
+app.get('/clients/:idServicio/equipment', authMiddleware, asyncHandler(async (req, res) => {
+  const idServicio = parseInt(req.params.idServicio);
+  const items = await prisma.equipment.findMany({
+    where: { assignedToClientId: idServicio },
+    include: { type: true },
+    orderBy: { assignedAt: 'desc' },
+  });
+  res.json(items);
+}));
+
+// ─── Expenses ───
+const expensesRouter = express.Router();
+expensesRouter.use(authMiddleware);
+
+expensesRouter.get('/', asyncHandler(async (req, res) => {
+  const { category, from, to, clientId } = req.query;
+  const where = {};
+  if (category) where.category = category;
+  if (clientId) where.clientIdServicio = parseInt(clientId);
+  if (from || to) {
+    where.expenseDate = {};
+    if (from) where.expenseDate.gte = new Date(from);
+    if (to) where.expenseDate.lte = new Date(to);
+  }
+  const expenses = await prisma.expense.findMany({
+    where,
+    orderBy: { expenseDate: 'desc' },
+    include: {
+      purchase: { select: { id: true, supplier: true, invoiceRef: true } },
+      payroll: { select: { id: true, period: true, employee: { select: { fullName: true } } } },
+      client: { select: { idServicio: true, nombre: true } },
+    },
+    take: Math.min(parseInt(req.query.limit) || 200, 1000),
+  });
+  res.json(expenses);
+}));
+
+expensesRouter.get('/stats', asyncHandler(async (req, res) => {
+  const { from, to } = req.query;
+  const where = {};
+  if (from || to) {
+    where.expenseDate = {};
+    if (from) where.expenseDate.gte = new Date(from);
+    if (to) where.expenseDate.lte = new Date(to);
+  }
+  const [total, byCategory] = await Promise.all([
+    prisma.expense.aggregate({ where, _sum: { amount: true }, _count: { _all: true } }),
+    prisma.expense.groupBy({ where, by: ['category'], _sum: { amount: true }, _count: { _all: true } }),
+  ]);
+  // byMonth: agregamos en memoria para evitar SQL raw acoplado al dialecto
+  const recent = await prisma.expense.findMany({
+    where,
+    select: { amount: true, expenseDate: true },
+    orderBy: { expenseDate: 'desc' },
+    take: 5000,
+  });
+  const monthMap = new Map();
+  for (const e of recent) {
+    const k = e.expenseDate.toISOString().slice(0, 7);
+    const cur = monthMap.get(k) || { month: k, total: 0, count: 0 };
+    cur.total += e.amount;
+    cur.count += 1;
+    monthMap.set(k, cur);
+  }
+  const byMonth = Array.from(monthMap.values()).sort((a, b) => b.month.localeCompare(a.month)).slice(0, 12);
+  res.json({
+    total: total._sum.amount || 0,
+    count: total._count._all,
+    byCategory,
+    byMonth,
+  });
+}));
+
+expensesRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { category, description, amount, expenseDate, paymentMethod, reference, clientIdServicio, notes } = req.body || {};
+  if (!category || !description || amount == null || !expenseDate) {
+    return res.status(400).json({ error: 'category, description, amount, expenseDate son requeridos' });
+  }
+  if (!ALLOWED_EXPENSE_CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `category invalida (permitidas: ${ALLOWED_EXPENSE_CATEGORIES.join(', ')})` });
+  }
+  const safeAmount = ensureNumber(amount, { min: 0, max: 1e12, label: 'amount' });
+  const date = new Date(expenseDate);
+  if (Number.isNaN(date.getTime())) return res.status(400).json({ error: 'expenseDate invalida' });
+  const created = await prisma.expense.create({
+    data: {
+      category, description: String(description).trim(), amount: safeAmount,
+      expenseDate: date,
+      paymentMethod: paymentMethod || null,
+      reference: reference || null,
+      clientIdServicio: clientIdServicio ? parseInt(clientIdServicio) : null,
+      notes: notes || null,
+      createdBy: req.session?.username || null,
+    },
+  });
+  await logActivity(req, { action: 'create_expense', entityType: 'expense', entityId: String(created.id), entityName: description, details: { amount: safeAmount, category } });
+  res.json(created);
+}));
+
+expensesRouter.put('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const body = req.body || {};
+  if (body.category !== undefined && !ALLOWED_EXPENSE_CATEGORIES.includes(body.category)) {
+    return res.status(400).json({ error: 'category invalida' });
+  }
+  const data = {};
+  for (const k of ['category', 'description', 'paymentMethod', 'reference', 'notes']) {
+    if (body[k] !== undefined) data[k] = body[k];
+  }
+  if (body.amount !== undefined) {
+    data.amount = ensureNumber(body.amount, { min: 0, max: 1e12, label: 'amount' });
+  }
+  if (body.expenseDate !== undefined) {
+    const d = new Date(body.expenseDate);
+    if (Number.isNaN(d.getTime())) return res.status(400).json({ error: 'expenseDate invalida' });
+    data.expenseDate = d;
+  }
+  if (body.clientIdServicio !== undefined) data.clientIdServicio = body.clientIdServicio ? parseInt(body.clientIdServicio) : null;
+  const updated = await prisma.expense.update({ where: { id }, data });
+  res.json(updated);
+}));
+
+expensesRouter.delete('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  await prisma.expense.delete({ where: { id } });
+  res.json({ ok: true });
+}));
+
+app.use('/expenses', expensesRouter);
+
+// ─── Employees + Payroll ───
+const employeesRouter = express.Router();
+employeesRouter.use(authMiddleware);
+
+employeesRouter.get('/', asyncHandler(async (req, res) => {
+  const employees = await prisma.employee.findMany({
+    orderBy: [{ active: 'desc' }, { fullName: 'asc' }],
+    include: { _count: { select: { payroll: true } } },
+  });
+  res.json(employees);
+}));
+
+employeesRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { fullName, documentId, position, email, phone, baseSalary, hiredAt, notes } = req.body || {};
+  if (!fullName) return res.status(400).json({ error: 'fullName es requerido' });
+  const created = await prisma.employee.create({
+    data: {
+      fullName: String(fullName).trim(),
+      documentId: documentId || null,
+      position: position || null,
+      email: email || null,
+      phone: phone || null,
+      baseSalary: Number(baseSalary) || 0,
+      hiredAt: hiredAt ? new Date(hiredAt) : null,
+      notes: notes || null,
+    },
+  });
+  await logActivity(req, { action: 'create_employee', entityType: 'employee', entityId: String(created.id), entityName: fullName });
+  res.json(created);
+}));
+
+employeesRouter.put('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const body = req.body || {};
+  const data = {};
+  for (const k of ['fullName', 'documentId', 'position', 'email', 'phone', 'notes']) {
+    if (body[k] !== undefined) data[k] = body[k];
+  }
+  if (body.baseSalary !== undefined) data.baseSalary = Number(body.baseSalary);
+  if (body.hiredAt !== undefined) data.hiredAt = body.hiredAt ? new Date(body.hiredAt) : null;
+  if (body.terminatedAt !== undefined) data.terminatedAt = body.terminatedAt ? new Date(body.terminatedAt) : null;
+  if (body.active !== undefined) data.active = !!body.active;
+  const updated = await prisma.employee.update({ where: { id }, data });
+  res.json(updated);
+}));
+
+employeesRouter.delete('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  // No borrar empleado con nomina historica -- desactivar
+  const count = await prisma.payrollEntry.count({ where: { employeeId: id } });
+  if (count > 0) {
+    await prisma.employee.update({ where: { id }, data: { active: false, terminatedAt: new Date() } });
+    return res.json({ ok: true, deactivated: true });
+  }
+  await prisma.employee.delete({ where: { id } });
+  res.json({ ok: true });
+}));
+
+app.use('/employees', employeesRouter);
+
+const payrollRouter = express.Router();
+payrollRouter.use(authMiddleware);
+
+payrollRouter.get('/', asyncHandler(async (req, res) => {
+  const { employeeId, period, status } = req.query;
+  const where = {};
+  if (employeeId) where.employeeId = parseInt(employeeId);
+  if (period) where.period = period;
+  if (status) where.status = status;
+  const entries = await prisma.payrollEntry.findMany({
+    where,
+    orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+    include: { employee: { select: { id: true, fullName: true, position: true } } },
+    take: Math.min(parseInt(req.query.limit) || 200, 1000),
+  });
+  res.json(entries);
+}));
+
+payrollRouter.get('/stats', asyncHandler(async (req, res) => {
+  const [total, byStatus, lastMonths] = await Promise.all([
+    prisma.payrollEntry.aggregate({ _sum: { netAmount: true }, _count: { _all: true } }),
+    prisma.payrollEntry.groupBy({ by: ['status'], _sum: { netAmount: true }, _count: { _all: true } }),
+    prisma.payrollEntry.groupBy({ by: ['period'], _sum: { netAmount: true }, orderBy: { period: 'desc' }, take: 12 }),
+  ]);
+  res.json({ totalPaid: total._sum.netAmount || 0, totalCount: total._count._all, byStatus, lastMonths });
+}));
+
+payrollRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { employeeId, period, periodStart, periodEnd, baseAmount, bonus = 0, deductions = 0, paidAt, paymentMethod, status = 'pending', notes } = req.body || {};
+  if (!employeeId || !period || !periodStart || !periodEnd) {
+    return res.status(400).json({ error: 'employeeId, period, periodStart, periodEnd son requeridos' });
+  }
+  if (!ALLOWED_PAYROLL_STATUS.includes(status)) {
+    return res.status(400).json({ error: `status invalido (permitidos: ${ALLOWED_PAYROLL_STATUS.join(', ')})` });
+  }
+  const safeBase = ensureNumber(baseAmount, { min: 0, max: 1e9, label: 'baseAmount' });
+  const safeBonus = ensureNumber(bonus, { min: 0, max: 1e9, label: 'bonus' });
+  const safeDeductions = ensureNumber(deductions, { min: 0, max: 1e9, label: 'deductions' });
+  const net = safeBase + safeBonus - safeDeductions;
+  const username = req.session?.username || null;
+
+  const result = await prisma.$transaction(async (tx) => {
+    const entry = await tx.payrollEntry.create({
+      data: {
+        employeeId: parseInt(employeeId),
+        period,
+        periodStart: new Date(periodStart),
+        periodEnd: new Date(periodEnd),
+        baseAmount: safeBase,
+        bonus: safeBonus,
+        deductions: safeDeductions,
+        netAmount: net,
+        paidAt: paidAt ? new Date(paidAt) : null,
+        paymentMethod: paymentMethod || null,
+        status,
+        notes: notes || null,
+        createdBy: username,
+      },
+      include: { employee: true },
+    });
+
+    // Si ya esta pagado, generar Expense
+    if (status === 'paid' && paidAt) {
+      await tx.expense.create({
+        data: {
+          category: 'nomina',
+          description: `Nomina ${entry.employee.fullName} - ${period}`,
+          amount: net,
+          expenseDate: new Date(paidAt),
+          payrollId: entry.id,
+          paymentMethod: paymentMethod || null,
+          createdBy: username,
+        },
+      });
+    }
+    return entry;
+  });
+
+  await logActivity(req, { action: 'create_payroll', entityType: 'payroll', entityId: String(result.id), entityName: `${result.employee.fullName} ${period}`, details: { net } });
+  res.json(result);
+}));
+
+payrollRouter.post('/:id/pay', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const { paymentMethod, paidAt } = req.body || {};
+  const username = req.session?.username || null;
+  const result = await prisma.$transaction(async (tx) => {
+    const entry = await tx.payrollEntry.update({
+      where: { id },
+      data: { status: 'paid', paidAt: paidAt ? new Date(paidAt) : new Date(), paymentMethod: paymentMethod || null },
+      include: { employee: true },
+    });
+    // crear expense si no existe ya
+    const existing = await tx.expense.findFirst({ where: { payrollId: id } });
+    if (!existing) {
+      await tx.expense.create({
+        data: {
+          category: 'nomina',
+          description: `Nomina ${entry.employee.fullName} - ${entry.period}`,
+          amount: entry.netAmount,
+          expenseDate: entry.paidAt || new Date(),
+          payrollId: entry.id,
+          paymentMethod: paymentMethod || null,
+          createdBy: username,
+        },
+      });
+    }
+    return entry;
+  });
+  res.json(result);
+}));
+
+payrollRouter.delete('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  await prisma.$transaction(async (tx) => {
+    await tx.expense.deleteMany({ where: { payrollId: id } });
+    await tx.payrollEntry.delete({ where: { id } });
+  });
+  res.json({ ok: true });
+}));
+
+app.use('/payroll', payrollRouter);
 
 // ─── STATIC FILES (Angular build) ───
 const distPath = path.join(__dirname, 'dist/wishub-admin/browser');
