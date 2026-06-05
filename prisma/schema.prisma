@@ -786,6 +786,9 @@ model SurveyResponse {
   lastReminderStatus String?
   snoozedAt    DateTime?
   snoozeCount  Int        @default(0)
+  paused       Boolean    @default(false)   // pausa por-survey desde la UI
+  pausedAt     DateTime?
+  pausedBy     String?
   userAgent    String?             // navegador del cliente al enviar
   notes        String?             // notas internas
 

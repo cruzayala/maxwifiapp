@@ -2270,10 +2270,47 @@ app.get('/captive', asyncHandler(renderCaptive));
 // ═══════════════════════════════════════════════════════════════
 
 const LIST_SURVEY = 'survey-pending';
-const SURVEY_REMINDER_INTERVAL_HOURS = Math.max(1, parseInt(process.env.SURVEY_REMINDER_INTERVAL_HOURS || '4'));
-const SURVEY_REMINDER_POLL_MS = Math.max(60_000, parseInt(process.env.SURVEY_REMINDER_POLL_MS || '300000'));
+// Defaults antispam: 7 dias entre reminders, max 3 envios por survey, poll cada 30 min.
+// Estos son los MINIMOS permitidos. Admin puede subirlos via AppSetting, NO bajarlos.
+const SURVEY_REMINDER_MIN_INTERVAL_HOURS = 24 * 7; // 7 dias
+const SURVEY_REMINDER_DEFAULT_INTERVAL_HOURS = Math.max(
+  SURVEY_REMINDER_MIN_INTERVAL_HOURS,
+  parseInt(process.env.SURVEY_REMINDER_INTERVAL_HOURS || '168') // 168h = 7 dias
+);
+const SURVEY_REMINDER_DEFAULT_MAX = Math.max(1, parseInt(process.env.SURVEY_REMINDER_MAX || '3'));
+const SURVEY_REMINDER_POLL_MS = Math.max(60_000, parseInt(process.env.SURVEY_REMINDER_POLL_MS || '1800000')); // 30 min
 let surveyReminderTimer = null;
 let lastSurveyReminderRun = null;
+
+// Config dinamica leida de AppSetting (cacheada in-mem 60s). Las claves son:
+//   survey_reminder_interval_hours -> intervalo entre envios por survey
+//   survey_reminder_max             -> tope de envios por survey
+//   survey_reminder_paused          -> "true" para pausar TODOS los envios
+let surveyConfigCache = null;
+let surveyConfigCachedAt = 0;
+async function getSurveyConfig() {
+  if (surveyConfigCache && Date.now() - surveyConfigCachedAt < 60_000) return surveyConfigCache;
+  const rows = await prisma.appSetting.findMany({
+    where: { key: { in: ['survey_reminder_interval_hours', 'survey_reminder_max', 'survey_reminder_paused'] } },
+  }).catch(() => []);
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  const intervalRaw = parseInt(map.survey_reminder_interval_hours);
+  const maxRaw = parseInt(map.survey_reminder_max);
+  surveyConfigCache = {
+    intervalHours: Math.max(
+      SURVEY_REMINDER_MIN_INTERVAL_HOURS,
+      Number.isFinite(intervalRaw) ? intervalRaw : SURVEY_REMINDER_DEFAULT_INTERVAL_HOURS
+    ),
+    maxReminders: Math.max(1, Number.isFinite(maxRaw) ? maxRaw : SURVEY_REMINDER_DEFAULT_MAX),
+    pausedGlobally: map.survey_reminder_paused === 'true',
+  };
+  surveyConfigCachedAt = Date.now();
+  return surveyConfigCache;
+}
+function invalidateSurveyConfig() {
+  surveyConfigCache = null;
+  surveyConfigCachedAt = 0;
+}
 
 function generateSurveyToken() {
   return crypto.randomBytes(24).toString('base64url');
@@ -2364,12 +2401,46 @@ async function buildSurveyReminderMessage(client, urlForMessage) {
   });
 }
 
-async function sendSurveyReminderById(id, req = null) {
+async function sendSurveyReminderById(id, req = null, { force = false } = {}) {
   const survey = await prisma.surveyResponse.findUnique({
     where: { id },
     include: { client: { select: { idServicio: true, nombre: true, telefono: true, ip: true } } },
   });
   if (!survey || survey.status !== 'pending') return { ok: false, skipped: true, reason: 'not_pending' };
+
+  // === ANTI-SPAM ===
+  // Solo se saltan estas reglas si el admin manda "force" (boton manual desde la UI).
+  if (!force) {
+    const cfg = await getSurveyConfig();
+    if (cfg.pausedGlobally) {
+      return { ok: false, skipped: true, reason: 'paused_globally' };
+    }
+    if (survey.paused) {
+      return { ok: false, skipped: true, reason: 'paused' };
+    }
+    if (survey.reminderCount >= cfg.maxReminders) {
+      // Marcar como agotado para que ni siquiera siga matcheando el query del loop.
+      // Mantenemos status='pending' (que sigue captura input del cliente), pero
+      // limpiamos nextReminderAt y marcamos lastReminderStatus.
+      await prisma.surveyResponse.update({
+        where: { id: survey.id },
+        data: { nextReminderAt: null, lastReminderStatus: `max_reminders_${survey.reminderCount}` },
+      });
+      return { ok: false, skipped: true, reason: 'max_reminders_reached', count: survey.reminderCount };
+    }
+    // Anti-doble-tick: no permitir reenvio si el ultimo se mando hace menos
+    // del intervalo configurado. Cubre el caso de que dos workers coincidan.
+    if (survey.lastReminderAt) {
+      const minSince = addHours(survey.lastReminderAt, cfg.intervalHours);
+      if (minSince > new Date()) {
+        await prisma.surveyResponse.update({
+          where: { id: survey.id },
+          data: { nextReminderAt: minSince },
+        });
+        return { ok: false, skipped: true, reason: 'too_soon', nextReminderAt: minSince };
+      }
+    }
+  }
 
   let publicToken = survey.publicToken;
   let shortCode = survey.shortCode;
@@ -2420,7 +2491,8 @@ async function sendSurveyReminderById(id, req = null) {
 
   const phone = current.client?.telefono;
   const now = new Date();
-  const retryAt = addHours(now, SURVEY_REMINDER_INTERVAL_HOURS);
+  const cfgForRetry = await getSurveyConfig();
+  const retryAt = addHours(now, cfgForRetry.intervalHours);
   const baseUrl = (process.env.PUBLIC_APP_URL || `https://${process.env.RAILWAY_PUBLIC_DOMAIN || 'wishub-admin-production.up.railway.app'}`).replace(/\/$/, '');
   const publicUrl = req ? buildSurveyUrl(req, publicToken) : `${baseUrl}/survey/landing/${encodeURIComponent(publicToken)}`;
   const shortUrl = req ? buildSurveyShortUrl(req, shortCode) : `${baseUrl}/s/${shortCode}`;
@@ -2900,7 +2972,7 @@ surveyRouter.post('/clear', asyncHandler(async (req, res) => {
       where: { id: { in: ids } },
       data: {
         snoozedAt: new Date(),
-        nextReminderAt: addHours(new Date(), SURVEY_REMINDER_INTERVAL_HOURS),
+        nextReminderAt: addHours(new Date(), SURVEY_REMINDER_DEFAULT_INTERVAL_HOURS),
         snoozeCount: { increment: 1 },
         lastReminderStatus: 'snoozed_by_admin',
       },
@@ -2933,8 +3005,8 @@ surveyRouter.post('/clear', asyncHandler(async (req, res) => {
     ok: true,
     snoozed,
     cancelled: 0,
-    nextReminderAt: snoozed ? addHours(new Date(), SURVEY_REMINDER_INTERVAL_HOURS) : null,
-    reminderIntervalHours: SURVEY_REMINDER_INTERVAL_HOURS,
+    nextReminderAt: snoozed ? addHours(new Date(), SURVEY_REMINDER_DEFAULT_INTERVAL_HOURS) : null,
+    reminderIntervalHours: SURVEY_REMINDER_DEFAULT_INTERVAL_HOURS,
     mikrotik,
   });
 }));
@@ -5840,10 +5912,24 @@ notifRouter.post('/run', asyncHandler(async (req, res) => {
 // publica y reescribe las reglas NAT del MikroTik para que el captive funcione.
 async function runSurveyReminderCheck() {
   const startedAt = new Date();
+  const cfg = await getSurveyConfig();
+
+  // Pausa global: no procesar nada (igual loguea)
+  if (cfg.pausedGlobally) {
+    lastSurveyReminderRun = {
+      ran: true, startedAt: startedAt.toISOString(), durationMs: 0,
+      total: 0, sent: 0, skipped: 0, errors: 0, paused: true,
+    };
+    return lastSurveyReminderRun;
+  }
+
+  // Filtros en SQL: nextReminderAt vencida, no pausada, y por debajo del max.
   const due = await prisma.surveyResponse.findMany({
     where: {
       status: 'pending',
+      paused: false,
       nextReminderAt: { lte: startedAt },
+      reminderCount: { lt: cfg.maxReminders },
     },
     orderBy: { nextReminderAt: 'asc' },
     take: 50,
@@ -5862,33 +5948,121 @@ async function runSurveyReminderCheck() {
     ran: true,
     startedAt: startedAt.toISOString(),
     durationMs: Date.now() - startedAt.getTime(),
+    config: { intervalHours: cfg.intervalHours, maxReminders: cfg.maxReminders },
     ...stats,
   };
   if (stats.total > 0) {
-    console.log(`[survey-reminder] tick: sent=${stats.sent} skipped=${stats.skipped} errors=${stats.errors}`);
+    console.log(`[survey-reminder] tick: sent=${stats.sent} skipped=${stats.skipped} errors=${stats.errors} (cfg interval=${cfg.intervalHours}h max=${cfg.maxReminders})`);
   }
   return lastSurveyReminderRun;
 }
 
 function startSurveyReminderLoop() {
   if (surveyReminderTimer) return;
-  console.log(`[survey-reminder] enabled. interval=${SURVEY_REMINDER_INTERVAL_HOURS}h poll=${SURVEY_REMINDER_POLL_MS}ms`);
+  console.log(`[survey-reminder] enabled. interval=${SURVEY_REMINDER_DEFAULT_INTERVAL_HOURS}h poll=${SURVEY_REMINDER_POLL_MS}ms`);
   surveyReminderTimer = setInterval(() => {
     runSurveyReminderCheck().catch((e) => console.error('[survey-reminder] error:', e.message));
   }, SURVEY_REMINDER_POLL_MS);
 }
 
-surveyRouter.get('/reminders/status', (req, res) => {
+surveyRouter.get('/reminders/status', asyncHandler(async (req, res) => {
+  const cfg = await getSurveyConfig();
   res.json({
     ok: true,
-    intervalHours: SURVEY_REMINDER_INTERVAL_HOURS,
+    intervalHours: cfg.intervalHours,
+    maxReminders: cfg.maxReminders,
+    pausedGlobally: cfg.pausedGlobally,
+    minIntervalHours: SURVEY_REMINDER_MIN_INTERVAL_HOURS,
     pollMs: SURVEY_REMINDER_POLL_MS,
     whatsapp: waStatus,
     lastRun: lastSurveyReminderRun,
   });
-});
+}));
 
-surveyRouter.post('/reminders/run', asyncHandler(async (req, res) => {
+// PUT config (intervalo en horas, max envios)
+surveyRouter.put('/reminders/config', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const { intervalHours, maxReminders } = req.body || {};
+  const updates = [];
+  if (intervalHours !== undefined) {
+    const h = parseInt(intervalHours);
+    if (!Number.isFinite(h) || h < SURVEY_REMINDER_MIN_INTERVAL_HOURS) {
+      return res.status(400).json({ error: `intervalHours minimo es ${SURVEY_REMINDER_MIN_INTERVAL_HOURS} (1 semana)` });
+    }
+    updates.push(prisma.appSetting.upsert({
+      where: { key: 'survey_reminder_interval_hours' },
+      update: { value: String(h), category: 'survey' },
+      create: { key: 'survey_reminder_interval_hours', value: String(h), category: 'survey' },
+    }));
+  }
+  if (maxReminders !== undefined) {
+    const m = parseInt(maxReminders);
+    if (!Number.isFinite(m) || m < 1 || m > 10) {
+      return res.status(400).json({ error: 'maxReminders entre 1 y 10' });
+    }
+    updates.push(prisma.appSetting.upsert({
+      where: { key: 'survey_reminder_max' },
+      update: { value: String(m), category: 'survey' },
+      create: { key: 'survey_reminder_max', value: String(m), category: 'survey' },
+    }));
+  }
+  await Promise.all(updates);
+  invalidateSurveyConfig();
+  const cfg = await getSurveyConfig();
+  await logActivity(req, { action: 'update_survey_config', entityType: 'setting', entityName: 'survey_reminder', details: cfg });
+  res.json({ ok: true, ...cfg });
+}));
+
+// Pausa / reanudar GLOBAL
+surveyRouter.post('/reminders/pause-all', requireRole(['admin']), asyncHandler(async (req, res) => {
+  await prisma.appSetting.upsert({
+    where: { key: 'survey_reminder_paused' },
+    update: { value: 'true', category: 'survey' },
+    create: { key: 'survey_reminder_paused', value: 'true', category: 'survey' },
+  });
+  invalidateSurveyConfig();
+  await logActivity(req, { action: 'pause_survey_reminders_global', entityType: 'setting' });
+  res.json({ ok: true, pausedGlobally: true });
+}));
+
+surveyRouter.post('/reminders/resume-all', requireRole(['admin']), asyncHandler(async (req, res) => {
+  await prisma.appSetting.upsert({
+    where: { key: 'survey_reminder_paused' },
+    update: { value: 'false', category: 'survey' },
+    create: { key: 'survey_reminder_paused', value: 'false', category: 'survey' },
+  });
+  invalidateSurveyConfig();
+  await logActivity(req, { action: 'resume_survey_reminders_global', entityType: 'setting' });
+  res.json({ ok: true, pausedGlobally: false });
+}));
+
+// Pausa / reanudar por survey individual
+surveyRouter.post('/:id/pause', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const updated = await prisma.surveyResponse.update({
+    where: { id },
+    data: { paused: true, pausedAt: new Date(), pausedBy: req.session?.username || null, nextReminderAt: null },
+  });
+  await logActivity(req, { action: 'pause_survey', entityType: 'survey', entityId: String(id) });
+  res.json({ ok: true, id: updated.id, paused: true });
+}));
+
+surveyRouter.post('/:id/resume', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const id = parseInt(req.params.id);
+  const cfg = await getSurveyConfig();
+  // Re-schedular el proximo reminder respetando el intervalo desde el ultimo envio (o ahora si nunca se mando).
+  const survey = await prisma.surveyResponse.findUnique({ where: { id } });
+  if (!survey) return res.status(404).json({ error: 'not found' });
+  const base = survey.lastReminderAt || new Date();
+  const nextAt = addHours(base, cfg.intervalHours);
+  const updated = await prisma.surveyResponse.update({
+    where: { id },
+    data: { paused: false, pausedAt: null, pausedBy: null, nextReminderAt: nextAt > new Date() ? nextAt : new Date() },
+  });
+  await logActivity(req, { action: 'resume_survey', entityType: 'survey', entityId: String(id) });
+  res.json({ ok: true, id: updated.id, paused: false, nextReminderAt: updated.nextReminderAt });
+}));
+
+surveyRouter.post('/reminders/run', requireRole(['admin']), asyncHandler(async (req, res) => {
   const result = await runSurveyReminderCheck();
   res.json(result);
 }));

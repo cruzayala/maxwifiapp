@@ -1,9 +1,18 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { SurveyService, SurveyResponse } from '../../services/survey.service';
 import { ToastService } from '../../services/toast.service';
+
+interface ReminderConfig {
+  intervalHours: number;
+  maxReminders: number;
+  pausedGlobally: boolean;
+  minIntervalHours: number;
+  lastRun?: any;
+}
 
 @Component({
   selector: 'app-encuestas',
@@ -13,6 +22,65 @@ import { ToastService } from '../../services/toast.service';
     <app-navbar pageTitle="Encuestas a clientes" />
 
     <div class="page">
+      <!-- PANEL ANTISPAM -->
+      @if (config()) {
+        <div class="cfg-panel" [class.paused]="config()!.pausedGlobally">
+          <div class="cfg-main">
+            <div class="cfg-status">
+              <span class="cfg-dot" [class.on]="!config()!.pausedGlobally"></span>
+              <strong>{{ config()!.pausedGlobally ? 'Recordatorios PAUSADOS' : 'Recordatorios activos' }}</strong>
+            </div>
+            <div class="cfg-info">
+              <span>📆 Cada <strong>{{ formatInterval(config()!.intervalHours) }}</strong></span>
+              <span>🔁 Máximo <strong>{{ config()!.maxReminders }}</strong> envíos por persona</span>
+              <span>⏱ Mínimo permitido: {{ formatInterval(config()!.minIntervalHours) }}</span>
+            </div>
+          </div>
+          <div class="cfg-actions">
+            <button class="btn-outline" (click)="openCfg()">Configurar</button>
+            @if (config()!.pausedGlobally) {
+              <button class="btn-success" (click)="toggleGlobal(false)">▶ Reanudar</button>
+            } @else {
+              <button class="btn-danger" (click)="toggleGlobal(true)">⏸ Pausar todo</button>
+            }
+          </div>
+        </div>
+      }
+
+      @if (showCfg()) {
+        <div class="modal-backdrop" (click)="showCfg.set(false)">
+          <div class="modal" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h3>Frecuencia de recordatorios</h3>
+              <button class="modal-close" (click)="showCfg.set(false)">✕</button>
+            </div>
+            <p class="modal-help">
+              Para evitar spam, el mínimo es {{ formatInterval(config()?.minIntervalHours || 168) }} entre envíos
+              y máximo 10 envíos por persona. Cambios se aplican al próximo ciclo.
+            </p>
+            <div class="cfg-form">
+              <label>
+                Intervalo entre envíos (horas)
+                <input type="number" [min]="config()?.minIntervalHours || 168" max="2160" step="24"
+                  [(ngModel)]="cfgForm.intervalHours" />
+                <small>{{ formatInterval(cfgForm.intervalHours) }}</small>
+              </label>
+              <label>
+                Máximo de envíos por encuesta
+                <input type="number" min="1" max="10" [(ngModel)]="cfgForm.maxReminders" />
+                <small>Al alcanzar este número, no se vuelve a enviar.</small>
+              </label>
+            </div>
+            <div class="modal-actions">
+              <button class="btn-cancel" (click)="showCfg.set(false)">Cancelar</button>
+              <button class="btn-link" (click)="saveCfg()" [disabled]="savingCfg()">
+                @if (savingCfg()) { Guardando... } @else { Guardar }
+              </button>
+            </div>
+          </div>
+        </div>
+      }
+
       <div class="toolbar">
         <div class="filters">
           <button class="chip" [class.active]="statusFilter() === ''" (click)="setFilter('')">Todas ({{ total() }})</button>
@@ -141,6 +209,36 @@ import { ToastService } from '../../services/toast.service';
   `,
   styles: [`
     .page { padding: 24px 32px; }
+    .cfg-panel {
+      display: flex; justify-content: space-between; align-items: center; gap: 16px;
+      background: white; border: 1px solid #e2e8f0; border-left: 4px solid #22c55e;
+      border-radius: 14px; padding: 14px 20px; margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+    .cfg-panel.paused { border-left-color: #ef4444; background: #fef2f2; }
+    .cfg-main { display: flex; flex-direction: column; gap: 6px; }
+    .cfg-status { display: flex; align-items: center; gap: 8px; color: #0f172a; font-size: 14px; }
+    .cfg-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; }
+    .cfg-dot.on { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .cfg-info { display: flex; gap: 16px; font-size: 13px; color: #64748b; flex-wrap: wrap; }
+    .cfg-info strong { color: #0f172a; }
+    .cfg-actions { display: flex; gap: 8px; }
+    .btn-outline, .btn-success, .btn-danger {
+      border: none; border-radius: 10px; padding: 8px 14px;
+      font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-outline { background: white; border: 1px solid #e2e8f0; color: #475569; }
+    .btn-outline:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-success:hover { background: #16a34a; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    .cfg-form { display: flex; flex-direction: column; gap: 16px; padding: 18px 0; }
+    .cfg-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; color: #0f172a; }
+    .cfg-form input { padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; }
+    .cfg-form small { color: #64748b; font-size: 12px; font-weight: 400; }
+
     .toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 18px; }
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }
     .chip {
@@ -240,6 +338,7 @@ import { ToastService } from '../../services/toast.service';
 export class EncuestasComponent implements OnInit {
   private survey = inject(SurveyService);
   private toast = inject(ToastService);
+  private http = inject(HttpClient);
 
   rows = signal<SurveyResponse[]>([]);
   loading = signal(true);
@@ -251,6 +350,67 @@ export class EncuestasComponent implements OnInit {
   savingTemplate = signal(false);
   templateDraft = '';
   templateDefault = '';
+
+  // Config antispam
+  config = signal<ReminderConfig | null>(null);
+  showCfg = signal(false);
+  savingCfg = signal(false);
+  cfgForm: { intervalHours: number; maxReminders: number } = { intervalHours: 168, maxReminders: 3 };
+
+  formatInterval(hours: number): string {
+    if (!hours) return '—';
+    if (hours >= 168) {
+      const w = Math.round(hours / 168);
+      return `${w} semana${w > 1 ? 's' : ''}`;
+    }
+    if (hours >= 24) {
+      const d = Math.round(hours / 24);
+      return `${d} día${d > 1 ? 's' : ''}`;
+    }
+    return `${hours}h`;
+  }
+
+  loadConfig() {
+    this.http.get<ReminderConfig>('/api/survey/reminders/status').subscribe({
+      next: (c) => this.config.set(c),
+      error: () => {},
+    });
+  }
+
+  openCfg() {
+    const c = this.config();
+    if (c) this.cfgForm = { intervalHours: c.intervalHours, maxReminders: c.maxReminders };
+    this.showCfg.set(true);
+  }
+
+  saveCfg() {
+    this.savingCfg.set(true);
+    this.http.put<ReminderConfig>('/api/survey/reminders/config', this.cfgForm).subscribe({
+      next: (c) => {
+        this.savingCfg.set(false);
+        this.config.set({ ...(this.config() as ReminderConfig), ...c });
+        this.showCfg.set(false);
+        this.toast.success('Configuración guardada');
+      },
+      error: (e) => {
+        this.savingCfg.set(false);
+        this.toast.error(e.error?.error || 'No se pudo guardar');
+      },
+    });
+  }
+
+  toggleGlobal(pause: boolean) {
+    const action = pause ? 'pause-all' : 'resume-all';
+    if (pause && !confirm('¿Pausar TODOS los recordatorios de encuestas? Los envíos automáticos se detienen hasta que reanudes.')) return;
+    this.http.post<{ pausedGlobally: boolean }>(`/api/survey/reminders/${action}`, {}).subscribe({
+      next: (r) => {
+        const c = this.config();
+        if (c) this.config.set({ ...c, pausedGlobally: r.pausedGlobally });
+        this.toast.success(pause ? 'Recordatorios pausados' : 'Recordatorios reanudados');
+      },
+      error: (e) => this.toast.error(e.error?.error || 'Error'),
+    });
+  }
 
   filteredRows = computed(() => {
     const f = this.statusFilter();
@@ -264,6 +424,7 @@ export class EncuestasComponent implements OnInit {
 
   ngOnInit() {
     this.load();
+    this.loadConfig();
   }
 
   setFilter(s: string) { this.statusFilter.set(s); }
