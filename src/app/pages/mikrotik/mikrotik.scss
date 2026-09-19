@@ -1,4 +1,7 @@
-:host {
+// El componente usa ViewEncapsulation.None: todo se limita a <app-mikrotik> para que clases
+// genéricas (.panel, .kpi-icon, .table-wrap...) no alteren otras pantallas.
+app-mikrotik {
+& {
   display: block;
   min-height: 100%;
   color: #172033;
@@ -397,4 +400,6 @@
 @media (prefers-reduced-motion: reduce) {
   .spinning { animation: none; }
   .capacity-track span { transition: none; }
+}
+
 }

@@ -14,7 +14,7 @@
           <span class="mono">{{ status().host || 'No configurado' }}</span>
         </div>
         <h1>{{ system()?.identity || 'Router principal' }}</h1>
-        <p>{{ systemResource('board-name') }} &middot; RouterOS {{ systemResource('version') }}</p>
+        <p>@if (systemResource('version') !== '-') { {{ systemResource('board-name') }} &middot; RouterOS {{ systemResource('version') }} } @else { Sin datos del equipo }</p>
       </div>
     </div>
     <div class="header-actions">
