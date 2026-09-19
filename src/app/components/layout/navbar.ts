@@ -1,42 +1,59 @@
 import { Component, OnInit, inject, input, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { LucideMenu, LucideSearch, LucideX } from '@lucide/angular';
 import { LocalDbService } from '../../services/local-db.service';
 import { WispHubClient } from '../../models/client.model';
 import { UiService } from '../../services/ui.service';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 
 @Component({
   selector: 'app-navbar',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, LucideMenu, LucideSearch, LucideX, PlanLabelPipe],
   template: `
     <header class="navbar">
       <div class="navbar-left">
-        <button class="menu-btn" (click)="ui.openSidebar()">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <button class="menu-btn" type="button" aria-label="Abrir menú" title="Abrir menú" (click)="ui.openSidebar()">
+          <svg lucideMenu size="22"></svg>
         </button>
         <h1 class="page-title">{{ pageTitle() }}</h1>
       </div>
       <div class="navbar-right">
         <div class="search-box" [class.focused]="searchFocused()">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="Buscar cliente..."
+          <svg lucideSearch size="16" aria-hidden="true"></svg>
+          <input type="search" placeholder="Buscar cliente por nombre, IP o teléfono…"
+            aria-label="Buscar cliente por nombre, IP, teléfono, usuario o MAC"
+            autocomplete="off"
             [(ngModel)]="searchTerm"
             (focus)="searchFocused.set(true); search()"
             (blur)="closeSoon()"
+            (keydown.escape)="clearSearch()"
+            (keydown.enter)="openFirst()"
             (input)="search()" />
-          @if (searchFocused() && results().length > 0) {
-            <div class="search-results">
+          @if (searchTerm) {
+            <button type="button" class="clear-btn" aria-label="Borrar búsqueda" title="Borrar búsqueda"
+              (mousedown)="$event.preventDefault()" (click)="clearSearch()">
+              <svg lucideX size="14"></svg>
+            </button>
+          }
+          @if (searchFocused() && searchTerm.trim().length >= 2) {
+            <div class="search-results" role="listbox">
               @for (c of results(); track c.id_servicio) {
-                <div class="result-item" (mousedown)="goToClient(c.id_servicio)">
+                <div class="result-item" role="option" (mousedown)="goToClient(c.id_servicio)">
                   <div class="result-main">
                     <span class="result-name">{{ c.nombre }}</span>
-                    <span class="result-plan">{{ c.plan_internet?.nombre || '' }}</span>
+                    <span class="result-plan">{{ c.plan_internet?.nombre | planLabel:'' }}</span>
                   </div>
                   <div class="result-meta">
-                    <span class="result-ip">{{ c.ip }}</span>
-                    <span class="result-phone">{{ c.telefono || '' }}</span>
+                    <span class="result-ip">{{ c.ip || '—' }}</span>
+                    @if (c.telefono) { <span class="result-phone">{{ c.telefono }}</span> }
                   </div>
+                </div>
+              } @empty {
+                <div class="result-empty">
+                  No se encontró ningún cliente con “{{ searchTerm.trim() }}”.
+                  <small>Prueba con parte del nombre, la IP o el teléfono.</small>
                 </div>
               }
             </div>
@@ -47,44 +64,58 @@ import { UiService } from '../../services/ui.service';
   `,
   styles: [`
     .navbar {
-      height: 64px; background: white; border-bottom: 1px solid #e2e8f0;
-      display: flex; align-items: center; justify-content: space-between; padding: 0 24px;
+      height: 64px; background: white; border-bottom: 1px solid #dfe5ea;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 24px;
       position: sticky; top: 0; z-index: 50;
     }
-    .navbar-left { display: flex; align-items: center; gap: 12px; }
+    .navbar-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .menu-btn {
       display: none; background: none; border: none; padding: 8px;
-      border-radius: 8px; cursor: pointer; color: #334155;
+      border-radius: 6px; cursor: pointer; color: #334250;
     }
-    .menu-btn:hover { background: #f1f5f9; }
+    .menu-btn:hover { background: #f2f7ff; color: #1267dd; }
 
-    .page-title { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
-    .navbar-right { display: flex; align-items: center; gap: 16px; }
+    .page-title {
+      font-size: 20px; font-weight: 700; color: #172535; margin: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .navbar-right { display: flex; align-items: center; gap: 16px; min-width: 0; }
 
     .search-box {
       position: relative; display: flex; align-items: center; gap: 8px;
-      background: #f1f5f9; border-radius: 10px; padding: 8px 16px;
-      color: #94a3b8; border: 2px solid transparent; transition: all 0.2s;
+      background: #f8fafc; border-radius: 6px; padding: 7px 10px 7px 14px;
+      color: #667582; border: 1px solid #dfe5ea; transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
     }
-    .search-box.focused { background: white; border-color: #6366f1; box-shadow: 0 4px 15px rgba(99,102,241,0.15); }
-    .search-box input { border: none; background: none; outline: none; font-size: 14px; color: #334155; width: 220px; }
-    .search-box input::placeholder { color: #94a3b8; }
+    .search-box.focused { background: white; border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221, 0.12); }
+    .search-box input { border: none; background: none; outline: none; font-size: 13px; color: #334250; width: 260px; min-width: 0; }
+    .search-box input::placeholder { color: #667582; }
+    .search-box input::-webkit-search-cancel-button { display: none; }
+    .clear-btn {
+      display: grid; place-items: center; border: none; background: none; cursor: pointer;
+      color: #667582; padding: 3px; border-radius: 6px; flex-shrink: 0;
+    }
+    .clear-btn:hover { background: #edf4ff; color: #1267dd; }
 
     .search-results {
-      position: absolute; top: 48px; right: 0; width: 360px; max-width: 90vw;
-      background: white; border: 1px solid #e2e8f0; border-radius: 12px;
-      box-shadow: 0 12px 30px rgba(0,0,0,0.12); max-height: 320px; overflow-y: auto; z-index: 200;
+      position: absolute; top: calc(100% + 6px); right: 0; width: 380px; max-width: calc(100vw - 32px);
+      background: white; border: 1px solid #dfe5ea; border-radius: 8px;
+      box-shadow: 0 12px 30px rgba(17, 26, 36, 0.12); max-height: 340px; overflow-y: auto; z-index: 200;
     }
     .result-item {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 10px 16px; cursor: pointer; transition: background 0.1s;
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      padding: 10px 14px; cursor: pointer; transition: background 0.1s;
+      border-bottom: 1px solid #f0f3f6;
     }
-    .result-item:hover { background: #f0f4ff; }
-    .result-name { display: block; font-size: 14px; font-weight: 600; color: #0f172a; }
-    .result-plan { display: block; font-size: 11px; color: #6366f1; }
-    .result-meta { text-align: right; }
-    .result-ip { display: block; font-size: 12px; font-family: 'Courier New', monospace; color: #475569; }
-    .result-phone { display: block; font-size: 11px; color: #94a3b8; }
+    .result-item:last-child { border-bottom: none; }
+    .result-item:hover { background: #f2f7ff; }
+    .result-main { min-width: 0; }
+    .result-name { display: block; font-size: 13px; font-weight: 600; color: #172535; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .result-plan { display: block; font-size: 11px; color: #1267dd; }
+    .result-meta { text-align: right; flex-shrink: 0; }
+    .result-ip { display: block; font-size: 12px; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; color: #334250; }
+    .result-phone { display: block; font-size: 11px; color: #667582; }
+    .result-empty { padding: 14px; font-size: 13px; color: #334250; }
+    .result-empty small { display: block; margin-top: 4px; font-size: 12px; color: #667582; }
 
     @media (max-width: 1024px) {
       .menu-btn { display: flex; }
@@ -93,8 +124,7 @@ import { UiService } from '../../services/ui.service';
 
     @media (max-width: 640px) {
       .navbar { padding: 0 12px; }
-      .search-box input { width: 120px; }
-      .search-box { padding: 6px 12px; }
+      .search-box input { width: 150px; }
       .page-title { font-size: 16px; }
     }
 
@@ -102,8 +132,8 @@ import { UiService } from '../../services/ui.service';
       .page-title { display: none; }
       .search-box input { width: 100%; }
       .search-box { flex: 1; }
-      .navbar-right { flex: 1; margin-left: 8px; }
-      .search-results { width: 100%; right: 0; }
+      .navbar-right { flex: 1; }
+      .search-results { position: fixed; top: 60px; left: 12px; right: 12px; width: auto; max-width: none; }
     }
   `]
 })
@@ -141,6 +171,17 @@ export class NavbarComponent implements OnInit {
     this.results.set([]);
     this.searchFocused.set(false);
     this.router.navigate(['/clients', id]);
+  }
+
+  /** Enter abre el primer resultado. */
+  openFirst() {
+    const first = this.results()[0];
+    if (first) this.goToClient(first.id_servicio);
+  }
+
+  clearSearch() {
+    this.searchTerm = '';
+    this.results.set([]);
   }
 
   closeSoon() {
