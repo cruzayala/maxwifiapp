@@ -144,7 +144,7 @@ app.use(express.json({ limit: '10mb' }));
 
 // Algunas paginas de Angular comparten ruta con la API (/users, /expenses...).
 // Si el navegador recarga una de ellas debe recibir la app, no el JSON 401 de la API.
-const SPA_PAGE_PATHS = /^\/(clients(\/new|\/\d+)?|users|inventory|expenses|payroll)\/?$/;
+const SPA_PAGE_PATHS = /^\/(clients(\/new|\/\d+)?|users|inventory|expenses|payroll|mikrotik)\/?$/;
 const SPA_INDEX_HTML = path.join(__dirname, 'dist/wishub-admin/browser/index.html');
 app.use((req, res, next) => {
   if (req.method !== 'GET' || !SPA_PAGE_PATHS.test(req.path)) return next();
