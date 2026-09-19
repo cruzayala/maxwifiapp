@@ -279,10 +279,10 @@
   .sidebar {
     width: min(300px, calc(100vw - 48px));
     transform: translateX(-100%);
-    box-shadow: 10px 0 28px rgba(2, 8, 23, 0.28);
+    box-shadow: none;
   }
 
-  .sidebar.open { transform: translateX(0); }
+  .sidebar.open { transform: translateX(0); box-shadow: 10px 0 28px rgba(2, 8, 23, 0.28); }
   .close-btn { display: flex; }
   .group-trigger { min-height: 56px; }
   .nav-item { min-height: 42px; font-size: 13px; }

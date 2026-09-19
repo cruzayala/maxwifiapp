@@ -144,7 +144,7 @@ export class NotificationSchedulerService {
         const item = all.find(x => x.phone === r.phone);
         if (item) await this.markSent(item.phone, item.type === 'overdue' ? 'overdue' : 'reminder', item.idServicio);
       }));
-      this.toast.success(`${sent.length} notificaciones automaticas enviadas`);
+      this.toast.success(`${sent.length} notificaciones automáticas enviadas`);
     } catch (e) {
       console.error('Auto-notif error', e);
     }

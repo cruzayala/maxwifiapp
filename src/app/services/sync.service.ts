@@ -74,7 +74,7 @@ export class SyncService {
       await this.db.updateSyncLog('invoices');
       this.toast.success(`Sincronizado: ${clients.length} clientes, ${invoices.length} facturas`);
     } catch (err: any) {
-      this.toast.error('Error: ' + (err?.error?.detail || err?.message || 'Sin conexión'));
+      this.toast.error('No se pudo sincronizar: ' + (err?.error?.error || err?.error?.detail || (err?.status === 0 ? 'el servidor no responde' : err?.message) || 'sin conexión'));
     } finally {
       this.syncing.set(false);
       this.syncMessage.set('');
