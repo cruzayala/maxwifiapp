@@ -88,7 +88,7 @@ interface Stats {
           <div class="filters">
             <div class="search">
               <svg lucideSearch size="14"></svg>
-              <input type="search" placeholder="Buscar serial, MAC o marca…" aria-label="Buscar equipo" [(ngModel)]="searchQ" (input)="loadEquipment()" />
+              <input type="search" placeholder="Buscar serial, MAC o marca…" aria-label="Buscar equipo" [(ngModel)]="searchQ" (input)="searchEquipmentSoon()" />
             </div>
             <select [(ngModel)]="filterStatus" (change)="loadEquipment()" aria-label="Filtrar por estado">
               <option value="">Todos los estados</option>
@@ -575,6 +575,12 @@ export class InventoryComponent implements OnInit {
   types = signal<EquipmentType[]>([]);
 
   searchQ = '';
+  // Espera a que el usuario deje de escribir para no consultar el servidor en cada tecla.
+  private searchTimer: ReturnType<typeof setTimeout> | null = null;
+  searchEquipmentSoon() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.loadEquipment(), 300);
+  }
   filterStatus = '';
   filterTypeId: number | '' = '';
 
