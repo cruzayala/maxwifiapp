@@ -1,6 +1,7 @@
 import { InvoiceRenderer } from '../../../shared/invoice-renderer';
 import { Injectable, inject, signal } from '@angular/core';
 import { ConfigService } from './config.service';
+import { ToastService } from './toast.service';
 import { Invoice } from '../models/invoice.model';
 
 export type PaperSize = '58mm' | '80mm';
@@ -9,6 +10,7 @@ export type PrintMode = 'invoice' | 'receipt';
 @Injectable({ providedIn: 'root' })
 export class ReceiptService {
   private cfg = inject(ConfigService);
+  private toast = inject(ToastService);
 
   previewVisible = signal(false);
   previewHTML = signal('');
@@ -63,9 +65,8 @@ export class ReceiptService {
     const features = this.printMode() === 'invoice'
       ? 'width=900,height=900'
       : `width=${this.paperSize() === '58mm' ? '280' : '350'},height=600`;
-    const win = window.open('', '_blank', features);
-    if (win) { win.document.write(html); win.document.close(); }
-    this.previewVisible.set(false);
+    // Si el navegador bloquea la ventana, la vista previa queda abierta para reintentar.
+    if (this.openPrintWindow(html, features)) this.previewVisible.set(false);
   }
 
   printDirect(inv: Invoice, mode: PrintMode = 'receipt') {
@@ -74,8 +75,7 @@ export class ReceiptService {
     const features = mode === 'invoice'
       ? 'width=900,height=900'
       : `width=${this.paperSize() === '58mm' ? '280' : '350'},height=600`;
-    const win = window.open('', '_blank', features);
-    if (win) { win.document.write(html); win.document.close(); }
+    this.openPrintWindow(html, features);
   }
 
   printBatch(invoices: Invoice[], mode: PrintMode = 'invoice') {
@@ -97,8 +97,18 @@ export class ReceiptService {
 <body>${pages}<script>window.onload=function(){window.print();}</script></body>
 </html>`;
     const features = mode === 'invoice' ? 'width=1000,height=900' : 'width=420,height=800';
+    this.openPrintWindow(html, features);
+  }
+
+  private openPrintWindow(html: string, features: string): boolean {
     const win = window.open('', '_blank', features);
-    if (win) { win.document.write(html); win.document.close(); }
+    if (!win) {
+      this.toast.error('El navegador bloqueó la ventana de impresión. Permite las ventanas emergentes para este sitio e intenta de nuevo.');
+      return false;
+    }
+    win.document.write(html);
+    win.document.close();
+    return true;
   }
 
   closePreview() {
