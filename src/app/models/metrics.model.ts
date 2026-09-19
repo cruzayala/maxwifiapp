@@ -20,18 +20,18 @@ export interface TierStyle {
 }
 
 export const TIER_INFO: Record<CreditTier, TierStyle> = {
-  EXCELENTE: { label: 'EXCELENTE', color: '#15803d', bg: '#dcfce7', emoji: '🌟' },
-  BUENO:     { label: 'BUENO',     color: '#0e7490', bg: '#cffafe', emoji: '✅' },
-  REGULAR:   { label: 'REGULAR',   color: '#a16207', bg: '#fef3c7', emoji: '⚠️' },
-  RIESGO:    { label: 'RIESGO',    color: '#c2410c', bg: '#ffedd5', emoji: '🟠' },
-  CRITICO:   { label: 'CRÍTICO',   color: '#b91c1c', bg: '#fee2e2', emoji: '🔴' },
+  EXCELENTE: { label: 'Excelente', color: '#13875a', bg: '#e9f8f1', emoji: '' },
+  BUENO:     { label: 'Bueno',     color: '#1267dd', bg: '#edf4ff', emoji: '' },
+  REGULAR:   { label: 'Regular',   color: '#b36b12', bg: '#fff6e8', emoji: '' },
+  RIESGO:    { label: 'Riesgo',    color: '#c2410c', bg: '#ffedd5', emoji: '' },
+  CRITICO:   { label: 'Crítico',   color: '#b42318', bg: '#fff0ef', emoji: '' },
 };
 
 export const CONS_INFO: Record<ConsumptionTier, TierStyle> = {
-  INTENSIVO: { label: 'INTENSIVO', color: '#7c2d12', bg: '#fed7aa', emoji: '🚀' },
-  NORMAL:    { label: 'NORMAL',    color: '#1e40af', bg: '#dbeafe', emoji: '📊' },
-  BAJO:      { label: 'BAJO',      color: '#475569', bg: '#f1f5f9', emoji: '💤' },
-  INACTIVO:  { label: 'INACTIVO',  color: '#94a3b8', bg: '#e2e8f0', emoji: '⏸️' },
+  INTENSIVO: { label: 'Intensivo', color: '#9a3412', bg: '#ffedd5', emoji: '' },
+  NORMAL:    { label: 'Normal',    color: '#1267dd', bg: '#edf4ff', emoji: '' },
+  BAJO:      { label: 'Bajo',      color: '#526b80', bg: '#eef3f7', emoji: '' },
+  INACTIVO:  { label: 'Inactivo',  color: '#667582', bg: '#f1f4f7', emoji: '' },
 };
 
 export function tierStyle(tier: CreditTier | string | null): TierStyle | null {
