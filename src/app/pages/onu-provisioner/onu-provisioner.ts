@@ -12,6 +12,7 @@ import {
 import { firstValueFrom } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { AuthService } from '../../services/auth.service';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 
 type AgentTab = 'operation' | 'agents' | 'history';
 type AgentTaskAction = 'discover' | 'check' | 'provision';
@@ -102,7 +103,7 @@ interface OnuModelProfile {
   selector: 'app-onu-provisioner',
   standalone: true,
   imports: [
-    FormsModule, NgTemplateOutlet, NavbarComponent, LucideActivity, LucideArrowLeft, LucideArrowRight,
+    FormsModule, NgTemplateOutlet, NavbarComponent, PlanLabelPipe, LucideActivity, LucideArrowLeft, LucideArrowRight,
     LucideCable, LucideCheck, LucideCircleAlert, LucideCircleCheck,
     LucideDownload, LucideHistory, LucideKeyRound, LucideLaptop,
     LucideLoaderCircle, LucidePencil, LucidePlay, LucideRefreshCw, LucideRouter,
@@ -279,7 +280,7 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
 
   openOperation(mode: 'check' | 'provision' = 'provision') {
     if (!this.selectedAgent()?.online) {
-      this.error.set('Selecciona un agente conectado antes de iniciar una operacion'); return;
+      this.error.set('Selecciona un agente conectado antes de iniciar una operación'); return;
     }
     this.operationMode = mode;
     this.resetGuidedOperation();
@@ -333,7 +334,7 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
 
   setServiceOperation(operation: ServiceOperation) {
     if (this.servicePrepared()) {
-      this.notice.set('El expediente ya esta protegido. Finaliza esta operacion para evitar duplicados.');
+      this.notice.set('El expediente ya está protegido. Finaliza esta operación para evitar duplicados.');
       return;
     }
     this.serviceOperation = operation; this.selectedExistingClient.set(null); this.clientResults.set([]);
@@ -420,7 +421,7 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
   previousWizardStep() {
     const step = this.wizardStep();
     if (step === 3 && this.servicePrepared()) {
-      this.notice.set('Cliente, IP y perfil ya estan protegidos. Puedes ajustar WiFi o continuar a la revision.');
+      this.notice.set('Cliente, IP y perfil ya están protegidos. Puedes ajustar el WiFi o continuar a la revisión.');
       return;
     }
     if (step > 1 && !this.provisionTaskId()) this.wizardStep.set((step - 1) as WizardStep);
@@ -428,7 +429,7 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
 
   async submitOperation() {
     if (!this.selectedAgent()) return;
-    if (this.adapterIndex == null) return this.error.set('Selecciona la tarjeta Ethernet que se conectara a la ONU');
+    if (this.adapterIndex == null) return this.error.set('Selecciona la tarjeta Ethernet que se conectará a la ONU');
     if (!this.servicePrepared() || !this.cloudJobId) return this.error.set('Primero prepara el cliente y el expediente');
     if (this.serviceMode === 'router') {
       if (!this.wanIp) return this.error.set('La IP WAN es obligatoria');

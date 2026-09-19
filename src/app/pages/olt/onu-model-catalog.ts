@@ -16,11 +16,11 @@ type ProfileDraft = Omit<Partial<OnuModelProfile>, 'serialPrefixes' | 'defaults'
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  olt_provision: 'Aprovisionamiento OLT', optical_read: 'Lectura optica', equipment_read: 'Inventario',
+  olt_provision: 'Aprovisionamiento OLT', optical_read: 'Lectura óptica', equipment_read: 'Inventario',
   service_read: 'Lectura de servicio', ethernet_read: 'Lectura Ethernet', wifi_read: 'Lectura WiFi',
   wifi_write: 'Cambios WiFi', lan_read: 'Lectura LAN', lan_write: 'Cambios LAN', wan_read: 'Lectura WAN',
-  wan_write: 'Cambios WAN', diagnostics: 'Diagnosticos', reboot: 'Reinicio', factory_reset: 'Restauracion',
-  firmware_upgrade: 'Firmware', acs_config: 'Configuracion ACS', security_config: 'NAT y seguridad',
+  wan_write: 'Cambios WAN', diagnostics: 'Diagnósticos', reboot: 'Reinicio', factory_reset: 'Restauración de fábrica',
+  firmware_upgrade: 'Firmware', acs_config: 'Configuración ACS', security_config: 'NAT y seguridad',
 };
 
 @Component({
@@ -61,7 +61,7 @@ export class OnuModelCatalogComponent implements OnInit {
       next: (profiles) => { this.profiles.set(profiles); this.loading.set(false); },
       error: (error: { error?: { error?: string } }) => {
         this.loading.set(false);
-        this.toast.error(error.error?.error || 'No se pudo cargar el catalogo de ONU');
+        this.toast.error(error.error?.error || 'No se pudo cargar el catálogo de ONU');
       },
     });
   }
@@ -125,6 +125,7 @@ export class OnuModelCatalogComponent implements OnInit {
   }
 
   toggle(profile: OnuModelProfile) {
+    if (profile.active && !window.confirm(`¿Archivar el tipo ${profile.manufacturer} ${profile.model}? Dejará de sugerirse al autorizar ONU nuevas.`)) return;
     this.api.updateOnuModelProfile(profile.id, {
       active: !profile.active,
       changeReason: profile.active ? 'Perfil archivado' : 'Perfil reactivado',
@@ -145,7 +146,7 @@ export class OnuModelCatalogComponent implements OnInit {
       },
       error: (error: { error?: { error?: string } }) => {
         this.reconciling.set(false);
-        this.toast.error(error.error?.error || 'No se pudo conciliar el catalogo');
+        this.toast.error(error.error?.error || 'No se pudo conciliar el catálogo');
       },
     });
   }
@@ -153,6 +154,14 @@ export class OnuModelCatalogComponent implements OnInit {
   actionLabel(action: string) { return ACTION_LABELS[action] || action.replaceAll('_', ' '); }
   statusLabel(status: OnuCapabilityStatus) {
     return ({ detected: 'Detectada', verified: 'Verificada', failed: 'Con fallo', blocked: 'Bloqueada' } as const)[status];
+  }
+
+  channelLabel(channel: string) {
+    return ({ OLT_CLI: 'OLT (consola)', OMCI: 'OMCI (OLT)', TR069: 'TR-069 (remoto)', WEB_LOCAL: 'Web local' } as Record<string, string>)[channel] || channel;
+  }
+
+  omciModeLabel(mode?: string | null) {
+    return ({ baseline: 'OMCI base', extended: 'OMCI extendido', vendor: 'OMCI propietario' } as Record<string, string>)[String(mode || '')] || mode || 'OMCI';
   }
 
   verifiedCapabilities(profile: OnuModelProfile) {

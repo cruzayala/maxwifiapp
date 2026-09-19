@@ -35,6 +35,7 @@ import {
 import { ToastService } from '../../services/toast.service';
 import { Tr069ConsoleComponent } from './tr069-console';
 import { OnuModelCatalogComponent } from './onu-model-catalog';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 
 type OltTab = 'overview' | 'onus' | 'topology' | 'profiles' | 'installations' | 'discovered' | 'alarms' | 'activity';
 type OnuFilter = 'all' | 'online' | 'offline';
@@ -84,7 +85,7 @@ const EMPTY_RECONCILIATION: OltReconciliation = {
     LucideChevronLeft, LucideChevronRight, LucideCircleCheck, LucideGauge, LucideLink2, LucideRefreshCw,
     LucideEye, LucideMoreHorizontal, LucideNetwork, LucidePlus, LucidePower, LucideSearch, LucideServer,
     LucideTrash2, LucideX, Tr069ConsoleComponent,
-    OnuModelCatalogComponent,
+    OnuModelCatalogComponent, PlanLabelPipe,
   ],
   templateUrl: './olt.html',
   styleUrl: './olt.scss',
@@ -142,7 +143,6 @@ export class OltComponent implements OnInit, OnDestroy {
   readonly openOnuTabs = signal<OltOnu[]>([]);
   readonly activeWorkspace = signal<string>('map');
   readonly ponSearch = signal('');
-  readonly legacyDrawerOnu = computed<OltOnu | null>(() => null);
   readonly opticalHistory = signal<OltOpticalReading[]>([]);
   readonly serviceDiagnostic = signal<OltServiceDiagnostic | null>(null);
   readonly diagnosticLoading = signal(false);
@@ -399,6 +399,56 @@ export class OltComponent implements OnInit, OnDestroy {
     return 'ONU en línea';
   }
 
+  /** Semáforo de señal óptica para el operador: Buena / Débil / Crítica. */
+  signalLabel(value?: number | null) {
+    if (value == null) return 'Sin lectura';
+    if (this.isCriticalPower(value)) return 'Crítica';
+    if (this.isWeakPower(value)) return 'Débil';
+    return 'Buena';
+  }
+
+  formatDbm(value?: number | null) {
+    return value != null ? `${value} dBm` : '--';
+  }
+
+  resultStateLabel(online: boolean, phase?: string | null) {
+    return online ? 'En línea' : this.phaseStateLabel(phase);
+  }
+
+  alarmLevelLabel(level?: string | null) {
+    const labels: Record<string, string> = {
+      critical: 'Crítica', major: 'Mayor', minor: 'Menor', warning: 'Aviso', info: 'Informativa', normal: 'Normal',
+    };
+    const key = String(level || '').trim().toLowerCase();
+    return labels[key] || level || 'Aviso';
+  }
+
+  installationStatusLabel(job: ProvisioningJob) {
+    if (job.localStatus === 'error') return 'Error en el agente';
+    return ({
+      in_progress: 'En curso', waiting_optical: 'Esperando fibra', partial: 'Incompleta',
+      failed: 'Fallida', complete: 'Completada', cancelled: 'Cancelada',
+    } as Record<string, string>)[job.status] || job.status;
+  }
+
+  napPortStatusLabel(status?: string | null) {
+    return ({ available: 'Libre', reserved: 'Reservado', assigned: 'Ocupado', damaged: 'Averiado' } as Record<string, string>)[String(status || '')] || status || 'Libre';
+  }
+
+  operationConfirmLabel(action: string) {
+    return ({
+      rename: 'Cambiar nombre y verificar', reboot: 'Reiniciar ONU',
+      'retire-stale': 'Retirar ubicación anterior', 'retire-full': 'Eliminar de la OLT',
+    } as Record<string, string>)[action] || 'Confirmar y verificar';
+  }
+
+  operationTitle(action: string) {
+    return ({
+      rename: 'Cambiar nombre en la OLT', reboot: 'Reiniciar ONU',
+      'retire-stale': 'Retirar ubicación anterior', 'retire-full': 'Eliminar ONU de la OLT',
+    } as Record<string, string>)[action] || 'Confirmar operación';
+  }
+
   // Estados de fase que reporta la ZTE C320, traducidos para el operador.
   private phaseStateLabel(phase?: string | null) {
     const labels: Record<string, string> = {
@@ -433,6 +483,7 @@ export class OltComponent implements OnInit, OnDestroy {
   applyPlanSync() {
     const preview = this.planSyncPreview();
     if (!preview || this.planSyncSaving()) return;
+    if (!window.confirm(`¿Crear ${preview.summary.missing} perfiles de velocidad en la OLT? Se escribirán en la ZTE C320 y se verificarán al terminar.`)) return;
     this.planSyncSaving.set(true);
     this.olt.applyPlanSync(preview.requiredConfirmation).subscribe({
       next: (result) => {
@@ -453,10 +504,10 @@ export class OltComponent implements OnInit, OnDestroy {
       draft: 'Borrador', onu_detected: 'ONU identificada', client_validating: 'Validando cliente',
       wisphub_ready: 'WispHub listo', client_ready: 'Cliente listo', waiting_optical: 'Esperando fibra',
       onu_configured: 'ONU configurada', olt_discovered: 'Detectada por OLT', service_ready: 'Servicio listo',
-      local_network: 'Red local preparada', local_reachability: 'ONU accesible', local_login: 'Sesion ONU iniciada',
+      local_network: 'Red local preparada', local_reachability: 'ONU accesible', local_login: 'Sesión ONU iniciada',
       local_identity: 'Identidad confirmada', local_backup_before: 'Respaldo previo', local_wan: 'WAN configurada',
       local_tr069: 'TR-069 configurado', local_wifi: 'WiFi configurado', local_remote: 'Acceso remoto configurado',
-      local_save: 'Configuracion guardada', local_verify: 'Verificacion local', local_failed: 'Fallo en agente local',
+      local_save: 'Configuración guardada', local_verify: 'Verificación local', local_failed: 'Fallo en el agente local',
       client_partial: 'Alta parcial', client_failed: 'Fallo en alta', olt_failed: 'Fallo en OLT', olt_rolled_back: 'OLT revertida',
       cancelled: 'Cancelada',
     };
@@ -467,7 +518,7 @@ export class OltComponent implements OnInit, OnDestroy {
     if (!job.serial) return;
     const discovered = this.unconfigured().find((onu) => onu.serial.toUpperCase() === job.serial?.toUpperCase());
     if (discovered) this.openProvisioningWizard(discovered);
-    else { this.tab.set('discovered'); this.toast.info('La ONU aun no aparece en descubrimiento. Conectela a la fibra y sincronice.'); }
+    else { this.tab.set('discovered'); this.toast.info('La ONU aún no aparece como detectada. Conéctela a la fibra y pulse «Detectar ahora».'); }
   }
 
   openInstallationCancellation(job: ProvisioningJob) {
@@ -483,7 +534,7 @@ export class OltComponent implements OnInit, OnDestroy {
       error: (error: { error?: { error?: string } }) => {
         this.cancellationLoading.set(false);
         this.cancellationTargetId.set(null);
-        this.toast.error(error.error?.error || 'No se pudo preparar la cancelacion');
+        this.toast.error(error.error?.error || 'No se pudo preparar la cancelación');
       },
     });
   }
@@ -503,12 +554,12 @@ export class OltComponent implements OnInit, OnDestroy {
         this.installations.update((jobs) => jobs.map((job) => job.id === result.job.id ? result.job : job));
         this.cancellationSaving.set(false);
         this.closeInstallationCancellation();
-        this.toast.success(preview.operation === 'close' ? 'Expediente cerrado' : 'Instalacion cancelada');
+        this.toast.success(preview.operation === 'close' ? 'Expediente cerrado' : 'Instalación cancelada');
         this.loadAll(true);
       },
       error: (error: { error?: { error?: string } }) => {
         this.cancellationSaving.set(false);
-        this.toast.error(error.error?.error || 'No se pudo cancelar la instalacion');
+        this.toast.error(error.error?.error || 'No se pudo cancelar la instalación');
       },
     });
   }
@@ -690,7 +741,7 @@ export class OltComponent implements OnInit, OnDestroy {
       },
       error: (error: { error?: { error?: string } }) => {
         this.ipPickerSaving.set(false);
-        this.toast.error(error.error?.error || 'La IP ya no esta disponible');
+        this.toast.error(error.error?.error || 'La IP ya no está disponible');
         this.loadAvailableIps();
       },
     });
@@ -725,7 +776,7 @@ export class OltComponent implements OnInit, OnDestroy {
       },
       error: (error: { error?: { error?: string } }) => {
         this.provisioningLoading.set(false);
-        this.toast.error(error.error?.error || 'La prevalidacion de la ONU fallo');
+        this.toast.error(error.error?.error || 'No se pudo validar la configuración de la ONU');
       },
     });
   }
@@ -747,7 +798,7 @@ export class OltComponent implements OnInit, OnDestroy {
       error: (error: { error?: { error?: string; rollback?: { attempted?: boolean; ok?: boolean } } }) => {
         this.provisioningSaving.set(false);
         const rollback = error.error?.rollback;
-        const suffix = rollback?.attempted ? (rollback.ok ? ' Se revirtio el cambio.' : ' Revise la OLT: el rollback fallo.') : '';
+        const suffix = rollback?.attempted ? (rollback.ok ? ' El cambio se revirtió automáticamente.' : ' Revise la OLT: no se pudo revertir el cambio.') : '';
         this.toast.error((error.error?.error || 'No se pudo autorizar la ONU') + suffix);
       },
     });
@@ -860,7 +911,7 @@ export class OltComponent implements OnInit, OnDestroy {
       },
       error: (error) => {
         this.tr069Saving.set(false);
-        this.toast.error(error?.error?.error || 'No se pudo cambiar la administracion TR-069');
+        this.toast.error(error?.error?.error || 'No se pudo cambiar la administración TR-069');
       },
     });
   }
@@ -896,7 +947,7 @@ export class OltComponent implements OnInit, OnDestroy {
   }
 
   tr069ActionLabel(task: Pick<Tr069Task, 'action'>) {
-    return task.action === 'refresh' ? 'Actualizacion' : task.action === 'set_wifi' ? 'Configuracion WiFi' : 'Reinicio';
+    return task.action === 'refresh' ? 'Actualización' : task.action === 'set_wifi' ? 'Configuración WiFi' : 'Reinicio';
   }
 
   tr069StatusLabel(status: string) {
@@ -960,14 +1011,31 @@ export class OltComponent implements OnInit, OnDestroy {
         } : null);
         this.clientSearch.set('');
         this.clientResults.set([]);
-        this.toast.success(client ? `ONU asociada a ${client.nombre}` : 'Asociacion eliminada');
+        this.toast.success(client ? `ONU asociada a ${client.nombre}` : 'Asociación eliminada');
         this.loadAll(true);
       },
       error: (error: { error?: { error?: string } }) => {
         this.mappingSaving.set(false);
-        this.toast.error(error.error?.error || 'No se pudo guardar la asociacion');
+        this.toast.error(error.error?.error || 'No se pudo guardar la asociación');
       },
     });
+  }
+
+  linkClient(client: OltClientSummary) {
+    const onu = this.selectedOnu();
+    if (onu?.clientIdServicio && onu.clientIdServicio !== client.idServicio) {
+      const current = onu.client?.nombre || `cliente #${onu.clientIdServicio}`;
+      if (!window.confirm(`Esta ONU está asociada a ${current}. ¿Cambiarla a ${client.nombre}?`)) return;
+    }
+    this.assignClient(client);
+  }
+
+  unlinkClient() {
+    const onu = this.selectedOnu();
+    if (!onu?.clientIdServicio) return;
+    const name = onu.client?.nombre || `cliente #${onu.clientIdServicio}`;
+    if (!window.confirm(`¿Desvincular esta ONU de ${name}? El servicio no se corta; solo se quita la asociación en ISP Max.`)) return;
+    this.assignClient(null);
   }
 
   openAssociationPreview() {
@@ -980,7 +1048,7 @@ export class OltComponent implements OnInit, OnDestroy {
       },
       error: (error: { error?: { error?: string } }) => {
         this.associationLoading.set(false);
-        this.toast.error(error.error?.error || 'No se pudo preparar la asociacion masiva');
+        this.toast.error(error.error?.error || 'No se pudo preparar la asociación masiva');
       },
     });
   }
@@ -1064,7 +1132,7 @@ export class OltComponent implements OnInit, OnDestroy {
     if (!onu) return;
     this.olt.previewOperation(onu, 'reboot').subscribe({
       next: (preview) => this.operationPreview.set(preview),
-      error: (error: { error?: { error?: string } }) => this.toast.error(error.error?.error || 'No se pudo validar la operacion'),
+      error: (error: { error?: { error?: string } }) => this.toast.error(error.error?.error || 'No se pudo validar la operación'),
     });
   }
 
@@ -1093,7 +1161,7 @@ export class OltComponent implements OnInit, OnDestroy {
     if (!onu?.serial) return;
     this.olt.previewOperation(onu, 'retire-full').subscribe({
       next: (preview) => this.operationPreview.set(preview),
-      error: (error: { error?: { error?: string } }) => this.toast.error(error.error?.error || 'No se pudo preparar la eliminacion completa'),
+      error: (error: { error?: { error?: string } }) => this.toast.error(error.error?.error || 'No se pudo preparar la eliminación completa'),
     });
   }
 
@@ -1118,7 +1186,7 @@ export class OltComponent implements OnInit, OnDestroy {
         }
         this.toast.success(result.message);
       },
-      error: (error: { error?: { error?: string } }) => { this.operationSaving.set(false); this.toast.error(error.error?.error || 'No se pudo completar la operacion'); },
+      error: (error: { error?: { error?: string } }) => { this.operationSaving.set(false); this.toast.error(error.error?.error || 'No se pudo completar la operación'); },
     });
   }
 
@@ -1126,16 +1194,16 @@ export class OltComponent implements OnInit, OnDestroy {
     return ({
       olt_onu_renamed: 'Nombre ONU cambiado',
       olt_onu_rebooted: 'ONU reiniciada',
-      olt_stale_locations_retired: 'Ubicacion anterior retirada',
+      olt_stale_locations_retired: 'Ubicación anterior retirada',
       olt_onu_retired_for_reassociation: 'ONU eliminada para reasociar',
       olt_onu_full_retirement_failed: 'Error eliminando ONU',
-      olt_stale_location_cleanup_failed: 'Limpieza de ubicacion fallida',
-    } as Record<string, string>)[action] || action;
+      olt_stale_location_cleanup_failed: 'Limpieza de ubicación fallida',
+    } as Record<string, string>)[action] || action.replace(/^olt_/, '').replaceAll('_', ' ');
   }
 
   activityDetail(event: OltActivity) {
-    if (event.action === 'olt_onu_renamed') return `${event.details.oldName || 'sin_nombre'} -> ${event.details.newName || '--'}`;
-    if (event.action === 'olt_stale_locations_retired') return `${event.details.removed?.join(', ') || '--'} -> ${event.details.activeLocation || '--'}`;
+    if (event.action === 'olt_onu_renamed') return `${event.details.oldName || 'sin nombre'} → ${event.details.newName || '--'}`;
+    if (event.action === 'olt_stale_locations_retired') return `${event.details.removed?.join(', ') || '--'} → ${event.details.activeLocation || '--'}`;
     return event.details.clientName || (event.details.totalOnus != null ? `${event.details.totalOnus} ONUs` : '--');
   }
 
@@ -1203,7 +1271,7 @@ export class OltComponent implements OnInit, OnDestroy {
             number: port.portNumber,
             state: port.status === 'damaged' ? 'damaged' : this.onuState(onu),
             onu,
-            label: onu ? `${onu.client?.nombre || onu.name || onu.onuIndex}: ${this.onuStatusLabel(onu)}` : `${nap.name} puerto ${port.portNumber}: ${port.status}`,
+            label: onu ? `${onu.client?.nombre || onu.name || onu.onuIndex}: ${this.onuStatusLabel(onu)}` : `${nap.name} puerto ${port.portNumber}: ${this.napPortStatusLabel(port.status)}`,
           };
         }),
       };

@@ -62,7 +62,7 @@
 
           <div class="workflow-track" aria-label="Etapas del trabajo">
             <div class="done"><span><svg lucideCheck size="14"></svg></span><small>Agente</small></div><i></i>
-            <div [class.done]="agent.discovery?.detected" [class.current]="!agent.discovery?.detected"><span>{{ agent.discovery?.detected ? '✓' : '2' }}</span><small>Detectar</small></div><i [class.done]="agent.discovery?.detected"></i>
+            <div [class.done]="agent.discovery?.detected" [class.current]="!agent.discovery?.detected"><span>@if (agent.discovery?.detected) { <svg lucideCheck size="14"></svg> } @else { 2 }</span><small>Detectar</small></div><i [class.done]="agent.discovery?.detected"></i>
             <div [class.current]="agent.discovery?.detected && !activeTask()"><span>3</span><small>Servicio</small></div><i [class.done]="activeTaskStatus() === 'processing' || activeTaskStatus() === 'success'"></i>
             <div [class.current]="activeTaskStatus() === 'processing'" [class.done]="activeTaskStatus() === 'success'"><span>4</span><small>Configurar</small></div><i [class.done]="activeTaskStatus() === 'success'"></i>
             <div [class.done]="activeTaskStatus() === 'success'"><span>5</span><small>Verificar</small></div>
@@ -80,7 +80,7 @@
             <section class="ready-state"><div><svg lucideShieldCheck size="28"></svg><strong>{{ agent.online ? 'Agente listo para trabajar' : 'El agente está desconectado' }}</strong><span>{{ agent.online ? 'La operación se ejecutará dentro de esta PC y el progreso aparecerá aquí.' : 'Enciende ONU Studio en esa computadora para continuar.' }}</span></div><div class="ready-actions"><button class="secondary-button" type="button" [disabled]="!agent.online" (click)="openOperation('check')">Comprobar acceso</button><button class="primary-button" type="button" [disabled]="!agent.online" (click)="openOperation('provision')"><svg lucidePlay size="15"></svg>Configurar ONU</button></div></section>
           }
         } @else {
-          <section class="no-selection"><svg lucideLaptop size="30"></svg><h2>Instala o selecciona un agente</h2><p>Railway enviará el trabajo a la PC que tenga acceso físico a la ONU.</p><button class="primary-button" type="button" (click)="downloadAgent()"><svg lucideDownload size="16"></svg>Descargar ONU Studio</button></section>
+          <section class="no-selection"><svg lucideLaptop size="30"></svg><h2>Instala o selecciona un agente</h2><p>El sistema enviará el trabajo a la PC que tenga la ONU conectada por cable.</p><button class="primary-button" type="button" (click)="downloadAgent()"><svg lucideDownload size="16"></svg>Descargar ONU Studio</button></section>
         }
       </section>
 
@@ -94,31 +94,31 @@
     <section class="history-preview"><header><div><strong>Historial de trabajos</strong><small>Últimas operaciones de todos los agentes</small></div><button type="button" (click)="setTab('history')">Ver todos</button></header><ng-container *ngTemplateOutlet="taskTable; context: { tasks: tasks().slice(0, 6) }"></ng-container></section>
   } @else if (tab() === 'agents') {
     <section class="agents-view">
-      <header><div><h2>Agentes de Windows</h2><p>Controla las PC autorizadas, sus credenciales y el acceso a Railway.</p></div><button class="primary-button" type="button" (click)="downloadAgent()"><svg lucideDownload size="16"></svg>Instalar otra PC</button></header>
+      <header><div><h2>Agentes de Windows</h2><p>Controla qué PC pueden configurar ONU y revisa su conexión con el sistema.</p></div><button class="primary-button" type="button" (click)="downloadAgent()"><svg lucideDownload size="16"></svg>Instalar otra PC</button></header>
       <div class="agent-security-strip">
-        <div><svg lucideShieldCheck size="18"></svg><span><b>{{ authorizedCount() }} autorizados</b><small>Conexión saliente a Railway</small></span></div>
-        <div><svg lucideActivity size="18"></svg><span><b>{{ onlineCount() }} conectados</b><small>Heartbeat verificado</small></span></div>
+        <div><svg lucideShieldCheck size="18"></svg><span><b>{{ authorizedCount() }} autorizados</b><small>Conexión segura con el sistema</small></span></div>
+        <div><svg lucideActivity size="18"></svg><span><b>{{ onlineCount() }} conectados</b><small>Reportándose en este momento</small></span></div>
         <div><svg lucideShieldOff size="18"></svg><span><b>{{ revokedCount() }} revocados</b><small>Sin acceso operativo</small></span></div>
-        <div><svg lucideKeyRound size="18"></svg><span><b>Tokens protegidos</b><small>Hash en nube · DPAPI en Windows</small></span></div>
+        <div><svg lucideKeyRound size="18"></svg><span><b>Credenciales protegidas</b><small>Cifradas en la nube y en Windows</small></span></div>
       </div>
       <div class="agents-table" role="table">
         <div class="table-head" role="row"><span>Agente</span><span>Estado</span><span>Sistema</span><span>Credencial</span><span>Último contacto</span><span>Acciones</span></div>
         @for (agent of agents(); track trackAgent($index, agent)) {
           <div class="agent-table-row" role="row" [class.revoked]="!agent.active">
             <span><svg lucideLaptop size="18"></svg><b>{{ agent.displayName }}</b><small>{{ agent.agentId }}</small></span>
-            <span class="state-cell" [class.online]="agent.online" [class.revoked]="!agent.active"><i></i>{{ agentStateLabel(agent) }}<small>{{ agent.active ? (agent.isAdmin ? 'Administrador local' : 'Sin elevación') : 'Requiere nuevo inicio admin' }}</small></span>
+            <span class="state-cell" [class.online]="agent.online" [class.revoked]="!agent.active"><i></i>{{ agentStateLabel(agent) }}<small>{{ agent.active ? (agent.isAdmin ? 'Administrador local' : 'Sin permisos de administrador') : 'Debe iniciar sesión de nuevo como administrador' }}</small></span>
             <span><b>{{ agent.osName || 'Windows' }}</b><small>{{ agent.architecture || '--' }} · v{{ agent.version || '--' }}</small></span>
             <span><b class="mono">{{ agent.tokenFingerprint || 'Sin huella' }}</b><small>{{ agent.active ? 'Vinculado ' + formatDate(agent.pairedAt) : 'Revocado por ' + (agent.revokedBy || 'administrador') }}</small></span>
             <span><b>{{ formatDate(agent.lastSeenAt) }}</b><small>{{ agent.lastIp || 'IP no reportada' }}</small></span>
             <span class="agent-actions">
-              @if (agent.active) { <button type="button" (click)="selectAgent(agent.id); setTab('operation')" title="Abrir operaciones"><svg lucidePlay size="15"></svg></button> }
-              @if (canManageAgents()) { <button type="button" (click)="openAgentAdmin(agent, 'rename')" title="Cambiar nombre"><svg lucidePencil size="15"></svg></button> }
-              @if (canManageAgents() && agent.active) { <button class="revoke" type="button" (click)="openAgentAdmin(agent, 'revoke')" title="Revocar agente"><svg lucideShieldOff size="15"></svg></button> }
+              @if (agent.active) { <button type="button" (click)="selectAgent(agent.id); setTab('operation')" title="Abrir operaciones" aria-label="Abrir operaciones"><svg lucidePlay size="15"></svg></button> }
+              @if (canManageAgents()) { <button type="button" (click)="openAgentAdmin(agent, 'rename')" title="Cambiar nombre" aria-label="Cambiar nombre"><svg lucidePencil size="15"></svg></button> }
+              @if (canManageAgents() && agent.active) { <button class="revoke" type="button" (click)="openAgentAdmin(agent, 'revoke')" title="Revocar agente" aria-label="Revocar agente"><svg lucideShieldOff size="15"></svg></button> }
             </span>
           </div>
         } @empty { <div class="table-empty">No hay agentes vinculados todavía.</div> }
       </div>
-      <footer class="agent-enrollment-note"><svg lucideShieldCheck size="17"></svg><div><b>Vinculación controlada</b><span>Al revocar una PC, su token y su sesión recordada quedan inválidos. Para reconectarla, abre ONU Studio e inicia sesión con un administrador; se emitirá un token nuevo.</span></div></footer>
+      <footer class="agent-enrollment-note"><svg lucideShieldCheck size="17"></svg><div><b>Vinculación controlada</b><span>Al revocar una PC, su credencial y su sesión recordada dejan de funcionar. Para reconectarla, abre ONU Studio e inicia sesión con un administrador; se emitirá una credencial nueva.</span></div></footer>
     </section>
   } @else {
     <section class="history-view"><header><div><h2>Historial de trabajos</h2><p>Auditoría centralizada de detecciones, comprobaciones y configuraciones.</p></div><label><svg lucideSearch size="16"></svg><input type="search" placeholder="Buscar agente, ONU, estado o ID" [ngModel]="historyQuery()" (ngModelChange)="historyQuery.set($event)" /></label></header><ng-container *ngTemplateOutlet="taskTable; context: { tasks: filteredTasks() }"></ng-container></section>
@@ -126,7 +126,7 @@
 </main>
 
 <ng-template #taskTable let-rows="tasks">
-  <div class="task-table"><div class="task-table-head"><span>Trabajo</span><span>Fecha y hora</span><span>Estado</span><span>Agente</span><span>ONU / servicio</span><span>Duración</span><span></span></div>@for (task of rows; track trackTask($index, task)) { <div class="task-table-row"><span class="mono">{{ task.id.slice(0, 12) }}</span><span>{{ formatDate(task.createdAt) }}</span><span class="task-state" [class.success]="task.status === 'success'" [class.failed]="task.status === 'failed'" [class.processing]="task.status === 'processing'"><i></i>{{ statusLabel(task.status) }}</span><span><b>{{ task.agentName || '--' }}</b><small>{{ task.createdBy }}</small></span><span><b>{{ task.payload.device?.model || actionLabel(task.action) }}</b><small>{{ task.payload.wan?.ip_address || task.payload.device?.host || '--' }}</small></span><span class="mono">{{ taskDuration(task) }}</span><span class="row-actions">@if (task.status === 'failed' || task.status === 'cancelled') { <button type="button" (click)="retryTask(task)" title="Reintentar"><svg lucideRefreshCw size="15"></svg></button> }</span></div> } @empty { <div class="table-empty">No hay trabajos que coincidan con la búsqueda.</div> }</div>
+  <div class="task-table"><div class="task-table-head"><span>Trabajo</span><span>Fecha y hora</span><span>Estado</span><span>Agente</span><span>ONU / servicio</span><span>Duración</span><span></span></div>@for (task of rows; track trackTask($index, task)) { <div class="task-table-row"><span class="mono">{{ task.id.slice(0, 12) }}</span><span>{{ formatDate(task.createdAt) }}</span><span class="task-state" [class.success]="task.status === 'success'" [class.failed]="task.status === 'failed'" [class.processing]="task.status === 'processing'"><i></i>{{ statusLabel(task.status) }}</span><span><b>{{ task.agentName || '--' }}</b><small>{{ task.createdBy }}</small></span><span><b>{{ task.payload.device?.model || actionLabel(task.action) }}</b><small>{{ task.payload.wan?.ip_address || task.payload.device?.host || '--' }}</small></span><span class="mono">{{ taskDuration(task) }}</span><span class="row-actions">@if (task.status === 'failed' || task.status === 'cancelled') { <button type="button" (click)="retryTask(task)" title="Reintentar" aria-label="Reintentar trabajo"><svg lucideRefreshCw size="15"></svg></button> }</span></div> } @empty { <div class="table-empty">No hay trabajos que coincidan con la búsqueda.</div> }</div>
 </ng-template>
 
 @if (showAgentAdmin()) {
@@ -136,7 +136,7 @@
       @if (agentAdminMode() === 'rename') {
         <div class="agent-admin-body"><label><span>Nombre visible de esta PC</span><input [(ngModel)]="agentDisplayName" maxlength="120" autofocus /></label><p>Usa un nombre reconocible, por ejemplo “Laptop técnico norte”.</p></div>
       } @else {
-        <div class="agent-admin-body revoke-copy"><svg lucideShieldOff size="24"></svg><div><strong>Esta PC perderá acceso a Railway</strong><p>Se cancelarán sus trabajos activos y ONU Studio solicitará usuario y clave de administrador para emitir una credencial nueva.</p></div></div>
+        <div class="agent-admin-body revoke-copy"><svg lucideShieldOff size="24"></svg><div><strong>Esta PC perderá el acceso al sistema</strong><p>Se cancelarán sus trabajos activos y ONU Studio solicitará usuario y clave de administrador para emitir una credencial nueva.</p></div></div>
       }
       <footer><button class="secondary-button" type="button" (click)="closeAgentAdmin()">Cancelar</button><button [class.danger-button]="agentAdminMode() === 'revoke'" [class.primary-button]="agentAdminMode() === 'rename'" type="button" [disabled]="savingAgent()" (click)="saveAgentAdmin()">{{ savingAgent() ? 'Guardando...' : agentAdminMode() === 'revoke' ? 'Revocar acceso' : 'Guardar nombre' }}</button></footer>
     </section>
@@ -190,7 +190,7 @@
             <div class="mode-choice"><span>La ONU trabajará como</span><div><button type="button" [class.active]="serviceMode === 'router'" (click)="setServiceMode('router')"><svg lucideWifi size="16"></svg>Router WiFi</button><button type="button" [class.active]="serviceMode === 'bridge'" (click)="setServiceMode('bridge')"><svg lucideCable size="16"></svg>Bridge</button></div></div>
 
             @if (serviceOperation === 'new_client') {
-              <div class="simple-form service-form"><label class="wide"><span>Nombre del cliente</span><input [(ngModel)]="clientName" maxlength="160" placeholder="Nombre que aparecerá en WispHub y MikroTik" /></label><label><span>Zona</span><select [(ngModel)]="zoneId"><option [ngValue]="null">Seleccionar zona</option>@for (zone of zones(); track zone.id) { <option [ngValue]="zone.id">{{ optionLabel(zone) }}</option> }</select></label><label><span>Plan de Internet</span><select [(ngModel)]="planId" (ngModelChange)="onPlanChange()"><option [ngValue]="null">Seleccionar plan</option>@for (plan of plans(); track plan.id) { <option [ngValue]="plan.id">{{ optionLabel(plan) }}</option> }</select></label></div>
+              <div class="simple-form service-form"><label class="wide"><span>Nombre del cliente</span><input [(ngModel)]="clientName" maxlength="160" placeholder="Nombre que aparecerá en WispHub y MikroTik" /></label><label><span>Zona</span><select [(ngModel)]="zoneId"><option [ngValue]="null">Seleccionar zona</option>@for (zone of zones(); track zone.id) { <option [ngValue]="zone.id">{{ optionLabel(zone) }}</option> }</select></label><label><span>Plan de Internet</span><select [(ngModel)]="planId" (ngModelChange)="onPlanChange()"><option [ngValue]="null">Seleccionar plan</option>@for (plan of plans(); track plan.id) { <option [ngValue]="plan.id">{{ optionLabel(plan) | planLabel }}</option> }</select></label></div>
               @if (serviceMode === 'router') {
                 <section class="recommended-ip"><div><span><svg lucideServer size="17"></svg></span><div><small>IP recomendada y verificada</small><strong class="mono">{{ selectedIp()?.ip || 'Buscando una IP disponible' }}</strong><p>{{ selectedIp()?.rangeName || selectedIp()?.cidr || 'Se validará en WispHub, MikroTik, ARP y reservas activas.' }}</p></div><b>{{ ipCatalog()?.stale ? 'Datos en caché' : 'Disponible ahora' }}</b></div>
                   <details><summary>Cambiar dirección</summary><div class="ip-options">@for (row of (ipCatalog()?.rows || []).slice(0, 12); track row.ip) { <button type="button" [class.active]="wanIp === row.ip" (click)="chooseIp(row)"><b class="mono">{{ row.ip }}</b><small>{{ row.rangeName || row.cidr }}</small></button> } @empty { <span>No hay direcciones libres en los rangos de este agente.</span> }</div></details>
@@ -200,9 +200,9 @@
             } @else {
               @if (!selectedExistingClient()) {
                 <label class="client-search"><span>Buscar el cliente existente</span><div><input [(ngModel)]="clientSearch" (keyup.enter)="searchClients()" placeholder="Nombre, usuario, IP o teléfono" /><button type="button" (click)="searchClients()"><svg lucideSearch size="16"></svg>Buscar</button></div></label>
-                <div class="client-results">@for (client of clientResults(); track client.idServicio) { <button type="button" (click)="selectExistingClient(client)"><span><b>{{ client.nombre }}</b><small>{{ client.usuario || 'Sin usuario' }} · {{ client.planInternetName || 'Sin plan' }}</small></span><span><b class="mono">{{ client.ip || 'Sin IP' }}</b><small>WispHub #{{ client.idServicio }}</small></span></button> }</div>
+                <div class="client-results">@for (client of clientResults(); track client.idServicio) { <button type="button" (click)="selectExistingClient(client)"><span><b>{{ client.nombre }}</b><small>{{ client.usuario || 'Sin usuario' }} · {{ client.planInternetName | planLabel }}</small></span><span><b class="mono">{{ client.ip || 'Sin IP' }}</b><small>WispHub #{{ client.idServicio }}</small></span></button> }</div>
               } @else {
-                <div class="selected-client"><span><svg lucideCircleCheck size="21"></svg></span><div><b>{{ selectedExistingClient()?.nombre }}</b><small>{{ selectedExistingClient()?.planInternetName }} · {{ selectedExistingClient()?.ip || 'Bridge sin IP' }}</small></div><button type="button" (click)="selectedExistingClient.set(null)">Cambiar</button></div>
+                <div class="selected-client"><span><svg lucideCircleCheck size="21"></svg></span><div><b>{{ selectedExistingClient()?.nombre }}</b><small>{{ selectedExistingClient()?.planInternetName | planLabel }} · {{ selectedExistingClient()?.ip || 'Bridge sin IP' }}</small></div><button type="button" (click)="selectedExistingClient.set(null)">Cambiar</button></div>
                 <div class="simple-form"><label class="wide"><span>Motivo técnico</span><input [(ngModel)]="operationReason" maxlength="240" placeholder="Ej. ONU formateada o cambio por avería" /></label>@if (serviceOperation === 'migrate_pon') { <label><span>PON de destino</span><input [(ngModel)]="targetPonIndex" placeholder="Ej. 1/2/3" /></label> }</div>
               }
             }
@@ -212,7 +212,7 @@
             <header class="stage-heading"><div><small>Perfil automático {{ serviceMode === 'router' ? 'Router' : 'Bridge' }}</small><h3>{{ serviceMode === 'router' ? 'WiFi y administración' : 'Entrega Ethernet' }}</h3><p>Solo completa lo que verá el cliente; las decisiones técnicas ya fueron calculadas.</p></div><span><svg lucideShieldCheck size="18"></svg>{{ managementLabel() }}</span></header>
             @if (serviceMode === 'router') {
               <div class="wifi-primary"><div class="wifi-icon"><svg lucideWifi size="30"></svg></div><label><span>Nombre de la red WiFi</span><input [(ngModel)]="wifiSsid" maxlength="32" placeholder="Nombre visible" /></label><label><span>Clave WiFi</span><input [(ngModel)]="wifiPassword" type="text" minlength="8" maxlength="64" placeholder="Mínimo 8 caracteres" /></label><button type="button" (click)="generateWifiDefaults()"><svg lucideRefreshCw size="15"></svg>Generar</button></div>
-              <div class="automatic-profile"><div><svg lucideServer size="18"></svg><span><b>Internet</b><small>VLAN {{ vlan }} · IP {{ wanIp }} · NAT activo</small></span><svg lucideCheck size="17"></svg></div><div><svg lucideShieldCheck size="18"></svg><span><b>Administración</b><small>{{ managementLabel() }} · HTTP restringido</small></span><svg lucideCheck size="17"></svg></div><div><svg lucideRefreshCw size="18"></svg><span><b>Protección</b><small>Respaldo, verificación y rollback</small></span><svg lucideCheck size="17"></svg></div></div>
+              <div class="automatic-profile"><div><svg lucideServer size="18"></svg><span><b>Internet</b><small>VLAN {{ vlan }} · IP {{ wanIp }} · NAT activo</small></span><svg lucideCheck size="17"></svg></div><div><svg lucideShieldCheck size="18"></svg><span><b>Administración</b><small>{{ managementLabel() }} · HTTP restringido</small></span><svg lucideCheck size="17"></svg></div><div><svg lucideRefreshCw size="18"></svg><span><b>Protección</b><small>Respaldo, verificación y reversión automática</small></span><svg lucideCheck size="17"></svg></div></div>
             } @else {
               <div class="bridge-profile"><svg lucideCable size="34"></svg><h3>Bridge listo para la OLT</h3><p>Se aplicará VLAN {{ vlan }} en LAN1–LAN4. La ONU no tendrá IP WAN, NAT, WiFi ni TR-069; OMCI seguirá disponible para óptica, estado y reinicio.</p></div>
             }
@@ -223,7 +223,7 @@
             @if (!provisionTaskId()) {
               <header class="review-heading"><span><svg lucideShieldCheck size="28"></svg></span><div><small>Todo listo para aplicar</small><h3>Revisa la entrega al cliente</h3><p>El agente hará respaldo, configuración, guardado y lectura posterior.</p></div></header>
               <dl class="review-list"><div><dt>Operación</dt><dd>{{ operationLabel() }}</dd></div><div><dt>Cliente</dt><dd>{{ clientName }}</dd></div><div><dt>ONU</dt><dd>{{ deviceModel }} · <span class="mono">{{ detectedSerial() }}</span></dd></div><div><dt>Servicio</dt><dd>{{ serviceMode === 'router' ? 'Router · ' + wanIp : 'Bridge · sin IP WAN' }}</dd></div><div><dt>WiFi</dt><dd>{{ serviceMode === 'router' ? wifiSsid : 'No aplica' }}</dd></div><div><dt>Gestión</dt><dd>{{ managementLabel() }}</dd></div><div><dt>Protección</dt><dd>Respaldo y verificación siempre activos</dd></div></dl>
-              <div class="review-safe"><svg lucideShieldCheck size="19"></svg><span><b>La operación es idempotente</b><small>Reintentar no recreará WispHub, MikroTik, la IP ni el expediente.</small></span></div>
+              <div class="review-safe"><svg lucideShieldCheck size="19"></svg><span><b>Se puede reintentar sin riesgo</b><small>Reintentar no duplicará el cliente en WispHub, la cola en MikroTik, la IP ni el expediente.</small></span></div>
             } @else if (provisionTask(); as task) {
               <div class="provision-focus" [class.success]="task.status === 'success'" [class.failed]="task.status === 'failed'"><span>@if (task.status === 'success') { <svg lucideCircleCheck size="34"></svg> } @else if (task.status === 'failed') { <svg lucideCircleAlert size="34"></svg> } @else { <svg lucideLoaderCircle size="34" class="spinning"></svg> }</span><small>{{ statusLabel(task.status) }}</small><h3>{{ task.stageLabel }}</h3><p>{{ task.status === 'success' ? 'La configuración fue leída nuevamente y coincide con el perfil.' : task.status === 'failed' ? (task.errorMessage || 'El agente detuvo el proceso.') : 'Puedes cerrar esta ventana; el trabajo continuará en el agente.' }}</p><strong>{{ task.progress }}%</strong><div><i [style.width.%]="task.progress"></i></div></div>
               @if (task.result?.events?.length) { <ol class="guided-timeline">@for (event of task.result?.events; track event.at + event.step) { <li [class.success]="event.status === 'success'" [class.error]="event.status === 'error'"><i></i><span><b>{{ event.message }}</b><small>{{ event.step }} · {{ formatTime(event.at) }}</small></span></li> }</ol> }

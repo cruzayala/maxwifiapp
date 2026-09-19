@@ -34,20 +34,20 @@
             <div><dt>OLT</dt><dd>{{ profile.oltVendor }} {{ profile.oltModel }}</dd></div>
             <div><dt>Tipo autorizado</dt><dd class="mono">{{ profile.oltOnuType }}</dd></div>
             <div><dt>Serial</dt><dd class="mono">{{ profile.serialPrefixes.join(', ') || 'Sin prefijo' }}</dd></div>
-            <div><dt>Gestión</dt><dd>{{ profile.omciMode === 'baseline' ? 'OMCI base' : profile.omciMode }}{{ profile.tr069ProfileKey ? ' + TR-069' : '' }}</dd></div>
+            <div><dt>Gestión</dt><dd>{{ omciModeLabel(profile.omciMode) }}{{ profile.tr069ProfileKey ? ' + TR-069' : '' }}</dd></div>
           </dl>
           <div class="capability-meter">
-            <span><b>{{ verifiedCapabilities(profile) }}</b>/{{ profile.capabilities.length }} verificadas</span>
-            <span><b>{{ profile.deviceCount }}</b> equipos</span>
+            <span><b>{{ verifiedCapabilities(profile) }}</b>/{{ profile.capabilities.length }} funciones verificadas</span>
+            <span><b>{{ profile.deviceCount }}</b> ONU instaladas</span>
             <span>v{{ profile.version }}</span>
           </div>
           <footer>
-            <button type="button" class="edit-action" (click)="openEdit(profile)"><svg lucidePencil size="14"></svg>Editar</button>
+            <button type="button" class="edit-action" (click)="openEdit(profile)" [attr.aria-label]="'Editar ' + profile.model"><svg lucidePencil size="14"></svg>Editar</button>
             <button type="button" class="archive-action" (click)="toggle(profile)">{{ profile.active ? 'Archivar' : 'Activar' }}</button>
           </footer>
         </article>
       } @empty {
-        <div class="catalog-empty"><svg lucideCpu size="24"></svg><strong>Sin tipos de ONU</strong><span>Cree el primer perfil de hardware.</span></div>
+        <div class="catalog-empty"><svg lucideCpu size="24"></svg><strong>Sin tipos de ONU</strong><span>Pulse «Nuevo tipo» para registrar el primer modelo.</span></div>
       }
     </div>
   }
@@ -94,8 +94,8 @@
             @for (capability of draft.capabilities; track capability.action + capability.channel; let index = $index) {
               <div>
                 <span><strong>{{ actionLabel(capability.action) }}</strong><small>{{ capability.action }}</small></span>
-                <select [(ngModel)]="capability.channel" [name]="'channel-' + index">@for (channel of channels; track channel) { <option [value]="channel">{{ channel }}</option> }</select>
-                <select [(ngModel)]="capability.status" [name]="'status-' + index">@for (status of statuses; track status) { <option [value]="status">{{ statusLabel(status) }}</option> }</select>
+                <select [(ngModel)]="capability.channel" [name]="'channel-' + index" [attr.aria-label]="'Canal para ' + actionLabel(capability.action)">@for (channel of channels; track channel) { <option [value]="channel">{{ channelLabel(channel) }}</option> }</select>
+                <select [(ngModel)]="capability.status" [name]="'status-' + index" [attr.aria-label]="'Estado de ' + actionLabel(capability.action)">@for (status of statuses; track status) { <option [value]="status">{{ statusLabel(status) }}</option> }</select>
               </div>
             }
           </div>

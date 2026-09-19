@@ -9,7 +9,7 @@
       <div>
         <div class="status-line">
           <span class="status-dot" [class.online]="status().connected"></span>
-          <span>{{ status().connected ? 'En linea' : 'Sin conexion' }}</span>
+          <span>{{ status().connected ? 'En línea' : 'Sin conexión' }}</span>
           <span class="separator"></span>
           <span class="mono">{{ status().host || 'No configurado' }}</span>
         </div>
@@ -20,7 +20,7 @@
     <div class="header-actions">
       <div class="updated-at">
         <span>Actualizado</span>
-        <strong>{{ lastUpdate()?.toLocaleTimeString() || '--:--:--' }}</strong>
+        <strong>{{ lastUpdate()?.toLocaleTimeString('es-DO') || '--:--:--' }}</strong>
       </div>
       <button class="icon-button" type="button" (click)="refreshAll()" [disabled]="refreshing()" title="Actualizar datos" aria-label="Actualizar datos">
         <svg lucideRefreshCw size="18" [class.spinning]="refreshing()" aria-hidden="true"></svg>
@@ -39,7 +39,7 @@
     <button type="button" [class.active]="activeTab() === 'unknown'" (click)="changeTab('unknown')"><svg lucideShieldAlert size="16" aria-hidden="true"></svg>Desconocidos <span class="warn-count">{{ unknown() ? unknown()!.stats.highRisk : '-' }}</span></button>
     <button type="button" [class.active]="activeTab() === 'interfaces'" (click)="changeTab('interfaces')"><svg lucideNetwork size="16" aria-hidden="true"></svg>Infraestructura</button>
     <button type="button" [class.active]="activeTab() === 'firewall'" (click)="changeTab('firewall')"><svg lucideShieldCheck size="16" aria-hidden="true"></svg>Firewall</button>
-    <button type="button" [class.active]="activeTab() === 'netwatch'" (click)="changeTab('netwatch')"><svg lucideRadioTower size="16" aria-hidden="true"></svg>Netwatch</button>
+    <button type="button" [class.active]="activeTab() === 'netwatch'" (click)="changeTab('netwatch')"><svg lucideRadioTower size="16" aria-hidden="true"></svg>Monitoreo</button>
     <button type="button" [class.active]="activeTab() === 'backups'" (click)="changeTab('backups')"><svg lucideHardDrive size="16" aria-hidden="true"></svg>Respaldos</button>
     <button type="button" [class.active]="activeTab() === 'security'" (click)="changeTab('security')"><svg lucideShieldCheck size="16" aria-hidden="true"></svg>Seguridad</button>
   </nav>
@@ -49,6 +49,7 @@
       <svg lucideWifiOff size="34" aria-hidden="true"></svg>
       <h2>MikroTik no disponible</h2>
       <p>{{ status().error || 'No se pudo conectar con el MikroTik.' }}</p>
+      <p class="connection-hint">Verifique que el router esté encendido y con Internet. Si el problema continúa, avise al administrador de la red.</p>
       <button type="button" (click)="refreshAll()"><svg lucideRefreshCw size="16" aria-hidden="true"></svg>Reintentar</button>
     </section>
   } @else {
@@ -64,7 +65,7 @@
         </article>
         <article>
           <span class="kpi-icon green"><svg lucideWifi size="19" aria-hidden="true"></svg></span>
-          <div><small>Clientes online</small><strong>{{ live()?.stats?.onlineClients || 0 }}</strong><em>{{ live()?.stats?.transmittingClients || 0 }} transmitiendo</em></div>
+          <div><small>Clientes en línea</small><strong>{{ live()?.stats?.onlineClients || 0 }}</strong><em>{{ live()?.stats?.transmittingClients || 0 }} transmitiendo</em></div>
         </article>
         <article>
           <span class="kpi-icon amber"><svg lucideDatabase size="19" aria-hidden="true"></svg></span>
@@ -115,13 +116,13 @@
             <tbody>
               @for (row of topClients(); track row.ip) {
                 <tr>
-                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.zone || 'Sin zona' }}</small></div></div></td>
+                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.zone || '—' }}</small></div></div></td>
                   <td class="mono">{{ row.ip }}</td>
-                  <td>{{ row.client?.plan || formatLimit(row.maxUploadBps + '/' + row.maxDownloadBps) }}</td>
+                  <td>{{ row.client?.plan ? (row.client?.plan | planLabel) : formatLimit(row.maxUploadBps + '/' + row.maxDownloadBps) }}</td>
                   <td class="rate upload">{{ formatBps(row.uploadBps) }}</td>
                   <td class="rate download">{{ formatBps(row.downloadBps) }}</td>
                   <td><div class="mini-usage"><span [style.width.%]="Math.max(row.uploadPct, row.downloadPct)"></span></div></td>
-                  <td><span class="state-badge" [class.online]="row.isOnline">{{ row.isOnline ? 'Online' : 'Offline' }}</span></td>
+                  <td><span class="state-badge" [class.online]="row.isOnline">{{ row.isOnline ? 'En línea' : 'Sin conexión' }}</span></td>
                 </tr>
               } @empty {
                 <tr><td colspan="7" class="empty-row">Sin tráfico activo</td></tr>
@@ -137,21 +138,21 @@
         <div><h2>Clientes y colas</h2><p>{{ live()?.stats?.mikrotikQueues || 0 }} colas · {{ live()?.stats?.differences || 0 }} diferencias operativas</p></div>
         <div class="toolbar-controls">
           <label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="Cliente, usuario o IP" [ngModel]="clientQuery()" (ngModelChange)="setClientQuery($event)" /></label>
-          <label class="select-control"><svg lucideSlidersHorizontal size="16" aria-hidden="true"></svg><select [ngModel]="syncFilter()" (ngModelChange)="setSyncFilter($event)"><option value="all">Todos</option><option value="differences">Con diferencias</option><option value="online">Online</option><option value="offline">Offline</option><option value="disabled">Deshabilitados</option></select></label>
+          <label class="select-control"><svg lucideSlidersHorizontal size="16" aria-hidden="true"></svg><select [ngModel]="syncFilter()" (ngModelChange)="setSyncFilter($event)"><option value="all">Todos</option><option value="differences">Con diferencias</option><option value="online">En línea</option><option value="offline">Sin conexión</option><option value="disabled">Deshabilitados</option></select></label>
         </div>
       </section>
       @if (canManage()) {
         <section class="mt-control-bar">
           <div class="mt-control-summary"><strong>{{ selectedQueueIds().size }}</strong><span>colas seleccionadas</span></div>
-          <label><span>Plantilla</span><select [(ngModel)]="selectedTemplateId">@for (item of speedTemplates(); track item.id) { <option [value]="item.id">{{ item.name }} ({{ item.uploadMbps }} / {{ item.downloadMbps }} Mbps)</option> }</select></label>
-          <button class="action-button" type="button" (click)="applySpeedTemplate()" [disabled]="!selectedQueueIds().size || controlSaving()"><svg lucideSlidersHorizontal size="15" aria-hidden="true"></svg>Aplicar</button>
+          <label><span>Plantilla de velocidad</span><select [(ngModel)]="selectedTemplateId">@for (item of speedTemplates(); track item.id) { <option [value]="item.id">{{ item.name }} ({{ item.uploadMbps }} / {{ item.downloadMbps }} Mbps)</option> } @empty { <option value="">Sin plantillas guardadas</option> }</select></label>
+          <button class="action-button primary" type="button" (click)="applySpeedTemplate()" [disabled]="!selectedQueueIds().size || controlSaving()" [title]="selectedQueueIds().size ? 'Aplicar la plantilla a las colas marcadas' : 'Marque al menos una cola en la tabla'"><svg lucideSlidersHorizontal size="15" aria-hidden="true"></svg>Aplicar</button>
           <details>
             <summary>Nueva plantilla</summary>
             <div class="mt-inline-form">
-              <input type="text" [(ngModel)]="templateName" maxlength="50" placeholder="Nombre" />
-              <input type="number" [(ngModel)]="templateUploadMbps" min="0.1" max="10000" step="0.1" aria-label="Subida Mbps" />
-              <input type="number" [(ngModel)]="templateDownloadMbps" min="0.1" max="10000" step="0.1" aria-label="Descarga Mbps" />
-              <button class="icon-button small" type="button" (click)="saveSpeedTemplate()" title="Guardar plantilla"><svg lucideSave size="15" aria-hidden="true"></svg></button>
+              <input type="text" [(ngModel)]="templateName" maxlength="50" placeholder="Nombre de la plantilla" aria-label="Nombre de la plantilla" />
+              <input type="number" [(ngModel)]="templateUploadMbps" min="0.1" max="10000" step="0.1" placeholder="Subida Mbps" aria-label="Subida en Mbps" title="Subida en Mbps" />
+              <input type="number" [(ngModel)]="templateDownloadMbps" min="0.1" max="10000" step="0.1" placeholder="Descarga Mbps" aria-label="Descarga en Mbps" title="Descarga en Mbps" />
+              <button class="action-button" type="button" (click)="saveSpeedTemplate()" [disabled]="!templateName.trim() || controlSaving()" [title]="templateName.trim() ? 'Guardar plantilla' : 'Escriba un nombre para la plantilla'"><svg lucideSave size="15" aria-hidden="true"></svg>Guardar</button>
             </div>
           </details>
         </section>
@@ -159,20 +160,20 @@
       <section class="panel data-panel">
         <div class="table-wrap">
           <table>
-            <thead><tr>@if (canManage()) { <th class="check-col"><input type="checkbox" (change)="selectVisibleQueues($any($event.target).checked)" aria-label="Seleccionar colas visibles" /></th> }<th>Cliente</th><th>IP / MAC</th><th>Sincronización</th><th>Límite U/D</th><th>Tráfico actual</th><th>Estado</th><th></th></tr></thead>
+            <thead><tr>@if (canManage()) { <th class="check-col"><input type="checkbox" (change)="selectVisibleQueues($any($event.target).checked)" aria-label="Seleccionar colas visibles" /></th> }<th>Cliente</th><th>IP / MAC</th><th>Sincronización</th><th>Límite subida / bajada</th><th>Tráfico actual</th><th>Estado</th><th></th></tr></thead>
             <tbody>
               @for (row of pagedClients(); track row.ip + row.queueName) {
                 <tr [class.attention-row]="row.syncState !== 'synced'">
                   @if (canManage()) { <td class="check-col"><input type="checkbox" [disabled]="!row.queueId" [checked]="!!row.queueId && selectedQueueIds().has(row.queueId)" (change)="toggleQueueSelection(row.queueId, $any($event.target).checked)" [attr.aria-label]="'Seleccionar ' + (row.client?.name || row.queueName)" /></td> }
-                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.username || 'Sin usuario ERP' }}</small></div></div></td>
-                  <td><strong class="mono">{{ row.ip || 'Sin IP' }}</strong><small class="cell-note mono">{{ row.macAddress || 'Sin MAC' }}</small></td>
+                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.username || 'Sin cliente asociado' }}</small></div></div></td>
+                  <td><strong class="mono">{{ row.ip || 'Sin IP' }}</strong><small class="cell-note mono">{{ row.macAddress || '—' }}</small></td>
                   <td><span class="sync-badge" [class.issue]="row.syncState !== 'synced'">{{ syncLabel(row.syncState) }}</span></td>
-                  <td>{{ compactMbps(bpsToMbps(row.maxUploadBps)) }} / {{ compactMbps(bpsToMbps(row.maxDownloadBps)) }}</td>
+                  <td>{{ compactMbps(bpsToMbps(row.maxUploadBps)) }} / {{ compactMbps(bpsToMbps(row.maxDownloadBps)) }} Mbps</td>
                   <td><strong class="rate download">{{ formatBps(row.downloadBps) }}</strong><small class="cell-note">↑ {{ formatBps(row.uploadBps) }}</small></td>
-                  <td><span class="state-badge" [class.online]="row.isOnline" [class.disabled]="row.isDisabled">{{ row.isDisabled ? 'Deshabilitado' : row.isOnline ? 'Online' : 'Offline' }}</span></td>
+                  <td><span class="state-badge" [class.online]="row.isOnline" [class.disabled]="row.isDisabled">{{ clientStateLabel(row) }}</span></td>
                   <td class="actions-cell">
-                    @if (row.client?.id) { <a class="icon-button small" [routerLink]="['/clients', row.client?.id]" title="Abrir cliente"><svg lucideUsers size="15" aria-hidden="true"></svg></a> }
-                    @if (canManage() && row.ip) { <button class="icon-button small" type="button" (click)="openClientQueue(row)" title="Editar cola"><svg lucidePencil size="15" aria-hidden="true"></svg></button> }
+                    @if (row.client?.id) { <a class="icon-button small" [routerLink]="['/clients', row.client?.id]" title="Abrir ficha del cliente" aria-label="Abrir ficha del cliente"><svg lucideUsers size="15" aria-hidden="true"></svg></a> }
+                    @if (canManage() && row.ip) { <button class="icon-button small" type="button" (click)="openClientQueue(row)" title="Editar velocidad (cola)" aria-label="Editar velocidad (cola)"><svg lucidePencil size="15" aria-hidden="true"></svg></button> }
                   </td>
                 </tr>
               } @empty {
@@ -187,8 +188,8 @@
 
     @if (activeTab() === 'unknown') {
       <section class="workspace-heading">
-        <div><h2>Dispositivos desconocidos</h2><p>Sin asociación exacta en WispHub o ERP</p></div>
-        <div class="toolbar-controls"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC o identidad" [ngModel]="unknownQuery()" (ngModelChange)="setUnknownQuery($event)" /></label><button class="icon-button" type="button" (click)="loadUnknown(true)" [disabled]="unknownLoading()" title="Actualizar análisis"><svg lucideRefreshCw size="17" [class.spinning]="unknownLoading()" aria-hidden="true"></svg></button></div>
+        <div><h2>Dispositivos desconocidos</h2><p>Equipos con tráfico en el router que no coinciden con ningún cliente de WispHub</p></div>
+        <div class="toolbar-controls"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC o identidad" [ngModel]="unknownQuery()" (ngModelChange)="setUnknownQuery($event)" /></label><button class="icon-button" type="button" (click)="loadUnknown(true)" [disabled]="unknownLoading()" title="Actualizar análisis" aria-label="Actualizar análisis"><svg lucideRefreshCw size="17" [class.spinning]="unknownLoading()" aria-hidden="true"></svg></button></div>
       </section>
       <div class="filter-rail">
         <button type="button" [class.active]="unknownFilter() === 'all'" (click)="setUnknownFilter('all')">Todos <span>{{ unknown()?.stats?.total || 0 }}</span></button>
@@ -199,7 +200,7 @@
       <section class="panel data-panel">
         <div class="table-wrap">
           <table>
-            <thead><tr><th>IP / identidad</th><th>MAC</th><th>Ruta física</th><th>Evidencia</th><th>Control</th><th>Riesgo</th><th></th></tr></thead>
+            <thead><tr><th>IP / identidad</th><th>MAC</th><th>Puerto físico</th><th>Actividad</th><th>Control</th><th>Riesgo</th><th></th></tr></thead>
             <tbody>
               @for (device of pagedUnknown(); track device.ip) {
                 <tr [class.high-risk-row]="device.risk === 'high'">
@@ -226,7 +227,7 @@
       <section class="infrastructure-grid">
         <article class="panel data-panel">
           <header><div><span class="section-icon"><svg lucideCable size="18" aria-hidden="true"></svg></span><div><h2>Interfaces</h2><p>Contadores desde el último reinicio</p></div></div></header>
-          <div class="table-wrap compact-table"><table><thead><tr><th>Interfaz</th><th>Tipo</th><th>Estado</th><th>RX</th><th>TX</th></tr></thead><tbody>@for (item of traffic(); track item.name) { <tr><td><strong>{{ item.name }}</strong><small class="cell-note mono">{{ item.macAddress || '-' }}</small></td><td>{{ item.type }}</td><td><span class="state-badge" [class.online]="item.running">{{ item.running ? 'UP' : 'DOWN' }}</span></td><td>{{ formatBytes(item.rxBytes) }}</td><td>{{ formatBytes(item.txBytes) }}</td></tr> }</tbody></table></div>
+          <div class="table-wrap compact-table"><table><thead><tr><th>Interfaz</th><th>Tipo</th><th>Estado</th><th>RX</th><th>TX</th></tr></thead><tbody>@for (item of traffic(); track item.name) { <tr><td><strong>{{ item.name }}</strong><small class="cell-note mono">{{ item.macAddress || '-' }}</small></td><td>{{ item.type }}</td><td><span class="state-badge" [class.online]="item.running" [class.disabled]="!item.running">{{ item.running ? 'Activa' : 'Caída' }}</span></td><td>{{ formatBytes(item.rxBytes) }}</td><td>{{ formatBytes(item.txBytes) }}</td></tr> } @empty { <tr><td colspan="5" class="empty-row">Sin datos de interfaces. Pulse «Actualizar».</td></tr> }</tbody></table></div>
         </article>
         <aside class="panel sessions-panel">
           <header><div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Sesiones</h2><p>PPPoE y Hotspot</p></div></div></header>
@@ -239,23 +240,23 @@
     }
 
     @if (activeTab() === 'firewall') {
-      <section class="workspace-heading"><div><h2>Firewall RouterOS</h2><p>Filtros, NAT, mangle y listas de direcciones con respaldo previo</p></div><button class="text-button" type="button" (click)="loadFirewall()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      <section class="workspace-heading"><div><h2>Firewall RouterOS</h2><p>Reglas del router. Cada cambio crea un respaldo automático antes de aplicarse.</p></div><button class="text-button" type="button" (click)="loadFirewall()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
       <div class="filter-rail">
         <button type="button" [class.active]="firewallTable() === 'filter'" (click)="setFirewallTable('filter')">Filtros <span>{{ firewall()?.tables?.filter?.length || 0 }}</span></button>
         <button type="button" [class.active]="firewallTable() === 'nat'" (click)="setFirewallTable('nat')">NAT <span>{{ firewall()?.tables?.nat?.length || 0 }}</span></button>
         <button type="button" [class.active]="firewallTable() === 'mangle'" (click)="setFirewallTable('mangle')">Mangle <span>{{ firewall()?.tables?.mangle?.length || 0 }}</span></button>
-        <button type="button" [class.active]="firewallTable() === 'address-list'" (click)="setFirewallTable('address-list')">Address lists <span>{{ firewall()?.tables?.['address-list']?.length || 0 }}</span></button>
+        <button type="button" [class.active]="firewallTable() === 'address-list'" (click)="setFirewallTable('address-list')">Listas de direcciones <span>{{ firewall()?.tables?.['address-list']?.length || 0 }}</span></button>
       </div>
       <section class="panel data-panel">
-        <div class="table-wrap"><table><thead><tr><th>Regla</th><th>Cadena / acción</th><th>Coincidencia</th><th>Tráfico</th><th>Estado</th><th></th></tr></thead><tbody>
+        <div class="table-wrap"><table><thead><tr><th>Regla</th><th>Cadena / acción</th><th>Origen → destino</th><th>Tráfico</th><th>Estado</th><th></th></tr></thead><tbody>
           @for (rule of firewallRules(); track rule.id) {
             <tr [class.attention-row]="rule.invalid">
               <td><strong>{{ rule.comment || rule.list || 'Sin comentario' }}</strong><small class="cell-note mono">{{ rule.id }}</small></td>
               <td><strong>{{ rule.chain || rule.list || '-' }}</strong><small class="cell-note">{{ rule.action || rule.address || '-' }}</small></td>
-              <td><span class="mono">{{ rule.srcAddress || '*' }} → {{ rule.dstAddress || rule.address || '*' }}</span><small class="cell-note">{{ rule.protocol || 'all' }} {{ rule.dstPort || '' }} {{ rule.inInterface || rule.outInterface || '' }}</small></td>
+              <td><span class="mono">{{ rule.srcAddress || '*' }} → {{ rule.dstAddress || rule.address || '*' }}</span><small class="cell-note">{{ rule.protocol || 'todos' }} {{ rule.dstPort || '' }} {{ rule.inInterface || rule.outInterface || '' }}</small></td>
               <td><strong>{{ formatBytes(rule.bytes) }}</strong><small class="cell-note">{{ rule.packets.toLocaleString() }} paquetes</small></td>
               <td><span class="state-badge" [class.online]="!rule.disabled && !rule.invalid" [class.disabled]="rule.disabled || rule.invalid">{{ rule.dynamic ? 'Dinámica' : rule.invalid ? 'Inválida' : rule.disabled ? 'Deshabilitada' : 'Activa' }}</span></td>
-              <td class="actions-cell">@if (canManage() && !rule.dynamic) { <button class="icon-button small" type="button" (click)="toggleFirewallRule(rule)" [disabled]="controlSaving()" [title]="rule.disabled ? 'Habilitar regla' : 'Deshabilitar regla'"><svg lucideCircleCheck size="15" aria-hidden="true"></svg></button><button class="icon-button small danger-icon" type="button" (click)="deleteFirewallRule(rule)" [disabled]="controlSaving()" title="Eliminar regla"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td>
+              <td class="actions-cell">@if (canManage() && !rule.dynamic) { <button class="icon-button small" type="button" (click)="toggleFirewallRule(rule)" [disabled]="controlSaving()" [title]="rule.disabled ? 'Habilitar regla' : 'Deshabilitar regla'" [attr.aria-label]="rule.disabled ? 'Habilitar regla' : 'Deshabilitar regla'">@if (rule.disabled) { <svg lucideCircleCheck size="15" aria-hidden="true"></svg> } @else { <svg lucideBan size="15" aria-hidden="true"></svg> }</button><button class="icon-button small danger-icon" type="button" (click)="deleteFirewallRule(rule)" [disabled]="controlSaving()" title="Eliminar regla" aria-label="Eliminar regla"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td>
             </tr>
           } @empty { <tr><td colspan="6" class="empty-row">No hay reglas en esta tabla</td></tr> }
         </tbody></table></div>
@@ -263,10 +264,10 @@
     }
 
     @if (activeTab() === 'ipam') {
-      <section class="workspace-heading"><div><h2>Inventario y disponibilidad IP</h2><p>Rangos MikroTik cruzados con WispHub, queues, DHCP, ARP y direcciones del router</p></div><div class="toolbar-controls ipam-toolbar"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC, queue, host o cliente" [ngModel]="ipamQuery()" (ngModelChange)="setIpamQuery($event)" /></label><button class="icon-button" type="button" (click)="loadIpam()" [disabled]="controlLoading()" title="Actualizar IPAM"><svg lucideRefreshCw size="17" [class.spinning]="controlLoading()" aria-hidden="true"></svg></button></div></section>
+      <section class="workspace-heading"><div><h2>IPs libres y ocupadas</h2><p>Rangos del router comparados con WispHub, colas, DHCP y ARP. Use «Copiar» para tomar una IP libre.</p></div><div class="toolbar-controls ipam-toolbar"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC, cola, equipo o cliente" aria-label="Buscar dirección IP" [ngModel]="ipamQuery()" (ngModelChange)="setIpamQuery($event)" /></label><button class="icon-button" type="button" (click)="loadIpam()" [disabled]="controlLoading()" title="Actualizar inventario IP" aria-label="Actualizar inventario IP"><svg lucideRefreshCw size="17" [class.spinning]="controlLoading()" aria-hidden="true"></svg></button></div></section>
       @if (ipam()?.stale) { <div class="ipam-stale"><svg lucideDatabase size="16" aria-hidden="true"></svg> MikroTik no respondió. Se muestra el último inventario guardado.</div> }
       <section class="mt-mini-kpis">
-        <div class="success"><span>Disponibles seguras</span><strong>{{ ipam()?.stats?.available || 0 }}</strong></div><div><span>Clientes WispHub</span><strong>{{ ipam()?.stats?.matchedClients || 0 }}</strong></div><div class="warning"><span>Ocupadas sin cliente</span><strong>{{ ipam()?.stats?.occupiedWithoutClient || 0 }}</strong></div><div><span>IPs inventariadas</span><strong>{{ ipam()?.stats?.total || 0 }}</strong></div><div class="danger"><span>Conflictos IP / MAC</span><strong>{{ (ipam()?.stats?.ipConflicts || 0) + (ipam()?.stats?.macMoves || 0) }}</strong></div>
+        <div class="success"><span>Libres para usar</span><strong>{{ ipam()?.stats?.available || 0 }}</strong></div><div><span>Clientes WispHub</span><strong>{{ ipam()?.stats?.matchedClients || 0 }}</strong></div><div class="warning"><span>Ocupadas sin cliente</span><strong>{{ ipam()?.stats?.occupiedWithoutClient || 0 }}</strong></div><div><span>IPs inventariadas</span><strong>{{ ipam()?.stats?.total || 0 }}</strong></div><div class="danger"><span>Conflictos IP / MAC</span><strong>{{ (ipam()?.stats?.ipConflicts || 0) + (ipam()?.stats?.macMoves || 0) }}</strong></div>
       </section>
       <section class="mt-network-band">@for (network of ipam()?.networks || []; track network.cidr) { <button type="button" [class.active]="ipamNetwork() === network.cidr" (click)="setIpamNetwork(ipamNetwork() === network.cidr ? null : network.cidr)"><header><strong class="mono">{{ network.cidr }}</strong><span>{{ network.used }} / {{ network.capacity }} · {{ network.utilization }}%</span></header><i><b [style.width.%]="Math.min(network.utilization, 100)"></b></i><small>{{ network.available }} disponibles</small>@if (network.recommended.length) { <em>Sugeridas: {{ network.recommended.join(', ') }}</em> }</button> }</section>
       <div class="filter-rail ipam-filters">
@@ -283,28 +284,28 @@
             <td><strong class="mono">{{ row.ip }}</strong><small class="cell-note">{{ row.cidr || 'Fuera de rangos' }}</small></td>
             <td><strong class="mono">{{ row.macAddress || (row.available ? 'Sin uso detectado' : '-') }}</strong><small class="cell-note">{{ row.hostName || row.interface || row.poolName || '-' }}</small></td>
             <td><strong>{{ row.client?.name || row.queueName || (row.available ? 'Lista para nuevo equipo' : 'Sin cliente WispHub') }}</strong><small class="cell-note">{{ row.client?.username || row.server || '-' }}</small></td>
-            <td><span class="sync-badge" [class.issue]="!row.available && row.classification !== 'client'">{{ row.sources.length ? row.sources.join(' + ') : 'Sin registros' }}</span></td>
+            <td><span class="sync-badge" [class.issue]="!row.available && row.classification !== 'client'">{{ ipSourceLabel(row.sources) }}</span></td>
             <td><span class="state-badge" [class.online]="row.available || row.status === 'bound'" [class.disabled]="row.disabled || row.conflict">{{ ipamClassificationLabel(row) }}</span></td>
-            <td class="actions-cell">@if (row.available) { <button class="action-button" type="button" (click)="copyAvailableIp(row.ip)"><svg lucideCopy size="15" aria-hidden="true"></svg>Copiar</button> } @else if (canManage() && row.dynamic && row.leaseId) { <button class="action-button" type="button" (click)="makeLeaseStatic(row)" [disabled]="controlSaving()"><svg lucideSave size="15" aria-hidden="true"></svg>Fijar</button> }</td>
+            <td class="actions-cell">@if (row.available) { <button class="action-button" type="button" (click)="copyAvailableIp(row.ip)"><svg lucideCopy size="15" aria-hidden="true"></svg>Copiar</button> } @else if (canManage() && row.dynamic && row.leaseId) { <button class="action-button" type="button" (click)="makeLeaseStatic(row)" [disabled]="controlSaving()" title="Convertir la concesión DHCP en fija"><svg lucideSave size="15" aria-hidden="true"></svg>Fijar</button> }</td>
           </tr>
         } @empty { <tr><td colspan="6" class="empty-row">No hay direcciones para este filtro</td></tr> }
       </tbody></table></div><footer class="table-pagination"><span>{{ filteredIpamRows().length }} resultados · página {{ ipamPage() }} de {{ ipamPageCount() }}</span><div><button type="button" (click)="moveIpamPage(-1)" [disabled]="ipamPage() <= 1" title="Página anterior"><svg lucideChevronLeft size="16" aria-hidden="true"></svg></button><button type="button" (click)="moveIpamPage(1)" [disabled]="ipamPage() >= ipamPageCount()" title="Página siguiente"><svg lucideChevronRight size="16" aria-hidden="true"></svg></button></div></footer></section>
     }
 
     @if (activeTab() === 'netwatch') {
-      <section class="workspace-heading"><div><h2>Netwatch</h2><p>Sondas activas ejecutadas directamente por el MikroTik</p></div><button class="text-button" type="button" (click)="loadNetwatch()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
-      @if (canManage()) { <section class="mt-form-band"><label><span>Host</span><input type="text" [(ngModel)]="netwatchHost" placeholder="1.1.1.1 o dominio" /></label><label><span>Tipo</span><select [(ngModel)]="netwatchType"><option value="icmp">ICMP</option><option value="simple">Simple</option><option value="tcp-conn">TCP</option><option value="http-get">HTTP</option><option value="https-get">HTTPS</option><option value="dns">DNS</option></select></label><label><span>Intervalo</span><input type="text" [(ngModel)]="netwatchInterval" placeholder="1m" /></label><label><span>Puerto</span><input type="number" [(ngModel)]="netwatchPort" min="1" max="65535" placeholder="Opcional" /></label><label class="wide"><span>Comentario</span><input type="text" [(ngModel)]="netwatchComment" maxlength="120" placeholder="Enlace principal, DNS..." /></label><button class="action-button" type="button" (click)="createNetwatch()" [disabled]="controlSaving()"><svg lucideSave size="15" aria-hidden="true"></svg>Crear sonda</button></section> }
-      <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>Destino</th><th>Prueba</th><th>Intervalo</th><th>Último estado</th><th>Comentario</th><th></th></tr></thead><tbody>
-        @for (item of netwatch(); track item.id) { <tr><td><strong class="mono">{{ item.host }}</strong><small class="cell-note mono">{{ item.id }}</small></td><td>{{ item.type }}<small class="cell-note">{{ item.port || '-' }}</small></td><td>{{ item.interval || '-' }}</td><td><span class="state-badge" [class.online]="item.status === 'up' && !item.disabled" [class.disabled]="item.disabled">{{ item.disabled ? 'Deshabilitada' : item.status }}</span><small class="cell-note">{{ item.since || '-' }}</small></td><td>{{ item.comment || '-' }}</td><td class="actions-cell">@if (canManage()) { <button class="icon-button small" type="button" (click)="toggleNetwatch(item)" [disabled]="controlSaving()" [title]="item.disabled ? 'Habilitar sonda' : 'Deshabilitar sonda'"><svg lucideCircleCheck size="15" aria-hidden="true"></svg></button><button class="icon-button small danger-icon" type="button" (click)="deleteNetwatch(item)" [disabled]="controlSaving()" title="Eliminar sonda"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td></tr> }
+      <section class="workspace-heading"><div><h2>Monitoreo de enlaces (Netwatch)</h2><p>El router comprueba estos destinos cada cierto tiempo y marca si responden</p></div><button class="text-button" type="button" (click)="loadNetwatch()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      @if (canManage()) { <section class="mt-form-band"><label><span>Destino</span><input type="text" [(ngModel)]="netwatchHost" placeholder="1.1.1.1 o dominio" /></label><label><span>Tipo</span><select [(ngModel)]="netwatchType"><option value="icmp">Ping (ICMP)</option><option value="simple">Ping simple</option><option value="tcp-conn">Conexión TCP</option><option value="http-get">Web HTTP</option><option value="https-get">Web HTTPS</option><option value="dns">DNS</option></select></label><label><span>Cada</span><input type="text" [(ngModel)]="netwatchInterval" placeholder="1m = 1 minuto" title="Ejemplos: 30s, 1m, 5m" /></label><label><span>Puerto</span><input type="number" [(ngModel)]="netwatchPort" min="1" max="65535" placeholder="Solo TCP o web" /></label><label class="wide"><span>Comentario</span><input type="text" [(ngModel)]="netwatchComment" maxlength="120" placeholder="Enlace principal, DNS..." /></label><button class="action-button primary" type="button" (click)="createNetwatch()" [disabled]="controlSaving() || !netwatchHost.trim()" [title]="netwatchHost.trim() ? 'Crear sonda' : 'Escriba el destino que desea vigilar'"><svg lucideSave size="15" aria-hidden="true"></svg>Crear sonda</button></section> }
+      <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>Destino</th><th>Prueba</th><th>Cada</th><th>Último estado</th><th>Comentario</th><th></th></tr></thead><tbody>
+        @for (item of netwatch(); track item.id) { <tr><td><strong class="mono">{{ item.host }}</strong><small class="cell-note mono">{{ item.id }}</small></td><td>{{ netwatchTypeLabel(item.type) }}@if (item.port) { <small class="cell-note">Puerto {{ item.port }}</small> }</td><td>{{ item.interval || '-' }}</td><td><span class="state-badge" [class.online]="item.status === 'up' && !item.disabled" [class.disabled]="item.disabled || item.status === 'down'">{{ netwatchStatusLabel(item) }}</span><small class="cell-note">{{ item.since || '-' }}</small></td><td>{{ item.comment || '-' }}</td><td class="actions-cell">@if (canManage()) { <button class="icon-button small" type="button" (click)="toggleNetwatch(item)" [disabled]="controlSaving()" [title]="item.disabled ? 'Habilitar sonda' : 'Deshabilitar sonda'" [attr.aria-label]="item.disabled ? 'Habilitar sonda' : 'Deshabilitar sonda'">@if (item.disabled) { <svg lucideCircleCheck size="15" aria-hidden="true"></svg> } @else { <svg lucideBan size="15" aria-hidden="true"></svg> }</button><button class="icon-button small danger-icon" type="button" (click)="deleteNetwatch(item)" [disabled]="controlSaving()" title="Eliminar sonda" aria-label="Eliminar sonda"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td></tr> }
         @empty { <tr><td colspan="6" class="empty-row">No hay sondas configuradas</td></tr> }
       </tbody></table></div></section>
     }
 
     @if (activeTab() === 'backups') {
-      <section class="workspace-heading"><div><h2>Respaldos del router</h2><p>Backups binarios y exports sin secretos almacenados en RouterOS</p></div><button class="text-button" type="button" (click)="loadBackups()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
-      @if (canManage()) { <section class="mt-form-band backup-form"><label class="wide"><span>Nombre</span><input type="text" [(ngModel)]="backupName" maxlength="48" /></label><label><span>Formato</span><select [(ngModel)]="backupType"><option value="backup">Backup binario</option><option value="export">Export .rsc</option></select></label><button class="action-button" type="button" (click)="createBackup()" [disabled]="controlSaving()"><svg lucideHardDrive size="15" aria-hidden="true"></svg>Crear respaldo</button></section> }
+      <section class="workspace-heading"><div><h2>Respaldos del router</h2><p>Copias de la configuración guardadas dentro del router</p></div><button class="text-button" type="button" (click)="loadBackups()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      @if (canManage()) { <section class="mt-form-band backup-form"><label class="wide"><span>Nombre</span><input type="text" [(ngModel)]="backupName" maxlength="48" /></label><label><span>Formato</span><select [(ngModel)]="backupType"><option value="backup">Copia completa (binaria)</option><option value="export">Exportación de texto (.rsc)</option></select></label><button class="action-button primary" type="button" (click)="createBackup()" [disabled]="controlSaving() || !backupName.trim()" [title]="backupName.trim() ? 'Crear respaldo' : 'Escriba un nombre para el respaldo'"><svg lucideHardDrive size="15" aria-hidden="true"></svg>Crear respaldo</button></section> }
       <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>Archivo</th><th>Formato</th><th>Tamaño</th><th>Creado</th><th></th></tr></thead><tbody>
-        @for (item of backups(); track item.id) { <tr><td><strong>{{ item.name }}</strong><small class="cell-note mono">{{ item.id }}</small></td><td><span class="sync-badge">{{ item.type === 'backup' ? 'Binario' : 'Export RSC' }}</span></td><td>{{ formatBytes(item.size) }}</td><td>{{ item.creationTime || '-' }}</td><td class="actions-cell">@if (canManage()) { <button class="icon-button small danger-icon" type="button" (click)="deleteBackup(item)" [disabled]="controlSaving()" title="Eliminar respaldo"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td></tr> }
+        @for (item of backups(); track item.id) { <tr><td><strong>{{ item.name }}</strong><small class="cell-note mono">{{ item.id }}</small></td><td><span class="sync-badge">{{ item.type === 'backup' ? 'Copia completa' : 'Exportación .rsc' }}</span></td><td>{{ formatBytes(item.size) }}</td><td>{{ item.creationTime || '-' }}</td><td class="actions-cell">@if (canManage()) { <button class="icon-button small danger-icon" type="button" (click)="deleteBackup(item)" [disabled]="controlSaving()" title="Eliminar respaldo" aria-label="Eliminar respaldo"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td></tr> }
         @empty { <tr><td colspan="5" class="empty-row">No hay archivos de respaldo</td></tr> }
       </tbody></table></div></section>
     }
@@ -314,7 +315,7 @@
       <section class="security-layout">
         <article class="security-score" [class.good]="(security()?.score || 0) >= 80"><svg lucideShieldCheck size="28" aria-hidden="true"></svg><strong>{{ security()?.score ?? '-' }}</strong><span>Puntuación de seguridad</span><small>RouterOS {{ security()?.version || '-' }}</small></article>
         <article class="panel findings-panel">
-          <header><div><span class="section-icon"><svg lucideShieldAlert size="18" aria-hidden="true"></svg></span><div><h2>Hallazgos</h2><p>{{ security()?.findings?.length || 0 }} revisiones pendientes</p></div></div></header>
+          <header><div><span class="section-icon"><svg lucideShieldAlert size="18" aria-hidden="true"></svg></span><div><h2>Hallazgos</h2><p>{{ security()?.findings?.length || 0 }} puntos por revisar</p></div></div></header>
           <div class="findings-list">
             @for (finding of security()?.findings || []; track finding.code) { <div class="finding" [class]="finding.severity"><span><svg lucideCircleAlert size="17" aria-hidden="true"></svg></span><div><strong>{{ finding.title }}</strong><p>{{ finding.detail }}</p></div><em>{{ severityLabel(finding.severity) }}</em></div> }
             @if (!(security()?.findings?.length || 0)) { <div class="compact-empty success"><svg lucideCircleCheck size="24" aria-hidden="true"></svg><span>Sin hallazgos críticos</span></div> }
@@ -322,7 +323,7 @@
         </article>
         <aside class="security-side">
           <article class="panel admin-panel"><header><div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Administradores activos</h2><p>{{ security()?.activeAdministrators?.length || 0 }} sesiones</p></div></div></header>@for (user of security()?.activeAdministrators || []; track user.name + user.address) { <div class="admin-row"><span>{{ user.name.charAt(0).toUpperCase() }}</span><div><strong>{{ user.name }}</strong><small>{{ user.address }} · {{ user.via }}</small></div></div> }</article>
-          <article class="panel ping-panel"><header><div><span class="section-icon"><svg lucideSquareTerminal size="18" aria-hidden="true"></svg></span><div><h2>Diagnóstico</h2><p>Ping desde el router</p></div></div></header><div class="ping-form"><input type="text" [(ngModel)]="pingTarget" placeholder="IP o dominio" (keyup.enter)="runPing()" /><button type="button" (click)="runPing()" [disabled]="pinging()"><svg lucideRadioTower size="16" aria-hidden="true"></svg>{{ pinging() ? 'Probando' : 'Ping' }}</button></div>@if (pingResult().length) { <div class="terminal-output">@for (row of pingResult(); track $index) { <span>{{ pingLine(row) }}</span> }</div> }</article>
+          <article class="panel ping-panel"><header><div><span class="section-icon"><svg lucideSquareTerminal size="18" aria-hidden="true"></svg></span><div><h2>Diagnóstico</h2><p>Ping desde el router</p></div></div></header><div class="ping-form"><input type="text" [(ngModel)]="pingTarget" placeholder="IP o dominio" aria-label="IP o dominio para el ping" (keyup.enter)="runPing()" /><button type="button" (click)="runPing()" [disabled]="pinging() || !pingTarget.trim()"><svg lucideRadioTower size="16" aria-hidden="true"></svg>{{ pinging() ? 'Probando...' : 'Hacer ping' }}</button></div>@if (pingResult().length) { <div class="terminal-output">@for (row of pingResult(); track $index) { <span>{{ pingLine(row) }}</span> }</div> }</article>
         </aside>
       </section>
     }
@@ -332,14 +333,15 @@
 @if (queueEditor(); as editor) {
   <div class="modal-backdrop" (click)="closeQueueEditor()">
     <section class="queue-modal" role="dialog" aria-modal="true" aria-labelledby="queue-title" (click)="$event.stopPropagation()">
-      <header><div><span class="section-icon"><svg lucideSlidersHorizontal size="18" aria-hidden="true"></svg></span><div><h2 id="queue-title">{{ editor.id ? 'Editar control de ancho de banda' : 'Crear control de ancho de banda' }}</h2><p class="mono">{{ editor.ip }}</p></div></div><button class="icon-button small" type="button" (click)="closeQueueEditor()" title="Cerrar"><svg lucideX size="17" aria-hidden="true"></svg></button></header>
+      <header><div><span class="section-icon"><svg lucideSlidersHorizontal size="18" aria-hidden="true"></svg></span><div><h2 id="queue-title">{{ editor.id ? 'Editar velocidad del equipo' : 'Limitar velocidad del equipo' }}</h2><p class="mono">{{ editor.ip }}</p></div></div><button class="icon-button small" type="button" (click)="closeQueueEditor()" title="Cerrar" aria-label="Cerrar"><svg lucideX size="17" aria-hidden="true"></svg></button></header>
       <div class="modal-body">
         <label><span>Nombre de la cola</span><input type="text" [(ngModel)]="queueName" maxlength="80" /></label>
         <div class="limit-grid"><label><span>Subida máxima</span><div class="unit-input"><input type="number" [(ngModel)]="queueUploadMbps" min="0.1" max="10000" step="0.1" /><em>Mbps</em></div></label><label><span>Descarga máxima</span><div class="unit-input"><input type="number" [(ngModel)]="queueDownloadMbps" min="0.1" max="10000" step="0.1" /><em>Mbps</em></div></label></div>
         <label><span>Comentario operativo</span><textarea [(ngModel)]="queueComment" maxlength="200" rows="2"></textarea></label>
-        <label class="switch-row"><input type="checkbox" [(ngModel)]="queueDisabled" /><span><strong>Cola deshabilitada</strong><small>Conserva la configuración sin aplicar el límite.</small></span></label>
+        <label class="switch-row"><input type="checkbox" [(ngModel)]="queueDisabled" /><span><strong>Pausar este límite</strong><small>Conserva la configuración, pero el equipo navega sin límite de velocidad.</small></span></label>
+        <p class="modal-note">Los cambios se aplican de inmediato en el router y afectan la velocidad del cliente.</p>
       </div>
-      <footer><button class="cancel-button" type="button" (click)="closeQueueEditor()">Cancelar</button><button class="save-button" type="button" (click)="saveQueue()" [disabled]="queueSaving()"><svg lucideSave size="16" aria-hidden="true"></svg>{{ queueSaving() ? 'Guardando' : 'Guardar cambios' }}</button></footer>
+      <footer><button class="cancel-button" type="button" (click)="closeQueueEditor()">Cancelar</button><button class="save-button" type="button" (click)="saveQueue()" [disabled]="queueSaving()"><svg lucideSave size="16" aria-hidden="true"></svg>{{ queueSaving() ? 'Guardando...' : 'Guardar cambios' }}</button></footer>
     </section>
   </div>
 }

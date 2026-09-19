@@ -32,7 +32,7 @@
     <span class="system-divider"></span>
     <span class="alert-inline"><strong>{{ status().totals.activeAlarms + (status().totals.activeSignalAlerts || 0) }}</strong> alertas</span>
     <span class="system-divider"></span>
-    <span class="sync-inline"><svg lucideRefreshCw size="15" [class.spinning]="syncing() || status().syncing"></svg> {{ formatDate(status().latest?.capturedAt) }}</span>
+    <span class="sync-inline" title="Última lectura de la OLT"><svg lucideRefreshCw size="15" [class.spinning]="syncing() || status().syncing" aria-hidden="true"></svg> Leída {{ formatDate(status().latest?.capturedAt) }}</span>
     @if (auth.hasRole(['admin'])) {
       <button class="icon-action sync-button" type="button" title="Sincronizar ahora" aria-label="Sincronizar ahora" (click)="runSync(false)" [disabled]="syncing()">
         <svg lucideRefreshCw size="17" [class.spinning]="syncing()"></svg>
@@ -43,12 +43,12 @@
   @if (!status().configured) {
     <section class="notice error-notice">
       <svg lucideAlertTriangle size="20" aria-hidden="true"></svg>
-      <div><strong>Conexión OLT incompleta</strong><span>Revise la configuración privada del servidor.</span></div>
+      <div><strong>Conexión con la OLT sin configurar</strong><span>El sistema no tiene los datos de acceso a la OLT. Avise al administrador del sistema.</span></div>
     </section>
   } @else if (status().latest?.errorMessage && !status().connected) {
     <section class="notice error-notice">
       <svg lucideAlertTriangle size="20" aria-hidden="true"></svg>
-      <div><strong>La última consulta falló</strong><span>{{ status().latest?.errorMessage }}</span></div>
+      <div><strong>No se pudo leer la OLT en la última consulta</strong><span>{{ status().latest?.errorMessage }} · Los datos mostrados pueden estar desactualizados.</span></div>
     </section>
   }
 
@@ -79,7 +79,7 @@
           <span class="mini-state" [class.offline]="!opened.online" [class.warning]="isWeakPower(opened.rxPowerDbm)"></span>
           <span>{{ opened.client?.nombre || opened.name || opened.onuIndex }}</span>
           <small class="mono">{{ opened.onuIndex }}</small>
-          <span class="tab-close" role="button" aria-label="Cerrar pestaña" (click)="closeOnuWorkspace($event, opened)"><svg lucideX size="13"></svg></span>
+          <span class="tab-close" role="button" aria-label="Cerrar pestaña" title="Cerrar pestaña" (click)="closeOnuWorkspace($event, opened)"><svg lucideX size="13"></svg></span>
         </button>
       }
     </nav>
@@ -107,7 +107,7 @@
             <span>Capacidad usada</span>
             <strong>{{ activePon()?.utilizationPercent || 0 }}%</strong>
             <div><span [style.width.%]="activePon()?.utilizationPercent || 0"></span></div>
-            <small>{{ activePon()?.online || 0 }} online · {{ activePon()?.offline || 0 }} offline</small>
+            <small>{{ activePon()?.online || 0 }} en línea · {{ activePon()?.offline || 0 }} sin conexión</small>
           </div>
         </aside>
 
@@ -138,14 +138,15 @@
               <div class="empty-map"><svg lucideNetwork size="28"></svg><strong>Este PON aún no tiene inventario</strong><span>Sincroniza la OLT para mostrar sus ONUs.</span></div>
             }
           </div>
+          <div class="map-legend" aria-label="Leyenda del mapa"><span class="online"><i></i>Señal buena</span><span class="warning"><i></i>Señal débil</span><span class="critical"><i></i>Señal crítica</span><span class="offline"><i></i>Sin conexión</span><span class="empty"><i></i>Libre</span><small>Clic: ver resumen · doble clic: abrir ONU</small></div>
         </section>
 
         <aside class="onu-context" aria-label="ONU seleccionada">
           @if (selectedMapOnu(); as onu) {
-            <div class="context-status"><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online">{{ onuStatusLabel(onu) }}</span><span>{{ onu.online ? 'En línea' : 'Sin presencia' }} <i [class.offline]="!onu.online"></i></span></div>
+            <div class="context-status"><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online">{{ onuStatusLabel(onu) }}</span><span>{{ onu.online ? 'En línea' : 'Sin conexión' }} <i [class.offline]="!onu.online"></i></span></div>
             <div class="context-identity"><span>{{ (onu.client?.nombre || onu.name || 'ON').slice(0, 2).toUpperCase() }}</span><div><h2>{{ onu.client?.nombre || onu.name || 'ONU sin asociar' }}</h2><p>PON {{ onu.pon }} · ONU {{ onu.onuId }}</p></div></div>
             <dl class="context-details">
-              <div><dt>RX óptico</dt><dd [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)">{{ onu.rxPowerDbm != null ? onu.rxPowerDbm + ' dBm' : 'Consultar' }}</dd></div>
+              <div><dt>Señal óptica (RX)</dt><dd><span class="signal" [class.none]="onu.rxPowerDbm == null" [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><i></i>{{ signalLabel(onu.rxPowerDbm) }}@if (onu.rxPowerDbm != null) { · {{ formatDbm(onu.rxPowerDbm) }} }</span></dd></div>
               <div><dt>Serial</dt><dd class="mono">{{ onu.serial || '--' }}</dd></div>
               <div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div>
               <div><dt>IP de gestión</dt><dd class="mono">{{ onu.client?.ip || onu.agentInventory?.summary?.wanIp || '--' }}</dd></div>
@@ -158,11 +159,10 @@
             </div>
             <section class="quick-diagnostics">
               <div><strong>Acciones rápidas</strong><span>Se ejecutan sin salir del mapa.</span></div>
-              <button type="button" (click)="refreshOpticalPreview(onu)" [disabled]="detailLoading()"><svg lucideRefreshCw size="16"></svg><span><strong>Actualizar estado</strong><small>Potencia, distancia y presencia</small></span><svg lucideChevronRight size="15"></svg></button>
               <button type="button" (click)="openOnuWorkspace(onu)"><svg lucideActivity size="16"></svg><span><strong>Diagnóstico completo</strong><small>OLT, WispHub y MikroTik</small></span><svg lucideChevronRight size="15"></svg></button>
-              @if (auth.hasRole(['admin'])) { <button type="button" (click)="openQuickReboot(onu)" [disabled]="!onu.online"><svg lucidePower size="16"></svg><span><strong>Reiniciar ONU</strong><small>Con confirmación y verificación</small></span><svg lucideChevronRight size="15"></svg></button> }
+              @if (auth.hasRole(['admin'])) { <button type="button" (click)="openQuickReboot(onu)" [disabled]="!onu.online" [title]="onu.online ? 'Reiniciar ONU' : 'La ONU está sin conexión'"><svg lucidePower size="16"></svg><span><strong>Reiniciar ONU</strong><small>{{ onu.online ? 'Pide confirmación antes de reiniciar' : 'No disponible: ONU sin conexión' }}</small></span><svg lucideChevronRight size="15"></svg></button> }
             </section>
-            <section class="context-reading"><strong>Última lectura</strong><span>{{ formatDate(onu.lastDetailAt || onu.lastSeenAt) }}</span><p>{{ onu.lastOfflineCause ? 'Última causa: ' + onu.lastOfflineCause : 'Sin fallos recientes reportados por la OLT.' }}</p></section>
+            <section class="context-reading"><strong>Última lectura</strong><span>{{ formatDate(onu.lastDetailAt || onu.lastSeenAt) }}</span><p>{{ onu.lastOfflineCause ? 'Última desconexión: ' + onu.lastOfflineCause : 'Sin fallos recientes reportados por la OLT.' }}</p></section>
           } @else {
             <div class="context-empty"><svg lucideBox size="28"></svg><strong>Selecciona una ONU</strong><span>Haz clic en un puerto para ver su estado y acciones.</span></div>
           }
@@ -172,18 +172,18 @@
       <section class="onu-workbench">
         <header class="onu-workbench-header">
           <div class="onu-title-block"><span class="detail-avatar">{{ (onu.client?.nombre || onu.name || 'ON').slice(0, 2).toUpperCase() }}</span><div><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online">{{ onuStatusLabel(onu) }}</span><h2>{{ onu.client?.nombre || onu.name || 'ONU sin asociar' }}</h2><p class="mono">{{ onu.onuIndex }} · {{ onu.serial || 'Sin serial' }}</p></div></div>
-          <div class="onu-header-actions"><button class="secondary-action" type="button" (click)="refreshOpticalPreview(onu)" [disabled]="detailLoading()"><svg lucideRefreshCw size="16" [class.spinning]="detailLoading()"></svg>Actualizar</button><button class="secondary-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()"><svg lucideActivity size="16"></svg>Diagnóstico</button>@if (auth.hasRole(['admin'])) { <button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online"><svg lucidePower size="16"></svg>Reiniciar</button> }</div>
+          <div class="onu-header-actions"><button class="secondary-action" type="button" (click)="refreshOpticalPreview(onu)" [disabled]="detailLoading()"><svg lucideRefreshCw size="16" [class.spinning]="detailLoading()"></svg>Actualizar</button><button class="secondary-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()"><svg lucideActivity size="16"></svg>Diagnóstico</button>@if (auth.hasRole(['admin'])) { <button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online" [title]="onu.online ? 'Reiniciar ONU' : 'La ONU está sin conexión'"><svg lucidePower size="16"></svg>Reiniciar</button> }</div>
         </header>
         @if (detailLoading()) {
           <div class="drawer-loading workbench-loading"><svg lucideRefreshCw size="22" class="spinning"></svg><span>Consultando la OLT...</span></div>
         } @else {
           <section class="onu-health-strip">
-            <div [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><span>Potencia RX</span><strong>{{ onu.rxPowerDbm != null ? onu.rxPowerDbm + ' dBm' : '--' }}</strong><small>Óptimo: -8 a -27 dBm</small></div>
+            <div [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><span>Señal óptica (RX)</span><strong>{{ formatDbm(onu.rxPowerDbm) }}</strong><small class="signal" [class.none]="onu.rxPowerDbm == null" [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><i></i>{{ signalLabel(onu.rxPowerDbm) }} · normal de -8 a -27</small></div>
             <div><span>Potencia TX</span><strong>{{ onu.txPowerDbm != null ? onu.txPowerDbm + ' dBm' : '--' }}</strong><small>Transmisión ONU</small></div>
             <div><span>Distancia</span><strong>{{ onu.distanceM != null ? onu.distanceM + ' m' : '--' }}</strong><small>PON {{ onu.pon }} · ONU {{ onu.onuId }}</small></div>
             <div><span>Subida actual</span><strong>{{ formatTraffic(onu.traffic?.upstreamBps) }}</strong><small>Pico {{ formatTraffic(onu.traffic?.peakUpstreamBps) }}</small></div>
             <div><span>Bajada actual</span><strong>{{ formatTraffic(onu.traffic?.downstreamBps) }}</strong><small>Pico {{ formatTraffic(onu.traffic?.peakDownstreamBps) }}</small></div>
-            <div><span>Servicio</span><strong>{{ serviceDiagnostic()?.score ?? '--' }}{{ serviceDiagnostic() ? '%' : '' }}</strong><small>{{ serviceDiagnostic()?.ready ? 'Listo para entrega' : 'Validación disponible' }}</small></div>
+            <div><span>Servicio</span><strong>{{ serviceDiagnostic()?.score ?? '--' }}{{ serviceDiagnostic() ? '%' : '' }}</strong><small>{{ serviceDiagnostic() ? (serviceDiagnostic()?.ready ? 'Listo para entrega' : 'Requiere atención') : 'Pulse «Diagnóstico»' }}</small></div>
           </section>
           @if (auth.hasRole(['admin']) && onu.serial) { <app-tr069-console [onu]="onu"></app-tr069-console> }
           <section class="onu-support-grid">
@@ -194,13 +194,13 @@
             </article>
             @if (serviceDiagnostic(); as diagnostic) {
               <article class="service-diagnostic onu-access-topology">
-                <div class="drawer-section-title"><div><strong>Clientes detrás de la ONU</strong><span>OLT MAC → MikroTik ARP → WispHub.</span></div><span class="access-mode" [class.bridge]="diagnostic.access.mode === 'bridge'" [class.router]="diagnostic.access.mode === 'router'">{{ diagnostic.access.mode === 'bridge' ? 'Bridge' : (diagnostic.access.mode === 'router' ? 'Router' : 'Sin clasificar') }}</span></div>
+                <div class="drawer-section-title"><div><strong>Clientes detrás de la ONU</strong><span>OLT MAC → MikroTik ARP → WispHub.</span></div><span class="access-mode" [class.bridge]="diagnostic.access.mode === 'bridge'" [class.router]="diagnostic.access.mode === 'router'">{{ diagnostic.access.mode === 'bridge' ? 'Bridge' : (diagnostic.access.mode === 'router' ? 'Router' : 'Modo sin identificar') }}</span></div>
                 <div class="access-summary"><div><strong>{{ diagnostic.downstream.identifiedClients }}</strong><span>Clientes</span></div><div><strong>{{ diagnostic.downstream.totalMacs }}</strong><span>MAC activas</span></div><div [class.warning]="diagnostic.downstream.unknownDevices > 0"><strong>{{ diagnostic.downstream.unknownDevices }}</strong><span>Sin identificar</span></div></div>
                 <div class="access-evidence">@for (evidence of diagnostic.access.evidence; track evidence) { <span><svg lucideCircleCheck size="13"></svg>{{ evidence }}</span> }</div>
                 @if (diagnostic.downstream.clients.length) {
                   <div class="downstream-list">
                     @for (item of diagnostic.downstream.clients; track item.macAddress || item.ip || $index) {
-                      <div class="downstream-row" [class.unknown]="!item.client"><span class="status-dot"></span><div><strong>{{ item.client?.nombre || 'Equipo sin asociar' }}</strong><small>{{ item.client?.planInternetName || item.queue?.name || 'Sin plan identificado' }}</small></div><div class="downstream-address"><span class="mono">{{ item.ip || item.client?.ip || 'Sin IP' }}</span><small class="mono">{{ item.macAddress || 'Sin MAC' }}</small></div>@if (item.client) { <a [routerLink]="['/clients', item.client.idServicio]" class="secondary-action">Abrir</a> }
+                      <div class="downstream-row" [class.unknown]="!item.client"><span class="status-dot"></span><div><strong>{{ item.client?.nombre || 'Equipo sin asociar' }}</strong><small>{{ item.client?.planInternetName ? (item.client?.planInternetName | planLabel) : (item.queue?.name || 'Sin plan identificado') }}</small></div><div class="downstream-address"><span class="mono">{{ item.ip || item.client?.ip || 'Sin IP' }}</span><small class="mono">{{ item.macAddress || '—' }}</small></div>@if (item.client) { <a [routerLink]="['/clients', item.client.idServicio]" class="secondary-action">Abrir</a> }
                       </div>
                     }
                   </div>
@@ -210,18 +210,33 @@
             }
             <article class="service-diagnostic">
               <div class="drawer-section-title"><div><strong>Datos OLT</strong><span>Inventario y asociación actual.</span></div></div>
-              <dl class="detail-list"><div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div><div><dt>Cliente</dt><dd>{{ onu.client?.nombre || onu.name || 'Sin nombre' }}</dd></div><div><dt>IP</dt><dd class="mono">{{ onu.client?.ip || onu.agentInventory?.summary?.wanIp || '--' }}</dd></div><div><dt>Tiempo online</dt><dd>{{ onu.onlineDuration || '--' }}</dd></div><div><dt>Asociación</dt><dd>{{ onu.mappingSource === 'manual' ? 'Manual' : (onu.mappingSource === 'serial' ? 'Serial WispHub' : (onu.name ? 'Nombre registrado en OLT' : '--')) }}</dd></div><div><dt>Última lectura</dt><dd>{{ formatDate(onu.lastDetailAt) }}</dd></div></dl>
+              <dl class="detail-list"><div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div><div><dt>Cliente</dt><dd>{{ onu.client?.nombre || onu.name || 'Sin nombre' }}</dd></div><div><dt>IP</dt><dd class="mono">{{ onu.client?.ip || onu.agentInventory?.summary?.wanIp || '--' }}</dd></div><div><dt>Tiempo en línea</dt><dd>{{ onu.onlineDuration || '--' }}</dd></div><div><dt>Asociación</dt><dd>{{ onu.mappingSource === 'manual' ? 'Manual' : (onu.mappingSource === 'serial' ? 'Serial WispHub' : (onu.name ? 'Nombre registrado en OLT' : '--')) }}</dd></div><div><dt>Última lectura</dt><dd>{{ formatDate(onu.lastDetailAt) }}</dd></div></dl>
             </article>
             @if (auth.hasRole(['admin'])) {
               <article class="service-diagnostic onu-operations">
                 <div class="drawer-section-title"><div><strong>Operaciones de OLT</strong><span>Acciones directas con vista previa.</span></div></div>
-                @if (operationPreview(); as operation) { <div class="operation-confirm" [class.rename-confirm]="operation.action === 'rename'" [class.cleanup-confirm]="operation.action === 'retire-stale'" [class.retirement-confirm]="operation.action === 'retire-full'"><p>{{ operation.impact }}</p>@if (operation.reason) { <p class="operation-reason">{{ operation.reason }}</p> }<div><button class="secondary-action" type="button" (click)="operationPreview.set(null)">Cancelar</button><button class="primary-action" [class.danger-action]="operation.action !== 'rename'" type="button" [disabled]="!operation.allowed || operationSaving()" (click)="executeProtectedOperation()">{{ operationSaving() ? 'Aplicando...' : (operation.action === 'retire-full' ? 'Eliminar y verificar' : 'Confirmar y verificar') }}</button></div></div> }
-                @else { <div class="operation-launchers"><label><span>Nombre en la OLT</span><div><input [(ngModel)]="onuRenameName" maxlength="32" pattern="[A-Za-z0-9_.-]+" /><button class="primary-action" type="button" (click)="prepareRename()" [disabled]="!onuRenameName || onuRenameName === onu.name">Cambiar</button></div></label><div class="operation-button-row"><button class="secondary-action" type="button" (click)="prepareStaleLocationCleanup()" [disabled]="!onu.serial">Revisar cambio de puerto</button><button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online">Reiniciar ONU</button><button class="secondary-action retire-action" type="button" (click)="prepareFullRetirement()" [disabled]="!onu.serial"><svg lucideTrash2 size="15"></svg>Eliminar de la OLT</button></div></div> }
+                <div class="operation-launchers"><label><span>Nombre en la OLT</span><div><input [(ngModel)]="onuRenameName" maxlength="32" pattern="[A-Za-z0-9_.-]+" aria-label="Nombre en la OLT" /><button class="primary-action" type="button" (click)="prepareRename()" [disabled]="!onuRenameName || onuRenameName === onu.name" [title]="!onuRenameName ? 'Escriba un nombre' : (onuRenameName === onu.name ? 'Es el mismo nombre actual' : 'Revisar el cambio de nombre')">Cambiar</button></div><small>Solo letras, números, punto, guion y guion bajo.</small></label><div class="operation-button-row"><button class="secondary-action" type="button" (click)="prepareStaleLocationCleanup()" [disabled]="!onu.serial">Revisar cambio de puerto</button><button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online" [title]="onu.online ? 'Reiniciar ONU' : 'La ONU está sin conexión'">Reiniciar ONU</button><button class="secondary-action retire-action" type="button" (click)="prepareFullRetirement()" [disabled]="!onu.serial"><svg lucideTrash2 size="15"></svg>Eliminar de la OLT</button></div><p class="operation-note">Cada acción muestra primero su impacto y pide confirmación.</p></div>
+              </article>
+              <article class="service-diagnostic client-linker">
+                <div class="drawer-section-title">
+                  <div><strong>Asociación de cliente</strong><span>{{ onu.client?.nombre ? 'Asociada a ' + onu.client?.nombre : 'Vincula esta ONU con su cliente de WispHub.' }}</span></div>
+                  @if (onu.clientIdServicio) { <button type="button" class="text-danger" (click)="unlinkClient()" [disabled]="mappingSaving()">Desvincular</button> }
+                </div>
+                <div class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" [ngModel]="clientSearch()" (ngModelChange)="searchClientChanged($event)" placeholder="Buscar por nombre, usuario, teléfono o ID" aria-label="Buscar cliente para asociar" /></div>
+                @if (clientSearching()) { <small class="searching-label">Buscando clientes...</small> }
+                @else if (clientSearch().trim().length >= 2 && !clientResults().length) { <small class="searching-label">No se encontraron clientes con esa búsqueda.</small> }
+                @if (clientResults().length) {
+                  <div class="client-results">
+                    @for (client of clientResults(); track client.idServicio) {
+                      <button type="button" (click)="linkClient(client)" [disabled]="mappingSaving()"><span><strong>{{ client.nombre }}</strong><small>{{ client.usuario || 'Sin usuario' }} · {{ client.telefono || 'Sin teléfono' }}</small></span><b>#{{ client.idServicio }}</b></button>
+                    }
+                  </div>
+                }
               </article>
             }
             <article class="service-diagnostic optical-history">
               <div class="drawer-section-title"><div><strong>Historial óptico</strong><span>Últimas {{ opticalHistory().length }} mediciones.</span></div></div>
-              <div class="history-list">@for (reading of opticalHistory().slice().reverse().slice(0, 8); track reading.id) { <div><time>{{ formatDate(reading.capturedAt) }}</time><span [class.weak]="isWeakPower(reading.rxPowerDbm)" [class.critical]="isCriticalPower(reading.rxPowerDbm)">{{ reading.rxPowerDbm != null ? reading.rxPowerDbm + ' dBm' : '--' }}</span></div> } @empty { <p>La primera medición se guardará al consultar esta ONU.</p> }</div>
+              <div class="history-list">@for (reading of opticalHistory().slice().reverse().slice(0, 8); track reading.id) { <div><time>{{ formatDate(reading.capturedAt) }}</time><span class="signal" [class.none]="reading.rxPowerDbm == null" [class.weak]="isWeakPower(reading.rxPowerDbm)" [class.critical]="isCriticalPower(reading.rxPowerDbm)"><i></i>{{ formatDbm(reading.rxPowerDbm) }} · {{ signalLabel(reading.rxPowerDbm) }}</span></div> } @empty { <p>La primera medición se guardará al consultar esta ONU.</p> }</div>
             </article>
           </section>
         }
@@ -236,8 +251,8 @@
         </div>
         <div class="segmented" aria-label="Filtrar estado">
           <button type="button" [class.active]="onuStatus() === 'all'" (click)="filterStatus('all')">Todas</button>
-          <button type="button" [class.active]="onuStatus() === 'online'" (click)="filterStatus('online')">Online</button>
-          <button type="button" [class.active]="onuStatus() === 'offline'" (click)="filterStatus('offline')">Offline</button>
+          <button type="button" [class.active]="onuStatus() === 'online'" (click)="filterStatus('online')">En línea</button>
+          <button type="button" [class.active]="onuStatus() === 'offline'" (click)="filterStatus('offline')">Sin conexión</button>
         </div>
         <select [ngModel]="mappingStatus()" (ngModelChange)="filterMapping($event)" aria-label="Filtrar asociación">
           <option value="all">Todas las asociaciones</option>
@@ -252,31 +267,31 @@
           <button class="secondary-action" type="button" (click)="openAssociationPreview()" [disabled]="associationLoading() || associationSaving()">
             <svg lucideLink2 size="15" aria-hidden="true"></svg>{{ associationLoading() ? 'Analizando...' : 'Asociar todos' }}
           </button>
-          <button class="secondary-action" type="button" (click)="runSync(true)" [disabled]="syncing()">Actualizar seriales</button>
+          <button class="secondary-action" type="button" (click)="runSync(true)" [disabled]="syncing()" title="Vuelve a leer todo el inventario de la OLT">{{ syncing() ? 'Leyendo OLT...' : 'Actualizar seriales' }}</button>
         }
       </div>
       <div class="table-wrap onu-table">
         <table>
-          <thead><tr><th>Estado</th><th>ONU</th><th>Nombre / cliente</th><th>Modelo</th><th>Serial</th><th>RX óptica</th><th>Última lectura</th><th></th></tr></thead>
+          <thead><tr><th>Estado</th><th>ONU</th><th>Nombre / cliente</th><th>Modelo</th><th>Serial</th><th>Señal óptica</th><th>Última lectura</th><th></th></tr></thead>
           <tbody>
             @for (onu of onuPage().items; track onu.id) {
               <tr [class.offline-row]="!onu.online">
-                <td><span class="state-pill" [class.online]="onu.online" [class.offline]="!onu.online">{{ onu.online ? 'Online' : (onu.phaseState || 'Offline') }}</span></td>
+                <td><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online" [title]="onuStatusLabel(onu)">{{ onuStatusLabel(onu) }}</span></td>
                 <td class="mono strong">{{ onu.onuIndex }}</td>
                 <td><span class="client-name">{{ onu.client?.nombre || onu.name || 'Sin asociar' }}</span>@if (onu.client?.usuario) { <small class="client-meta">{{ onu.client?.usuario }} · {{ onu.client?.ip || 'Sin IP' }}</small> }</td>
                 <td>{{ onu.model || '--' }}</td><td class="mono">{{ onu.serial || '--' }}</td>
-                <td class="mono optical" [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)">{{ onu.rxPowerDbm != null ? onu.rxPowerDbm + ' dBm' : 'Consultar' }}</td>
+                <td><span class="signal" [class.none]="onu.rxPowerDbm == null" [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><i></i>{{ signalLabel(onu.rxPowerDbm) }}@if (onu.rxPowerDbm != null) { <b class="mono">{{ formatDbm(onu.rxPowerDbm) }}</b> }</span></td>
                 <td>{{ formatDate(onu.lastDetailAt || onu.lastSeenAt) }}</td>
-                <td><button class="icon-action" type="button" title="Diagnóstico óptico" aria-label="Diagnóstico óptico" (click)="inspectOnu(onu)"><svg lucideGauge size="17" aria-hidden="true"></svg></button></td>
+                <td><button class="secondary-action compact-action" type="button" title="Abrir diagnóstico de la ONU" (click)="inspectOnu(onu)"><svg lucideEye size="15" aria-hidden="true"></svg>Abrir</button></td>
               </tr>
             } @empty {
-              <tr><td colspan="8"><div class="empty-state">No hay ONUs para estos filtros.</div></td></tr>
+              <tr><td colspan="8"><div class="empty-state">No hay ONUs para estos filtros. Cambie la búsqueda o elija «Todas».</div></td></tr>
             }
           </tbody>
         </table>
       </div>
       <footer class="pagination">
-        <span>{{ onuPage().total }} resultados</span>
+        <span>{{ onuPage().total }} ONUs encontradas</span>
         <div>
           <button class="icon-action" type="button" [disabled]="onuPage().page <= 1" (click)="loadOnus(onuPage().page - 1)" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button>
           <strong>{{ onuPage().page }} / {{ onuPage().pages }}</strong>
@@ -313,13 +328,13 @@
             <div class="nap-row">
               <div class="nap-summary"><strong>{{ nap.code }} · {{ nap.name }}</strong><span>{{ nap.usedPorts }} ocupados · {{ nap.availablePorts }} libres · {{ nap.capacity }} total</span></div>
               <div class="nap-capacity"><span [style.width.%]="nap.capacity ? (nap.usedPorts / nap.capacity) * 100 : 0"></span></div>
-              <div class="nap-ports">@for (port of nap.ports; track port.id) { <button type="button" [class.assigned]="port.status === 'assigned'" [class.damaged]="port.status === 'damaged'" [class.selected]="selectedNapPortId === port.id" (click)="selectNapPort(port.id, port.onuIndex)" [title]="port.onuIndex || port.status">{{ port.portNumber }}</button> }</div>
+              <div class="nap-ports">@for (port of nap.ports; track port.id) { <button type="button" [class.assigned]="port.status === 'assigned'" [class.damaged]="port.status === 'damaged'" [class.selected]="selectedNapPortId === port.id" (click)="selectNapPort(port.id, port.onuIndex)" [title]="'Puerto ' + port.portNumber + ': ' + (port.onuIndex || napPortStatusLabel(port.status))">{{ port.portNumber }}</button> }</div>
             </div>
           } @empty { <div class="empty-state compact">Este splitter aún no tiene NAP asignadas.</div> }
         </section>
       } @empty { <div class="empty-state">Cree el primer splitter y luego agregue sus NAP.</div> }
       @if (selectedNapPortId) {
-        <div class="port-editor"><strong>Puerto seleccionado</strong><input class="mono" [(ngModel)]="selectedNapPortOnu" placeholder="ONU 1/1/13:2" /><button class="primary-action" type="button" (click)="saveNapPort('assigned')" [disabled]="!selectedNapPortOnu">Asignar ONU</button><button class="secondary-action" type="button" (click)="saveNapPort('reserved')">Reservar</button><button class="secondary-action" type="button" (click)="saveNapPort('available')">Liberar</button><button class="text-danger" type="button" (click)="saveNapPort('damaged')">Averiado</button></div>
+        <div class="port-editor"><strong>Puerto seleccionado</strong><input class="mono" [(ngModel)]="selectedNapPortOnu" placeholder="ONU 1/1/13:2" /><button class="primary-action" type="button" (click)="saveNapPort('assigned')" [disabled]="!selectedNapPortOnu">Asignar ONU</button><button class="secondary-action" type="button" (click)="saveNapPort('reserved')">Reservar</button><button class="secondary-action" type="button" (click)="saveNapPort('available')">Liberar</button><button class="text-danger" type="button" (click)="saveNapPort('damaged')">Marcar averiado</button><button class="secondary-action" type="button" (click)="selectedNapPortId = null" aria-label="Cerrar editor de puerto">Cerrar</button></div>
       }
     </section>
   } @else if (tab() === 'profiles') {
@@ -336,12 +351,12 @@
           </header>
           <div class="table-wrap"><table><thead><tr><th>Velocidad</th><th>Plan WispHub</th><th>Clientes MikroTik</th><th>Subida ZTE</th><th>Bajada ZTE</th><th>Estado</th></tr></thead><tbody>
             @for (plan of sync.plans; track plan.speedMbps) {
-              <tr><td><strong>{{ plan.speedMbps }} Mbps</strong></td><td>{{ plan.wisphubPlans[0].name }}@if (plan.wisphubPlans.length > 1) { <small class="client-meta">+{{ plan.wisphubPlans.length - 1 }} nombres equivalentes</small> }</td><td>{{ plan.mikrotikQueues }}</td><td class="mono">{{ plan.tcontProfile }}</td><td class="mono">{{ plan.trafficProfile }}</td><td><span class="state-pill" [class.online]="plan.status === 'ready'" [class.warning]="plan.status === 'missing'">{{ plan.status === 'ready' ? 'Lista' : 'Falta crear' }}</span></td></tr>
+              <tr><td><strong>{{ plan.speedMbps }} Mbps</strong></td><td>{{ plan.wisphubPlans[0].name | planLabel }}@if (plan.wisphubPlans.length > 1) { <small class="client-meta">+{{ plan.wisphubPlans.length - 1 }} nombres equivalentes</small> }</td><td>{{ plan.mikrotikQueues }}</td><td class="mono">{{ plan.tcontProfile }}</td><td class="mono">{{ plan.trafficProfile }}</td><td><span class="state-pill" [class.online]="plan.status === 'ready'" [class.warning]="plan.status === 'missing'">{{ plan.status === 'ready' ? 'Lista' : 'Falta crear' }}</span></td></tr>
             } @empty { <tr><td colspan="6"><div class="empty-state">No se encontraron velocidades válidas en ambos sistemas.</div></td></tr> }
           </tbody></table></div>
           @if (sync.summary.missing && auth.hasRole(['admin'])) {
             <footer class="plan-sync-confirm">
-              <button class="primary-action" type="button" (click)="applyPlanSync()" [disabled]="planSyncSaving()">{{ planSyncSaving() ? 'Creando y verificando...' : 'Crear perfiles faltantes' }}</button>
+              <button class="primary-action" type="button" (click)="applyPlanSync()" [disabled]="planSyncSaving()">{{ planSyncSaving() ? 'Creando y verificando...' : 'Crear ' + sync.summary.missing + ' perfiles faltantes' }}</button>
             </footer>
           }
         </section>
@@ -374,8 +389,8 @@
               <tr>
                 <td><span class="client-name">{{ job.clientName || 'Sin nombre' }}</span>@if (job.clientIdServicio) { <small class="client-meta">WispHub #{{ job.clientIdServicio }}</small> }</td>
                 <td class="mono">{{ job.ip || '--' }}</td><td class="mono">{{ job.serial || '--' }}</td>
-                <td><strong>{{ installationStage(job.stage) }}</strong>@if (job.ponIndex) { <small class="client-meta">PON {{ job.ponIndex }}</small> }@if (job.errorMessage) { <small class="client-meta">{{ job.errorMessage }}</small> }</td>
-                <td><span class="state-pill" [class.online]="job.status === 'complete' || job.localStatus === 'success'" [class.warning]="!['complete', 'failed', 'cancelled'].includes(job.status)" [class.offline]="job.status === 'failed' || job.localStatus === 'error'">{{ job.localStatus === 'error' ? 'error local' : (job.status === 'cancelled' ? 'cancelada' : job.status) }}</span>@if (job.agentVersion) { <small class="client-meta">Agente v{{ job.agentVersion }}</small> }</td>
+                <td><strong>{{ installationStage(job.stage) }}</strong>@if (job.ponIndex) { <small class="client-meta">PON {{ job.ponIndex }}</small> }@if (job.errorMessage) { <small class="client-meta error-meta">{{ job.errorMessage }}</small> }</td>
+                <td><span class="state-pill" [class.online]="job.status === 'complete' || job.localStatus === 'success'" [class.warning]="!['complete', 'failed', 'cancelled'].includes(job.status)" [class.offline]="job.status === 'failed' || job.localStatus === 'error'">{{ installationStatusLabel(job) }}</span>@if (job.agentVersion) { <small class="client-meta">Agente v{{ job.agentVersion }}</small> }</td>
                 <td>{{ formatDate(job.updatedAt) }}</td>
                 <td>
                   <div class="table-actions">
@@ -417,10 +432,10 @@
               <tr [class.relocation-row]="onu.relocation" [class.review-row]="onu.authorizationStatus === 'review' || (onu.relocation && !onu.relocation.allowed)">
                 <td class="mono strong">{{ onu.serial }}@if (onu.relocation) { <small class="relocation-label">Cambio de PON</small> }</td>
                 <td class="mono">@if (onu.relocation?.previousLocation; as previous) { <span class="pon-move"><s>{{ previous.ponIndex }}</s><b>→</b><strong>{{ onu.ponIndex }}</strong></span> } @else { {{ onu.ponIndex }} }</td>
-                <td>{{ onu.suggestedClient?.nombre || 'Sin coincidencia en WispHub' }}@if (onu.authorizationReason) { <small class="authorization-reason">{{ onu.authorizationReason }}</small> }</td>
+                <td>@if (onu.suggestedClient?.nombre) { {{ onu.suggestedClient?.nombre }} } @else { <span class="muted">Sin coincidencia en WispHub</span> }@if (onu.authorizationReason) { <small class="authorization-reason">{{ onu.authorizationReason }}</small> }</td>
                 <td>{{ formatDate(onu.firstSeenAt) }}</td><td>{{ formatDate(onu.lastSeenAt) }}</td>
                 <td><span class="state-pill warning">{{ onu.relocation ? (onu.relocation.allowed ? 'Reautorizar' : 'Revisar') : (onu.authorizationStatus === 'review' ? 'Revisar' : 'Pendiente') }}</span></td>
-                <td>@if (auth.hasRole(['admin'])) { <button class="authorize-button" type="button" [disabled]="onu.relocation && !onu.relocation.allowed" (click)="openProvisioningWizard(onu)">{{ onu.relocation ? 'Reautorizar' : 'Autorizar' }}</button> }</td>
+                <td>@if (auth.hasRole(['admin'])) { <button class="authorize-button" type="button" [disabled]="onu.relocation && !onu.relocation.allowed" [title]="onu.relocation && !onu.relocation.allowed ? 'Requiere revisión manual antes de reautorizar' : 'Abrir el asistente de autorización'" (click)="openProvisioningWizard(onu)">{{ onu.relocation ? 'Reautorizar' : 'Autorizar' }}</button> }</td>
               </tr>
             }
             </tbody>
@@ -437,14 +452,14 @@
         @for (alert of signalAlerts(); track alert.id) {
           <article class="alarm-row signal-alarm" [class.critical]="alert.severity === 'critical'">
             <div class="alarm-icon"><svg lucideGauge size="18" aria-hidden="true"></svg></div>
-            <div class="alarm-copy"><div><span class="alarm-level">{{ alert.severity }}</span><strong>{{ alert.message }}</strong></div><small>ONU {{ alert.onuIndex }} · {{ alert.occurrenceCount }} detecciones</small></div>
+            <div class="alarm-copy"><div><span class="alarm-level">{{ alarmLevelLabel(alert.severity) }}</span><strong>{{ alert.message }}</strong></div><small>ONU {{ alert.onuIndex }} · {{ alert.occurrenceCount }} detecciones</small></div>
             <time>{{ formatDate(alert.lastSeenAt) }}</time>
           </article>
         }
         @for (alarm of alarms(); track alarm.alarmId) {
           <article class="alarm-row" [class.critical]="alarm.level === 'critical'" [class.major]="alarm.level === 'major'">
             <div class="alarm-icon"><svg lucideAlertTriangle size="18" aria-hidden="true"></svg></div>
-            <div class="alarm-copy"><div><span class="alarm-level">{{ alarm.level }}</span><strong>{{ alarm.description }}</strong></div><small>ID {{ alarm.alarmId }} · Código {{ alarm.code || '--' }}</small></div>
+            <div class="alarm-copy"><div><span class="alarm-level">{{ alarmLevelLabel(alarm.level) }}</span><strong>{{ alarm.description }}</strong></div><small>ID {{ alarm.alarmId }} · Código {{ alarm.code || '--' }}</small></div>
             <time>{{ alarm.alarmTime || formatDate(alarm.lastSeenAt) }}</time>
           </article>
         }
@@ -459,7 +474,7 @@
           <thead><tr><th>Fecha</th><th>Operación</th><th>Objetivo</th><th>Usuario</th><th>Detalle</th></tr></thead>
           <tbody>
             @for (event of activity(); track event.id) {
-              <tr><td>{{ formatDate(event.createdAt) }}</td><td class="strong">{{ activityActionLabel(event.action) }}</td><td class="mono">{{ event.entityId || event.entityName || '--' }}</td><td>{{ event.details.actor || 'system' }}</td><td>{{ activityDetail(event) }}</td></tr>
+              <tr><td>{{ formatDate(event.createdAt) }}</td><td class="strong">{{ activityActionLabel(event.action) }}</td><td class="mono">{{ event.entityId || event.entityName || '--' }}</td><td>{{ event.details.actor || 'Sistema' }}</td><td>{{ activityDetail(event) }}</td></tr>
             } @empty {
               <tr><td colspan="5"><div class="empty-state">Aún no existen operaciones manuales registradas.</div></td></tr>
             }
@@ -499,19 +514,19 @@
           @if (provisioningCatalog()?.agentInventory; as agent) {
             <div class="agent-note"><strong>ONU Studio {{ agent.agentVersion || '' }}</strong><br>{{ agent.summary.model || 'Modelo sin leer' }} - Firmware {{ agent.summary.softwareVersion || '--' }} - WAN {{ agent.summary.wanIp || 'sin configurar' }} - VLAN {{ agent.summary.vlan || '--' }}<br>Lectura enlazada por serial {{ agent.summary.serial }}.</div>
           }
-          <div class="wizard-section-title"><h3>Cliente de WispHub</h3><p>La IP del cliente se validara contra el inventario de red antes de escribir.</p></div>
+          <div class="wizard-section-title"><h3>Cliente de WispHub</h3><p>La IP del cliente se validará contra el inventario de red antes de escribir.</p></div>
           @if (!pending.relocation?.clientIdServicio) {
             <label class="wizard-search"><span>Buscar cliente</span><div class="search-control"><svg lucideSearch size="16"></svg><input type="search" [ngModel]="provisioningClientQuery()" (ngModelChange)="provisioningClientSearchChanged($event)" placeholder="Nombre, usuario, teléfono o ID" /></div></label>
             @if (provisioningClientSearching()) { <small class="searching-label">Buscando...</small> }
             @if (provisioningClientResults().length) {
-              <div class="client-results wizard-client-results">@for (client of provisioningClientResults(); track client.idServicio) { <button type="button" (click)="selectProvisioningClient(client)"><span><strong>{{ client.nombre }}</strong><small>{{ client.usuario || 'Sin usuario' }} · {{ client.planInternetName || 'Sin plan' }}</small></span><b>{{ client.ip || 'Sin IP' }}</b></button> }</div>
+              <div class="client-results wizard-client-results">@for (client of provisioningClientResults(); track client.idServicio) { <button type="button" (click)="selectProvisioningClient(client)"><span><strong>{{ client.nombre }}</strong><small>{{ client.usuario || 'Sin usuario' }} · {{ client.planInternetName | planLabel }}</small></span><b>{{ client.ip || 'Sin IP' }}</b></button> }</div>
             }
           }
           @if (provisioningClient(); as client) {
-            <div class="selected-client"><div><span>Cliente seleccionado</span><strong>{{ client.nombre }}</strong><small>{{ client.usuario }} · {{ client.planInternetName || 'Sin plan' }}</small></div><div class="selected-client-ip"><span>IP WispHub</span><strong class="mono">{{ client.ip || 'Sin IP asignada' }}</strong><button type="button" (click)="openIpPicker()">{{ client.ip ? 'Cambiar IP' : 'Elegir IP libre' }}</button></div></div>
+            <div class="selected-client"><div><span>Cliente seleccionado</span><strong>{{ client.nombre }}</strong><small>{{ client.usuario }} · {{ client.planInternetName | planLabel }}</small></div><div class="selected-client-ip"><span>IP WispHub</span><strong class="mono">{{ client.ip || 'Sin IP asignada' }}</strong><button type="button" (click)="openIpPicker()">{{ client.ip ? 'Cambiar IP' : 'Elegir IP libre' }}</button></div></div>
           }
         </div>
-        <footer><span></span><button class="primary-action" type="button" [disabled]="(provisioningServiceMode === 'router' && !provisioningClient()?.ip) || !provisioningCatalog()" (click)="provisioningStep.set(2)">Continuar</button></footer>
+        <footer><span class="wizard-hint">{{ !provisioningCatalog() ? 'Esperando datos de la OLT...' : (!provisioningClient() ? 'Busque y seleccione el cliente.' : (provisioningServiceMode === 'router' && !provisioningClient()?.ip ? 'Elija una IP libre para el cliente.' : '')) }}</span><button class="primary-action" type="button" [disabled]="(provisioningServiceMode === 'router' && !provisioningClient()?.ip) || !provisioningCatalog()" (click)="provisioningStep.set(2)">Continuar</button></footer>
       } @else if (provisioningStep() === 2) {
         <div class="wizard-body">
           <div class="wizard-section-title"><h3>Servicio GPON</h3><p>Valores tomados de la configuración existente de esta C320.</p></div>
@@ -522,7 +537,7 @@
               <b [class.verified]="modelProfile.certificationStatus === 'verified'">{{ modelProfile.certificationStatus === 'verified' ? 'Verificado' : 'Detectado' }}</b>
             </section>
           } @else {
-            <div class="unknown-model-profile"><svg lucideAlertTriangle size="15"></svg>No existe un tipo guardado para este serial. Puede autorizarse manualmente y luego registrar el modelo en Perfiles.</div>
+            <div class="unknown-model-profile"><svg lucideAlertTriangle size="15" aria-hidden="true"></svg>No existe un tipo guardado para este serial. Puede autorizarse manualmente y luego registrar el modelo en Perfiles.</div>
           }
           <div class="wizard-form-grid">
             <label class="wide-field"><span>Perfil guardado</span><select [ngModel]="provisioningProfileId" (ngModelChange)="applyProvisioningProfile($event)"><option [ngValue]="null">Configuración manual</option>@for (profile of provisioningCatalog()?.profiles || []; track profile.id) { <option [ngValue]="profile.id">{{ profile.name }} · VLAN {{ profile.vlan }}</option> }</select></label>
@@ -535,9 +550,9 @@
             @if (provisioningServiceMode === 'router') { <label><span>IP WAN / gestión</span><div class="ip-input-action"><input class="mono" [(ngModel)]="provisioningManagementIp" readonly /><button type="button" (click)="openIpPicker()" aria-label="Elegir IP disponible"><svg lucideSearch size="15"></svg></button></div></label> }
             @else { <div class="agent-note"><strong>Bridge sin IP de cliente</strong><br>La OLT entregará VLAN {{ provisioningVlan }} por LAN{{ provisioningLanPorts.join(', LAN') }} y verificará que no exista ip-host.</div> }
           </div>
-          <section class="network-defaults"><span>Red {{ provisioningCatalog()?.defaults?.managementCidr }}</span><span>Mascara {{ provisioningCatalog()?.defaults?.mask }}</span><span>Gateway {{ provisioningCatalog()?.defaults?.gateway }}</span><span>DNS {{ provisioningCatalog()?.defaults?.primaryDns }}</span></section>
+          <section class="network-defaults"><span>Red {{ provisioningCatalog()?.defaults?.managementCidr }}</span><span>Máscara {{ provisioningCatalog()?.defaults?.mask }}</span><span>Gateway {{ provisioningCatalog()?.defaults?.gateway }}</span><span>DNS {{ provisioningCatalog()?.defaults?.primaryDns }}</span></section>
         </div>
-        <footer><button class="secondary-action" type="button" (click)="provisioningStep.set(1)">Atras</button><button class="primary-action" type="button" [disabled]="provisioningLoading() || !provisioningName || !provisioningOnuType || !provisioningTcontProfile || !provisioningTrafficProfile" (click)="previewProvisioning()"><svg lucideRefreshCw size="15" [class.spinning]="provisioningLoading()"></svg>Revisar</button></footer>
+        <footer><button class="secondary-action" type="button" (click)="provisioningStep.set(1)">Atrás</button><span class="wizard-hint">{{ !provisioningName ? 'Falta el nombre en la OLT.' : (!provisioningOnuType ? 'Falta el modelo de ONU.' : (!provisioningTcontProfile || !provisioningTrafficProfile ? 'Faltan los perfiles de velocidad.' : '')) }}</span><button class="primary-action" type="button" [disabled]="provisioningLoading() || !provisioningName || !provisioningOnuType || !provisioningTcontProfile || !provisioningTrafficProfile" (click)="previewProvisioning()"><svg lucideRefreshCw size="15" [class.spinning]="provisioningLoading()"></svg>Revisar</button></footer>
       } @else if (provisioningStep() === 3 && provisioningPreview(); as preview) {
         <div class="wizard-body">
           <section class="provision-review">
@@ -548,12 +563,12 @@
           @if (preview.warnings.length) { <div class="provision-warnings">@for (warning of preview.warnings; track warning) { <p><svg lucideAlertTriangle size="15"></svg>{{ warning }}</p> }</div> }
           <ol class="provision-steps">@for (step of preview.steps; track step) { <li>{{ step }}</li> }</ol>
         </div>
-        <footer><button class="secondary-action" type="button" [disabled]="provisioningSaving()" (click)="provisioningStep.set(2)">Atras</button><button class="primary-action danger-action" type="button" [disabled]="provisioningSaving()" (click)="runProvisioning()"><svg lucideRefreshCw size="15" [class.spinning]="provisioningSaving()"></svg>{{ provisioningSaving() ? 'Configurando OLT...' : (pending.relocation ? 'Reautorizar y verificar' : 'Autorizar y configurar') }}</button></footer>
+        <footer><button class="secondary-action" type="button" [disabled]="provisioningSaving()" (click)="provisioningStep.set(2)">Atrás</button><button class="primary-action danger-action" type="button" [disabled]="provisioningSaving()" (click)="runProvisioning()"><svg lucideRefreshCw size="15" [class.spinning]="provisioningSaving()"></svg>{{ provisioningSaving() ? 'Configurando OLT...' : (pending.relocation ? 'Reautorizar y verificar' : 'Autorizar y configurar') }}</button></footer>
       } @else if (provisioningStep() === 4 && provisioningResult(); as result) {
         <div class="wizard-body result-body">
           <svg lucideCircleCheck size="42"></svg><h3>ONU autorizada y verificada</h3><p class="mono">{{ result.onuIndex }} · {{ result.config.serial }}</p>
-          <section class="result-grid"><div><span>Cliente</span><strong>{{ result.client.nombre }}</strong></div><div><span>Estado</span><strong>{{ result.online ? 'Online' : result.phaseState }}</strong></div><div><span>VLAN</span><strong>{{ result.config.vlan }}</strong></div><div><span>IP</span><strong class="mono">{{ result.config.managementIp }}</strong></div></section>
-          @if (result.modelProfile?.tr069ProfileKey) { <a class="primary-action agent-handoff" routerLink="/onu-provisioner" [queryParams]="{ wanIp: result.localProvisioning.wanIp, vlan: result.localProvisioning.vlan, ssid: result.localProvisioning.ssid }">Continuar con WAN y WiFi</a> } @else { <div class="agent-note">El servicio GPON quedo configurado. Este perfil no tiene administración TR-069 certificada.</div> }
+          <section class="result-grid"><div><span>Cliente</span><strong>{{ result.client.nombre }}</strong></div><div><span>Estado</span><strong>{{ resultStateLabel(result.online, result.phaseState) }}</strong></div><div><span>VLAN</span><strong>{{ result.config.vlan }}</strong></div><div><span>IP</span><strong class="mono">{{ result.config.managementIp }}</strong></div></section>
+          @if (result.modelProfile?.tr069ProfileKey) { <a class="primary-action agent-handoff" routerLink="/onu-provisioner" [queryParams]="{ wanIp: result.localProvisioning.wanIp, vlan: result.localProvisioning.vlan, ssid: result.localProvisioning.ssid }">Continuar con WAN y WiFi</a> } @else { <div class="agent-note">El servicio GPON quedó configurado. Este modelo no tiene control remoto (TR-069) certificado: configure WAN y WiFi en el equipo.</div> }
         </div>
         <footer><span></span><button class="primary-action" type="button" (click)="closeProvisioningWizard()">Finalizar</button></footer>
       }
@@ -564,7 +579,7 @@
     <button class="ip-picker-backdrop" type="button" aria-label="Cerrar selector de IP" (click)="closeIpPicker()"></button>
     <section class="ip-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="ip-picker-title">
       <header>
-        <div><span>Inventario MikroTik</span><h2 id="ip-picker-title">Elegir IP disponible</h2><p>La selección se reserva por 60 minutos y se sincroniza con el cliente.</p></div>
+        <div><span>Inventario MikroTik</span><h2 id="ip-picker-title">Elegir IP disponible</h2><p>La IP elegida queda reservada 60 minutos y se asigna al cliente en WispHub y MikroTik.</p></div>
         <button class="icon-action" type="button" (click)="closeIpPicker()" [disabled]="ipPickerSaving()" aria-label="Cerrar"><svg lucideX size="19"></svg></button>
       </header>
       <div class="ip-picker-filters">
@@ -589,14 +604,14 @@
         }
       </div>
       <footer>
-        <div>@if (selectedAvailableIp(); as address) { <span>Seleccionada</span><strong class="mono">{{ address.ip }}</strong>@if (provisioningClient()?.ip; as currentIp) { @if (currentIp !== address.ip) { <small class="ip-change-warning">Cambiara {{ currentIp }} en WispHub y MikroTik</small> } } }</div>
+        <div>@if (selectedAvailableIp(); as address) { <span>Seleccionada</span><strong class="mono">{{ address.ip }}</strong>@if (provisioningClient()?.ip; as currentIp) { @if (currentIp !== address.ip) { <small class="ip-change-warning">Reemplazará la IP {{ currentIp }} en WispHub y MikroTik</small> } } }</div>
         <button class="primary-action" type="button" [disabled]="!selectedAvailableIp() || ipPickerSaving()" (click)="assignAvailableIp()"><svg lucideRefreshCw size="15" [class.spinning]="ipPickerSaving()"></svg>{{ ipPickerSaving() ? 'Reservando y sincronizando...' : (provisioningClient()?.ip ? 'Cambiar IP y reservar' : 'Reservar y asignar') }}</button>
       </footer>
     </section>
   }
 
   @if (associationPreview(); as preview) {
-    <button class="provision-backdrop" type="button" aria-label="Cerrar asociacion masiva" (click)="closeAssociationPreview()"></button>
+    <button class="provision-backdrop" type="button" aria-label="Cerrar asociación masiva" (click)="closeAssociationPreview()"></button>
     <section class="provision-dialog association-dialog" role="dialog" aria-modal="true" aria-labelledby="association-title">
       <header>
         <div>
@@ -660,7 +675,7 @@
       <header>
         <div>
           <span>Control de instalaciones</span>
-          <h2 id="cancellation-title">{{ preview.operation === 'close' ? 'Cerrar expediente' : 'Cancelar instalacion' }}</h2>
+          <h2 id="cancellation-title">{{ preview.operation === 'close' ? 'Cerrar expediente' : 'Cancelar instalación' }}</h2>
           <p>{{ preview.job.clientName || preview.job.serial || preview.job.ip || 'Solicitud sin nombre' }}</p>
         </div>
         <button class="icon-action" type="button" (click)="closeInstallationCancellation()" [disabled]="cancellationSaving()" aria-label="Cerrar"><svg lucideX size="19"></svg></button>
@@ -670,19 +685,19 @@
         @if (preview.allowed) {
           <div class="cancellation-impact">
             <svg lucideAlertTriangle size="20" aria-hidden="true"></svg>
-            <div><strong>{{ preview.operation === 'close' ? 'El expediente quedara cerrado' : 'La instalacion dejara de estar pendiente' }}</strong><span>El historial se conserva para auditoria y puede consultarse despues.</span></div>
+            <div><strong>{{ preview.operation === 'close' ? 'El expediente quedará cerrado' : 'La instalación dejará de estar pendiente' }}</strong><span>El historial se conserva para auditoría y puede consultarse después.</span></div>
           </div>
           <dl class="cancellation-summary">
             <div><dt>WispHub y MikroTik</dt><dd>{{ preview.servicePreserved ? 'Se conservan sin cambios' : 'No hay servicio creado' }}</dd></div>
             <div><dt>Dirección IP</dt><dd>{{ preview.reservationAction === 'release' ? 'La reserva se liberará' : (preview.reservationAction === 'keep_committed' ? 'Se conserva asignada' : 'Sin reserva activa') }}</dd></div>
-            <div><dt>ONU en la OLT</dt><dd>{{ preview.hasOltChanges ? 'Tiene cambios aplicados' : 'No se modificara' }}</dd></div>
+            <div><dt>ONU en la OLT</dt><dd>{{ preview.hasOltChanges ? 'Tiene cambios aplicados' : 'No se modificará' }}</dd></div>
             <div><dt>Historial</dt><dd>Se conserva completo</dd></div>
           </dl>
           @if (preview.warnings.length) {
             <div class="cancellation-warnings">@for (warning of preview.warnings; track warning) { <p><svg lucideAlertTriangle size="14" aria-hidden="true"></svg>{{ warning }}</p> }</div>
           }
         } @else {
-          <div class="cancellation-blocked"><svg lucideBan size="22" aria-hidden="true"></svg><div><strong>Esta solicitud no se puede cancelar directamente</strong><span>{{ preview.alreadyCancelled ? 'Ya fue cancelada.' : 'La ONU ya recibio cambios en la OLT. Debe utilizarse un proceso de baja controlada para evitar dejar el servicio inconsistente.' }}</span></div></div>
+          <div class="cancellation-blocked"><svg lucideBan size="22" aria-hidden="true"></svg><div><strong>Esta solicitud no se puede cancelar directamente</strong><span>{{ preview.alreadyCancelled ? 'Ya fue cancelada.' : 'La ONU ya recibió cambios en la OLT. Use la opción «Eliminar de la OLT» de la ONU para darla de baja sin dejar el servicio a medias.' }}</span></div></div>
         }
       </div>
 
@@ -690,103 +705,33 @@
         <button class="secondary-action" type="button" (click)="closeInstallationCancellation()" [disabled]="cancellationSaving()">Volver</button>
         @if (preview.allowed) {
           <button class="primary-action danger-action" type="button" (click)="confirmInstallationCancellation()" [disabled]="cancellationSaving()">
-            <svg lucideBan size="15" aria-hidden="true"></svg>{{ cancellationSaving() ? 'Procesando...' : (preview.operation === 'close' ? 'Cerrar expediente' : 'Cancelar instalacion') }}
+            <svg lucideBan size="15" aria-hidden="true"></svg>{{ cancellationSaving() ? 'Procesando...' : (preview.operation === 'close' ? 'Cerrar expediente' : 'Cancelar instalación') }}
           </button>
         }
       </footer>
     </section>
   }
 
-  @if (legacyDrawerOnu(); as onu) {
-    <button class="drawer-backdrop" type="button" aria-label="Cerrar detalle" (click)="closeDetail()"></button>
-    <aside class="onu-drawer" aria-label="Diagnóstico de ONU">
-      <header><div><span>Diagnóstico óptico</span><h2>ONU {{ onu.onuIndex }}</h2></div><button class="icon-action" type="button" (click)="closeDetail()" aria-label="Cerrar"><svg lucideX size="19"></svg></button></header>
-      @if (detailLoading()) {
-        <div class="drawer-loading"><svg lucideRefreshCw size="22" class="spinning"></svg><span>Consultando la OLT...</span></div>
-      } @else {
-        <div class="detail-status" [class.offline]="!onu.online"><span class="status-dot"></span><strong>{{ onu.online ? 'ONU en línea' : (onu.phaseState || 'ONU fuera de línea') }}</strong></div>
-        <dl class="detail-grid">
-          <div><dt>Nombre</dt><dd>{{ onu.name || 'Sin nombre' }}</dd></div><div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div>
-          <div><dt>Serial</dt><dd class="mono">{{ onu.serial || '--' }}</dd></div><div><dt>Distancia</dt><dd>{{ onu.distanceM != null ? onu.distanceM + ' m' : '--' }}</dd></div>
-        </dl>
-        <section class="optical-readings">
-          <div [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><span>Potencia RX</span><strong>{{ onu.rxPowerDbm != null ? onu.rxPowerDbm + ' dBm' : '--' }}</strong><small>Óptimo: -8 a -27 dBm</small></div>
-          <div><span>Potencia TX</span><strong>{{ onu.txPowerDbm != null ? onu.txPowerDbm + ' dBm' : '--' }}</strong><small>Transmisión ONU</small></div>
-        </section>
-        <dl class="detail-list">
-          <div><dt>Atenuación subida</dt><dd>{{ onu.attenuationUpDb ?? '--' }} dB</dd></div><div><dt>Atenuación bajada</dt><dd>{{ onu.attenuationDownDb ?? '--' }} dB</dd></div>
-          <div><dt>Tiempo online</dt><dd>{{ onu.onlineDuration || '--' }}</dd></div><div><dt>Última causa offline</dt><dd>{{ onu.lastOfflineCause || '--' }}</dd></div>
-          <div><dt>Subida actual</dt><dd>{{ formatTraffic(onu.traffic?.upstreamBps) }}</dd></div><div><dt>Bajada actual</dt><dd>{{ formatTraffic(onu.traffic?.downstreamBps) }}</dd></div>
-          <div><dt>Cliente asociado</dt><dd>@if (onu.clientIdServicio) { <a [routerLink]="['/clients', onu.clientIdServicio]">{{ onu.client?.nombre || 'Cliente #' + onu.clientIdServicio }}</a> } @else { {{ onu.name || 'Sin nombre' }} }</dd></div>
-          <div><dt>Origen asociación</dt><dd>{{ onu.mappingSource === 'manual' ? 'Manual' : (onu.mappingSource === 'serial' ? 'Serial WispHub' : '--') }}</dd></div>
-          <div><dt>Lectura</dt><dd>{{ formatDate(onu.lastDetailAt) }}</dd></div>
-        </dl>
-        @if (onu.agentInventory; as agent) {
-          <section class="service-diagnostic">
-            <div class="drawer-section-title"><div><strong>Inventario ONU Studio</strong><span>Lectura local combinada con la información de la C320.</span></div><span class="state-pill" [class.online]="!agent.summary.partial">{{ agent.summary.partial ? 'Parcial' : 'Completa' }}</span></div>
-            <dl class="detail-list">
-              <div><dt>Modelo local</dt><dd>{{ agent.summary.model || '--' }}</dd></div>
-              <div><dt>Hardware / firmware</dt><dd>{{ agent.summary.hardwareVersion || '--' }} / {{ agent.summary.softwareVersion || '--' }}</dd></div>
-              <div><dt>MAC</dt><dd class="mono">{{ agent.summary.mac || '--' }}</dd></div>
-              <div><dt>WAN / VLAN</dt><dd class="mono">{{ agent.summary.wanIp || '--' }} / {{ agent.summary.vlan || '--' }}</dd></div>
-              <div><dt>WiFi</dt><dd>{{ agent.summary.ssid || '--' }} - {{ agent.summary.wifiClients }} clientes</dd></div>
-              <div><dt>LAN activas</dt><dd>{{ agent.summary.lanPortsUp }}</dd></div>
-              <div><dt>Estado GPON local</dt><dd>{{ agent.summary.registrationStatus || '--' }}</dd></div>
-              <div><dt>Lectura del agente</dt><dd>{{ formatDate(agent.summary.collectedAt) }} - v{{ agent.agentVersion || '--' }}</dd></div>
-            </dl>
-          </section>
-        }
-        @if (auth.hasRole(['admin']) && onu.serial) { <app-tr069-console [onu]="onu"></app-tr069-console> }
-        <section class="service-diagnostic">
-          <div class="drawer-section-title">
-            <div><strong>Servicio extremo a extremo</strong><span>OLT, WispHub y MikroTik en una sola prueba.</span></div>
-            <button class="icon-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()" aria-label="Repetir diagnóstico"><svg lucideRefreshCw size="16" [class.spinning]="diagnosticLoading()"></svg></button>
-          </div>
-          @if (diagnosticLoading() && !serviceDiagnostic()) {
-            <div class="diagnostic-wait"><svg lucideRefreshCw size="16" class="spinning"></svg> Verificando servicio...</div>
-          } @else if (serviceDiagnostic(); as diagnostic) {
-            <div class="diagnostic-score" [class.ready]="diagnostic.ready"><strong>{{ diagnostic.score }}%</strong><span>{{ diagnostic.ready ? 'Listo para entrega' : 'Requiere atencion' }}</span></div>
-            <div class="diagnostic-checks">
-              @for (check of diagnostic.checks; track check.key) {
-                <div [class.ok]="check.ok">@if (check.ok) { <svg lucideCircleCheck size="15"></svg> } @else { <svg lucideAlertTriangle size="15"></svg> }<span><strong>{{ check.label }}</strong><small>{{ check.detail }}</small></span></div>
-              }
-            </div>
-          }
-        </section>
-        @if (auth.hasRole(['admin'])) {
-          <section class="onu-operations">
-            <div class="drawer-section-title"><div><strong>Operaciones protegidas</strong><span>Acciones directas validadas para esta C320.</span></div></div>
-            @if (operationPreview(); as operation) {
-              <div class="operation-confirm" [class.rename-confirm]="operation.action === 'rename'" [class.cleanup-confirm]="operation.action === 'retire-stale'" [class.retirement-confirm]="operation.action === 'retire-full'"><p>{{ operation.impact }}</p>@if (operation.reason) { <p class="operation-reason">{{ operation.reason }}</p> }@if (operation.staleLocations?.length) { <div class="location-route"><span>Anterior</span><strong class="mono">{{ operation.staleLocations?.[0]?.onuIndex }}{{ (operation.staleLocations?.length || 0) > 1 ? ' +' + ((operation.staleLocations?.length || 1) - 1) : '' }}</strong><span>Activa</span><strong class="mono">{{ operation.activeLocation?.onuIndex }}</strong></div> }<div><button class="secondary-action" type="button" (click)="operationPreview.set(null)">Cancelar</button><button class="primary-action" [class.danger-action]="operation.action !== 'rename'" type="button" [disabled]="!operation.allowed || operationSaving()" (click)="executeProtectedOperation()">{{ operationSaving() ? 'Aplicando...' : (operation.action === 'rename' ? 'Cambiar y verificar' : (operation.action === 'retire-stale' ? 'Retirar anterior y verificar' : (operation.action === 'retire-full' ? 'Eliminar y verificar' : 'Confirmar reinicio'))) }}</button></div></div>
-            } @else {
-              <div class="operation-launchers"><label><span>Nombre en la OLT</span><div><input [(ngModel)]="onuRenameName" maxlength="32" pattern="[A-Za-z0-9_.-]+" /><button class="primary-action" type="button" (click)="prepareRename()" [disabled]="!onuRenameName || onuRenameName === onu.name">Cambiar</button></div></label><div class="operation-button-row"><button class="secondary-action" type="button" (click)="prepareStaleLocationCleanup()" [disabled]="!onu.serial">Revisar cambio de puerto</button><button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online">Reiniciar ONU</button><button class="secondary-action retire-action" type="button" (click)="prepareFullRetirement()" [disabled]="!onu.serial"><svg lucideTrash2 size="15"></svg>Eliminar de la OLT</button></div></div>
-            }
-          </section>
-          <section class="client-linker">
-            <div class="drawer-section-title">
-              <div><strong>Asociación de cliente</strong><span>Vincula esta ONU con su cliente de WispHub.</span></div>
-              @if (onu.clientIdServicio) { <button type="button" class="text-danger" (click)="assignClient(null)" [disabled]="mappingSaving()">Desvincular</button> }
-            </div>
-            <div class="search-control"><svg lucideSearch size="16"></svg><input type="search" [ngModel]="clientSearch()" (ngModelChange)="searchClientChanged($event)" placeholder="Nombre, usuario, teléfono o ID" /></div>
-            @if (clientSearching()) { <small class="searching-label">Buscando clientes...</small> }
-            @if (clientResults().length) {
-              <div class="client-results">
-                @for (client of clientResults(); track client.idServicio) {
-                  <button type="button" (click)="assignClient(client)" [disabled]="mappingSaving()"><span><strong>{{ client.nombre }}</strong><small>{{ client.usuario || 'Sin usuario' }} · {{ client.telefono || 'Sin teléfono' }}</small></span><b>#{{ client.idServicio }}</b></button>
-                }
-              </div>
-            }
-          </section>
-        }
-        <section class="optical-history">
-          <div class="drawer-section-title"><div><strong>Historial óptico</strong><span>Últimas {{ opticalHistory().length }} mediciones guardadas.</span></div></div>
-          <div class="history-list">
-            @for (reading of opticalHistory().slice().reverse().slice(0, 8); track reading.id) {
-              <div><time>{{ formatDate(reading.capturedAt) }}</time><span [class.weak]="isWeakPower(reading.rxPowerDbm)" [class.critical]="isCriticalPower(reading.rxPowerDbm)">{{ reading.rxPowerDbm != null ? reading.rxPowerDbm + ' dBm' : '--' }}</span></div>
-            } @empty { <p>La primera medición se guardará al consultar esta ONU.</p> }
-          </div>
-        </section>
-      }
-    </aside>
+
+  @if (operationPreview(); as operation) {
+    <button class="provision-backdrop" type="button" aria-label="Cerrar confirmación" (click)="operationSaving() || operationPreview.set(null)"></button>
+    <section class="provision-dialog cancellation-dialog" role="dialog" aria-modal="true" aria-labelledby="operation-title">
+      <header>
+        <div><span>Operación en la OLT</span><h2 id="operation-title">{{ operationTitle(operation.action) }}</h2><p class="mono">{{ selectedOnu()?.onuIndex }} · {{ selectedOnu()?.client?.nombre || selectedOnu()?.name || 'ONU sin nombre' }}</p></div>
+        <button class="icon-action" type="button" (click)="operationPreview.set(null)" [disabled]="operationSaving()" aria-label="Cerrar"><svg lucideX size="19"></svg></button>
+      </header>
+      <div class="cancellation-body">
+        <div class="operation-confirm" [class.rename-confirm]="operation.action === 'rename'" [class.retirement-confirm]="operation.action === 'retire-full'">
+          <p>{{ operation.impact }}</p>
+          @if (operation.reason) { <p class="operation-reason">{{ operation.reason }}</p> }
+          @if (operation.staleLocations?.length) { <div class="location-route"><span>Anterior</span><strong class="mono">{{ operation.staleLocations?.[0]?.onuIndex }}{{ (operation.staleLocations?.length || 0) > 1 ? ' +' + ((operation.staleLocations?.length || 1) - 1) : '' }}</strong><span>Activa</span><strong class="mono">{{ operation.activeLocation?.onuIndex }}</strong></div> }
+          @if (!operation.allowed) { <p class="operation-reason"><strong>No se puede ejecutar ahora.</strong></p> }
+        </div>
+      </div>
+      <footer>
+        <button class="secondary-action" type="button" (click)="operationPreview.set(null)" [disabled]="operationSaving()">Cancelar</button>
+        <button class="primary-action" [class.danger-action]="operation.action !== 'rename'" type="button" [disabled]="!operation.allowed || operationSaving()" (click)="executeProtectedOperation()">{{ operationSaving() ? 'Aplicando...' : operationConfirmLabel(operation.action) }}</button>
+      </footer>
+    </section>
   }
 </main>

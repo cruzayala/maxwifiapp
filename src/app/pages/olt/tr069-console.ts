@@ -62,9 +62,9 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
     { id: 'overview', label: 'Resumen' }, { id: 'fiber', label: 'Fibra' },
     { id: 'wifi', label: 'WiFi' }, { id: 'lan', label: 'LAN' },
     { id: 'wan', label: 'WAN' }, { id: 'clients', label: 'Clientes' },
-    { id: 'diagnostics', label: 'Diagnosticos' }, { id: 'security', label: 'Seguridad' },
+    { id: 'diagnostics', label: 'Diagnósticos' }, { id: 'security', label: 'Seguridad' },
     { id: 'system', label: 'Sistema' }, { id: 'history', label: 'Historial' },
-    { id: 'parameters', label: 'Parametros' },
+    { id: 'parameters', label: 'Parámetros' },
   ];
 
   wifi = { ssid: '', password: '', enabled: true, broadcast: true, channel: 0, transmitPower: 100, standard: '11bgn', maxClients: 32, wmm: true, wps: false };
@@ -101,8 +101,12 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
     });
   }
 
-  setEnabled(enabled: boolean) {
+  setEnabled(enabled: boolean, event?: Event) {
     if (!this.onu.serial || this.saving()) return;
+    if (!enabled && !window.confirm('¿Desactivar el control remoto de esta ONU? No se podrán cambiar WiFi ni LAN desde aquí hasta volver a activarlo.')) {
+      if (event?.target) (event.target as HTMLInputElement).checked = true;
+      return;
+    }
     this.saving.set(true);
     this.api.setTr069Enabled(this.onu.serial, enabled).subscribe({
       next: (device) => {
@@ -136,12 +140,17 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
   }
 
   saveWifi() {
+    const warning = this.wifi.password
+      ? '¿Aplicar los cambios de WiFi? Los equipos del cliente se desconectarán y deberán entrar con la nueva clave.'
+      : '¿Aplicar los cambios de WiFi? Los equipos del cliente pueden desconectarse unos segundos.';
+    if (!window.confirm(warning)) return;
     const payload: Record<string, unknown> = { ...this.wifi };
     if (!this.wifi.password) delete payload['password'];
     this.queue('set_wifi', payload);
   }
 
   saveLanPort(port: Record<string, unknown>) {
+    if (!window.confirm(`¿Aplicar cambios al puerto LAN ${port['port']}? El equipo conectado puede perder conexión unos segundos.`)) return;
     this.queue('set_lan_port', {
       port: port['port'], enabled: port['enabled'], speed: port['speed'], duplex: port['duplex'],
       flowControl: port['flowControl'], l3Enabled: port['l3Enabled'],
@@ -199,8 +208,14 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
     });
   }
 
+  applyDhcp() {
+    if (!window.confirm('¿Aplicar la configuración LAN y DHCP? Los equipos del cliente pueden perder conexión hasta renovar su IP.')) return;
+    this.queue('set_dhcp', this.dhcp);
+  }
+
   requestReboot() {
     if (!this.onu.serial) return;
+    if (!window.confirm(`¿Reiniciar la ONU ${this.onu.onuIndex || this.onu.serial}? El cliente se quedará sin Internet de 1 a 3 minutos.`)) return;
     this.queue('reboot', { confirmation: `REINICIAR ${this.onu.serial}` });
   }
 
@@ -232,6 +247,40 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
 
   actionLabel(task: Pick<Tr069Task, 'action'>) {
     return this.capability(task.action)?.label || task.action.replaceAll('_', ' ');
+  }
+
+  taskStatusLabel(status: string) {
+    return ({ pending: 'En cola', processing: 'Ejecutando', success: 'Completada', failed: 'Con error', cancelled: 'Cancelada' } as Record<string, string>)[status] || status;
+  }
+
+  capabilityLabel(status?: string | null) {
+    return ({ verified: 'Verificado', detected: 'Detectado', failed: 'Con fallo', blocked: 'Bloqueado' } as Record<string, string>)[String(status || '')] || 'Sin datos';
+  }
+
+  linkLabel(status?: string | null) {
+    const key = String(status || '').toLowerCase();
+    if (key === 'up') return 'activo';
+    if (key === 'down' || key === 'nolink') return 'caído';
+    return status ? status : 'desconocido';
+  }
+
+  diagnosticStateLabel(state?: unknown) {
+    const key = String(state || '').toLowerCase();
+    if (!key || key === 'none') return 'Sin ejecutar';
+    if (key === 'complete' || key === 'completed') return 'Completado';
+    if (key === 'requested') return 'En curso';
+    if (key.startsWith('error')) return 'Con error';
+    return String(state);
+  }
+
+  formatUptime(seconds?: number | null) {
+    const total = Math.max(0, Math.floor(Number(seconds || 0)));
+    const days = Math.floor(total / 86400);
+    const hours = Math.floor((total % 86400) / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    if (days) return `${days} d ${hours} h`;
+    if (hours) return `${hours} h ${minutes} min`;
+    return `${minutes} min`;
   }
 
   formatDate(value?: string | null) {

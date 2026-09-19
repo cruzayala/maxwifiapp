@@ -6,6 +6,7 @@ import {
   LucideActivity,
   LucideArrowDownToLine,
   LucideArrowUpFromLine,
+  LucideBan,
   LucideCable,
   LucideChevronLeft,
   LucideChevronRight,
@@ -57,6 +58,7 @@ import {
   MtUnknownResponse,
 } from '../../services/mikrotik.service';
 import { ToastService } from '../../services/toast.service';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 
 type MikrotikTab = 'overview' | 'reconciliation' | 'unknown' | 'interfaces' | 'firewall' | 'ipam' | 'netwatch' | 'backups' | 'security';
 type UnknownFilter = 'all' | 'high' | 'unmanaged' | 'infrastructure';
@@ -80,9 +82,11 @@ interface WanTraffic {
     NavbarComponent,
     FormsModule,
     RouterLink,
+    PlanLabelPipe,
     LucideActivity,
     LucideArrowDownToLine,
     LucideArrowUpFromLine,
+    LucideBan,
     LucideCable,
     LucideChevronLeft,
     LucideChevronRight,
@@ -324,7 +328,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
       system: this.mt.getSystem().pipe(catchError(() => of(this.system()))),
       wan: this.mt.getWanTraffic().pipe(catchError(() => of(this.wan()))),
       live: this.mt.getLiveClients().pipe(catchError((error) => {
-        this.errorMessage.set(error.error?.error || 'No se pudo leer la operacion del MikroTik');
+        this.errorMessage.set(error.error?.error || 'No se pudo leer la operación del MikroTik');
         return of(this.live());
       })),
     }).pipe(finalize(() => {
@@ -355,7 +359,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     if (showLoading) this.securityLoading.set(true);
     this.mt.getSecurityAudit().pipe(
       catchError((error) => {
-        if (showLoading) this.toast.error(error.error?.error || 'No se pudo completar la auditoria');
+        if (showLoading) this.toast.error(error.error?.error || 'No se pudo completar la auditoría');
         return of(null);
       }),
       finalize(() => this.securityLoading.set(false)),
@@ -391,7 +395,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   }
 
   deleteBackup(item: MtBackup) {
-    if (!window.confirm(`Eliminar ${item.name} del MikroTik?`)) return;
+    if (!window.confirm(`¿Eliminar el respaldo ${item.name} del MikroTik? Esta acción no se puede deshacer.`)) return;
     this.controlSaving.set(true);
     this.mt.deleteBackup(item.id).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
       next: () => { this.toast.success('Respaldo eliminado'); this.loadBackups(); },
@@ -411,7 +415,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
 
   toggleFirewallRule(rule: MtFirewallRule) {
     const action = rule.disabled ? 'habilitar' : 'deshabilitar';
-    if (!window.confirm(`Se creara un respaldo automatico antes de ${action} esta regla. Continuar?`)) return;
+    if (!window.confirm(`¿${action === 'habilitar' ? 'Habilitar' : 'Deshabilitar'} esta regla del firewall? Puede afectar el tráfico de los clientes. Antes se creará un respaldo automático.`)) return;
     this.controlSaving.set(true);
     this.mt.toggleFirewallRule(rule.table, rule.id, !rule.disabled)
       .pipe(finalize(() => this.controlSaving.set(false))).subscribe({
@@ -421,7 +425,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   }
 
   deleteFirewallRule(rule: MtFirewallRule) {
-    if (!window.confirm('Eliminar permanentemente esta regla? Se creara un respaldo automatico.')) return;
+    if (!window.confirm('¿Eliminar permanentemente esta regla del firewall? Puede afectar el tráfico de los clientes. Antes se creará un respaldo automático.')) return;
     this.controlSaving.set(true);
     this.mt.deleteFirewallRule(rule.table, rule.id).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
       next: () => { this.toast.success('Regla eliminada'); this.loadFirewall(); },
@@ -448,8 +452,12 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     this.ipamPage.set(Math.min(this.ipamPageCount(), Math.max(1, this.ipamPage() + delta)));
   }
   async copyAvailableIp(ip: string) {
-    await navigator.clipboard.writeText(ip);
-    this.toast.success(`IP ${ip} copiada`);
+    try {
+      await navigator.clipboard.writeText(ip);
+      this.toast.success(`IP ${ip} copiada`);
+    } catch {
+      this.toast.error(`No se pudo copiar. Anote la IP: ${ip}`);
+    }
   }
 
   ipamClassificationLabel(row: MtIpamResponse['rows'][number]) {
@@ -459,18 +467,18 @@ export class MikrotikComponent implements OnInit, OnDestroy {
       client: 'Cliente WispHub',
       unknown_lease: 'DHCP sin cliente',
       arp_only: 'ARP sin cliente',
-      queue_only: 'Queue sin cliente',
+      queue_only: 'Cola sin cliente',
       pool_reserved: 'Reserva de pool',
       router: 'Infraestructura',
     }[row.classification] || row.classification;
   }
 
   makeLeaseStatic(row: MtIpamResponse['rows'][number]) {
-    if (!row.leaseId || !window.confirm(`Fijar ${row.ip} para ${row.macAddress || 'esta MAC'}? Se creara un respaldo automatico.`)) return;
+    if (!row.leaseId || !window.confirm(`¿Fijar la IP ${row.ip} para ${row.macAddress || 'esta MAC'}? Antes se creará un respaldo automático.`)) return;
     this.controlSaving.set(true);
     this.mt.makeLeaseStatic(row.leaseId).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
-      next: () => { this.toast.success('Concesion convertida a estatica'); this.loadIpam(); },
-      error: (error) => this.toast.error(error.error?.error || 'No se pudo fijar la concesion'),
+      next: () => { this.toast.success('Concesión DHCP convertida a fija'); this.loadIpam(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo fijar la concesión'),
     });
   }
 
@@ -516,7 +524,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   }
 
   deleteSpeedTemplate(item: MtSpeedTemplate) {
-    if (!window.confirm(`Eliminar la plantilla ${item.name}?`)) return;
+    if (!window.confirm(`¿Eliminar la plantilla ${item.name}?`)) return;
     this.mt.deleteSpeedTemplate(item.id).subscribe({
       next: () => { this.toast.success('Plantilla eliminada'); this.loadSpeedTemplates(); },
       error: (error) => this.toast.error(error.error?.error || 'No se pudo eliminar la plantilla'),
@@ -527,7 +535,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     const queueIds = [...this.selectedQueueIds()];
     const template = this.speedTemplates().find((item) => item.id === this.selectedTemplateId);
     if (!template || !queueIds.length) return this.toast.error('Selecciona una plantilla y al menos una cola');
-    if (!window.confirm(`Aplicar ${template.name} a ${queueIds.length} colas? Se creara un respaldo automatico.`)) return;
+    if (!window.confirm(`¿Aplicar la plantilla ${template.name} a ${queueIds.length} colas? Cambiará la velocidad de esos clientes. Antes se creará un respaldo automático.`)) return;
     this.controlSaving.set(true);
     this.mt.applySpeedTemplate(template.id, queueIds).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
       next: () => {
@@ -543,7 +551,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     this.controlLoading.set(true);
     this.mt.getNetwatch().pipe(finalize(() => this.controlLoading.set(false))).subscribe({
       next: (data) => this.netwatch.set(data),
-      error: (error) => this.toast.error(error.error?.error || 'No se pudo leer Netwatch'),
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo leer el monitoreo (Netwatch)'),
     });
   }
 
@@ -557,7 +565,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
       port, comment: this.netwatchComment.trim() || undefined,
     }).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
       next: () => {
-        this.toast.success('Sonda Netwatch creada');
+        this.toast.success('Sonda de monitoreo creada');
         this.netwatchHost = '';
         this.netwatchComment = '';
         this.loadNetwatch();
@@ -567,7 +575,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   }
 
   toggleNetwatch(item: MtNetwatch) {
-    if (!window.confirm(`${item.disabled ? 'Habilitar' : 'Deshabilitar'} la sonda ${item.host}?`)) return;
+    if (!window.confirm(`¿${item.disabled ? 'Habilitar' : 'Deshabilitar'} la sonda ${item.host}?`)) return;
     this.controlSaving.set(true);
     this.mt.updateNetwatch(item.id, { disabled: !item.disabled }).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
       next: () => { this.toast.success('Sonda actualizada'); this.loadNetwatch(); },
@@ -576,7 +584,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   }
 
   deleteNetwatch(item: MtNetwatch) {
-    if (!window.confirm(`Eliminar la sonda ${item.host}? Se creara un respaldo automatico.`)) return;
+    if (!window.confirm(`¿Eliminar la sonda ${item.host}? Antes se creará un respaldo automático.`)) return;
     this.controlSaving.set(true);
     this.mt.deleteNetwatch(item.id).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
       next: () => { this.toast.success('Sonda eliminada'); this.loadNetwatch(); },
@@ -671,7 +679,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     this.pingResult.set([]);
     this.mt.ping(this.pingTarget.trim(), 4).pipe(finalize(() => this.pinging.set(false))).subscribe({
       next: (result) => this.pingResult.set(result),
-      error: (error) => this.toast.error(error.error?.error || 'El ping fallo'),
+      error: (error) => this.toast.error(error.error?.error || 'El ping falló'),
     });
   }
 
@@ -688,7 +696,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   temperature(): string {
     const item = this.system()?.health?.find((entry: any) => entry.name === 'cpu-temperature')
       || this.system()?.health?.find((entry: any) => entry.name === 'temperature');
-    return item ? `${item.value} ${item.type || 'C'}` : '-';
+    return item ? `${item.value} °${item.type || 'C'}` : '-';
   }
 
   formatBps(value: number): string {
@@ -707,12 +715,12 @@ export class MikrotikComponent implements OnInit, OnDestroy {
 
   formatLimit(value: string | null | undefined): string {
     const [upload, download] = this.limitValues(value);
-    if (!upload && !download) return 'Sin limite';
-    return `${this.compactMbps(upload)} / ${this.compactMbps(download)}`;
+    if (!upload && !download) return 'Sin límite';
+    return `${this.compactMbps(upload)} / ${this.compactMbps(download)} Mbps`;
   }
 
   compactMbps(value: number): string {
-    return `${Number.isInteger(value) ? value : value.toFixed(1)}M`;
+    return `${Number.isInteger(value) ? value : value.toFixed(1)}`;
   }
 
   limitValues(value: string | null | undefined): [number, number] {
@@ -738,7 +746,26 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   }
 
   severityLabel(value: string): string {
-    return ({ critical: 'Critico', high: 'Alto', medium: 'Medio', low: 'Bajo' } as Record<string, string>)[value] || value;
+    return ({ critical: 'Crítico', high: 'Alto', medium: 'Medio', low: 'Bajo' } as Record<string, string>)[value] || value;
+  }
+
+  clientStateLabel(row: MtLiveClient): string {
+    return row.isDisabled ? 'Deshabilitado' : row.isOnline ? 'En línea' : 'Sin conexión';
+  }
+
+  netwatchStatusLabel(item: MtNetwatch): string {
+    if (item.disabled) return 'Deshabilitada';
+    return ({ up: 'Responde', down: 'Sin respuesta', unknown: 'Sin datos' } as Record<string, string>)[String(item.status || '').toLowerCase()] || item.status || 'Sin datos';
+  }
+
+  netwatchTypeLabel(type: string): string {
+    return ({ icmp: 'Ping (ICMP)', simple: 'Ping simple', 'tcp-conn': 'Conexión TCP', 'http-get': 'Web HTTP', 'https-get': 'Web HTTPS', dns: 'DNS' } as Record<string, string>)[type] || type;
+  }
+
+  ipSourceLabel(sources: string[]): string {
+    if (!sources.length) return 'Sin registros';
+    const labels: Record<string, string> = { queue: 'Cola', queues: 'Cola', dhcp: 'DHCP', lease: 'DHCP', arp: 'ARP', wisphub: 'WispHub', client: 'WispHub', pool: 'Pool', address: 'Router', router: 'Router' };
+    return sources.map((source) => labels[String(source).toLowerCase()] || source).join(' + ');
   }
 
   pingLine(row: any): string {
