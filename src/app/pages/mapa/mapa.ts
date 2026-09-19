@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
+import { LucideCrosshair, LucideHouse, LucideRefreshCw, LucideRotateCw, LucideSearch } from '@lucide/angular';
+import { formatPlanName } from '../../pipes/plan-label.pipe';
 import { ToastService } from '../../services/toast.service';
 import { LocalDbService } from '../../services/local-db.service';
 import { WispHubClient } from '../../models/client.model';
@@ -57,39 +59,42 @@ interface RenderMapClient extends MapClient {
 @Component({
   selector: 'app-mapa',
   standalone: true,
-  imports: [CommonModule, FormsModule, NavbarComponent],
+  imports: [CommonModule, FormsModule, NavbarComponent, LucideCrosshair, LucideHouse, LucideRefreshCw, LucideRotateCw, LucideSearch],
   template: `
-    <app-navbar pageTitle="Mapa en Vivo" />
+    <app-navbar pageTitle="Mapa en vivo" />
 
     <div class="page">
       <div class="toolbar">
         <div class="kpis">
-          <span class="kpi">
-            <span class="pulse-dot"></span>
-            EN VIVO · {{ lastUpdate() || '--:--:--' }}
+          <span class="kpi" title="Se actualiza cada 30 segundos">
+            <span class="pulse-dot" aria-hidden="true"></span>
+            En vivo · {{ lastUpdate() ? 'actualizado ' + lastUpdate() : 'cargando…' }}
           </span>
-          <span class="kpi"><strong>{{ filtered().length }}</strong> en mapa</span>
+          <span class="kpi"><strong>{{ filtered().length }}</strong> en el mapa</span>
           <span class="kpi kpi-green"><strong>{{ countByEstado('Activo') }}</strong> activos</span>
           <span class="kpi kpi-red"><strong>{{ countByEstado('Suspendido') }}</strong> suspendidos</span>
-          <span class="kpi kpi-blue"><strong>{{ countBySource('tecnico') }}</strong> GPS técnico</span>
+          <span class="kpi kpi-blue" title="Ubicación capturada en sitio por un técnico"><strong>{{ countBySource('tecnico') }}</strong> con GPS del técnico</span>
         </div>
         <div class="filters">
-          <input type="text" placeholder="Buscar nombre/IP..." [(ngModel)]="search" (input)="render()" class="input" />
-          <select [(ngModel)]="estadoFilter" (change)="render()" class="input">
+          <label class="input search-input">
+            <svg lucideSearch size="15" aria-hidden="true"></svg>
+            <input type="search" placeholder="Buscar nombre, IP o teléfono" [(ngModel)]="search" (input)="render()" aria-label="Buscar cliente en el mapa" />
+          </label>
+          <select [(ngModel)]="estadoFilter" (change)="render()" class="input" aria-label="Filtrar por estado">
             <option value="">Todos los estados</option>
             <option value="Activo">Activo</option>
             <option value="Suspendido">Suspendido</option>
             <option value="Cortado">Cortado</option>
             <option value="Retirado">Retirado</option>
           </select>
-          <select [(ngModel)]="viewMode" (change)="changeView()" class="input">
+          <select [(ngModel)]="viewMode" (change)="changeView()" class="input" aria-label="Tipo de vista">
             <option value="3d">Vista 3D</option>
-            <option value="2d">Vista 2D plana</option>
+            <option value="2d">Vista plana (2D)</option>
           </select>
-          <button class="btn-icon" (click)="reload()" title="Recargar">⟳</button>
-          <button class="btn-icon" (click)="goHome()" title="Volver a zona norte RD">🏠 Norte RD</button>
-          <button class="btn-icon" (click)="fitAll()" title="Ajustar a todos">🎯</button>
-          <button class="btn-icon" (click)="rotateView()" title="Rotar vista">↻ Rotar</button>
+          <button type="button" class="btn-icon" (click)="reload()" [disabled]="loading()" title="Recargar clientes" aria-label="Recargar clientes"><svg lucideRefreshCw size="16" [class.spinning]="loading()" aria-hidden="true"></svg></button>
+          <button type="button" class="btn-icon" (click)="fitAll()" title="Encuadrar todos los clientes visibles" aria-label="Ver todos los clientes"><svg lucideCrosshair size="16" aria-hidden="true"></svg><span>Ver todos</span></button>
+          <button type="button" class="btn-icon" (click)="goHome()" title="Volver a la zona norte (Cibao)" aria-label="Volver a la zona norte"><svg lucideHouse size="16" aria-hidden="true"></svg><span>Zona norte</span></button>
+          <button type="button" class="btn-icon" (click)="rotateView()" title="Girar el mapa 45°" aria-label="Girar el mapa"><svg lucideRotateCw size="16" aria-hidden="true"></svg><span>Girar</span></button>
         </div>
       </div>
 
@@ -99,72 +104,104 @@ interface RenderMapClient extends MapClient {
         @if (mapBootError()) {
           <div class="overlay overlay-error">
             <h3>No se pudo cargar el mapa</h3>
-            <p>{{ mapBootError() }}</p>
-            <button class="btn-icon" (click)="retryMap()">Reintentar</button>
+            <p>Revise la conexión a Internet e intente de nuevo.</p>
+            <small class="overlay-detail">{{ mapBootError() }}</small>
+            <button type="button" class="btn-icon" (click)="retryMap()">Reintentar</button>
           </div>
         } @else if (mapBooting()) {
           <div class="overlay overlay-loader">
             <div class="loader"></div>
-            <p>Cargando mapa 3D...</p>
+            <p>Cargando mapa…</p>
           </div>
         }
 
         @if (!mapBooting() && !mapBootError()) {
           @if (loadError()) {
-            <div class="overlay-corner overlay-warn">
-              <strong>Error cargando clientes:</strong> {{ loadError() }}
+            <div class="overlay-corner overlay-warn" role="alert">
+              <strong>No se pudieron cargar los clientes.</strong> Revise la conexión y pulse recargar.
+              <br><small>{{ loadError() }}</small>
             </div>
           } @else if (allClients().length === 0 && !loading()) {
             <div class="overlay-corner overlay-info">
-              <strong>Sin clientes con GPS aun.</strong>
+              <strong>Todavía no hay clientes con ubicación.</strong>
               @if (stats(); as s) {
-                <br>De {{ s.totalClients }} clientes en DB, 0 tienen GPS capturado.
+                <br>De {{ s.totalClients }} clientes registrados, ninguno tiene GPS guardado.
               }
-              <br>Captura desde la ficha de cada cliente con <em>📍 Capturar mi ubicación actual</em>.
+              <br>Para agregarlos, abra la ficha del cliente en su casa y use <em>Capturar mi ubicación actual</em>.
             </div>
           } @else if (stats(); as s) {
             <div class="overlay-corner overlay-debug">
-              <strong>{{ s.totalClients }}</strong> clientes en DB ·
-              <span style="color:#16a34a;font-weight:700">{{ s.withGpsTecnico }} con GPS técnico</span> ·
-              {{ s.withCoordsWispHub }} con coords WispHub ·
-              <strong>{{ s.shownInMap }} en mapa</strong>
+              <strong>{{ s.shownInMap }}</strong> de {{ s.totalClients }} clientes en el mapa ·
+              <span class="txt-green">{{ s.withGpsTecnico }} con GPS del técnico</span> ·
+              {{ s.withCoordsWispHub || 0 }} con ubicación de WispHub
               @if (s.skippedBadCoords > 0) {
-                · <span style="color:#ef4444">{{ s.skippedBadCoords }} con coords invalidas</span>
+                · <span class="txt-red">{{ s.skippedBadCoords }} con ubicación inválida</span>
               }
             </div>
           }
+
+          <div class="map-legend" aria-label="Leyenda de colores">
+            <span><i style="background:#13875a"></i>Activo</span>
+            <span><i style="background:#b42318"></i>Suspendido o con pago pendiente</span>
+            <span><i style="background:#8792a0"></i>Cortado</span>
+            <span><i style="background:#1267dd"></i>Otro estado</span>
+          </div>
         }
       </div>
     </div>
   `,
   styles: [`
-    .page { padding: 16px 24px 32px; display: flex; flex-direction: column; height: calc(100vh - 80px); }
+    :host { display: block; background: #f8fafc; }
+    .page { padding: 16px 24px 24px; display: flex; flex-direction: column; height: calc(100vh - 80px); box-sizing: border-box; color: #334250; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
     .kpis { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .kpi { background: white; border: 1px solid #e2e8f0; border-radius: 999px; padding: 6px 14px; font-size: 12px; color: #475569; display: inline-flex; align-items: center; gap: 6px; }
-    .kpi strong { color: #0f172a; }
-    .kpi-green { border-color: #86efac; background: #dcfce7; color: #166534; }
-    .kpi-red { border-color: #fca5a5; background: #fee2e2; color: #991b1b; }
-    .kpi-blue { border-color: #bfdbfe; background: #eff6ff; color: #1e40af; }
-    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; animation: pulse 1.5s infinite; }
-    @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); } 50% { opacity: 0.6; box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+    .kpi { background: white; border: 1px solid #dfe5ea; border-radius: 999px; padding: 6px 12px; font-size: 12px; color: #334250; display: inline-flex; align-items: center; gap: 6px; }
+    .kpi strong { color: #172535; }
+    .kpi-green { border-color: #c7ebd9; background: #e9f8f1; color: #13875a; }
+    .kpi-red { border-color: #f6cfcb; background: #fff0ef; color: #b42318; }
+    .kpi-blue { border-color: #cfe0f8; background: #edf4ff; color: #1267dd; }
+    .kpi-green strong, .kpi-red strong, .kpi-blue strong { color: inherit; }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #13875a; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(19,135,90,0.45); } 50% { opacity: 0.6; box-shadow: 0 0 0 7px rgba(19,135,90,0); } }
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-    .input { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; background: white; outline: none; }
-    .input:focus { border-color: #6366f1; }
-    .btn-icon { background: white; border: 1px solid #e2e8f0; color: #475569; border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
-    .btn-icon:hover { border-color: #6366f1; color: #6366f1; }
-    .map-wrapper { flex: 1; min-height: 500px; position: relative; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; background: #0a0e27; }
+    .input { height: 36px; box-sizing: border-box; padding: 0 12px; border: 1px solid #ccd6de; border-radius: 6px; font-size: 13px; color: #334250; background: white; outline: none; }
+    .input:focus, .search-input:focus-within { border-color: #1267dd; box-shadow: 0 0 0 2px #edf4ff; }
+    .search-input { display: inline-flex; align-items: center; gap: 6px; color: #667582; }
+    .search-input input { width: 190px; border: 0; outline: 0; font-size: 13px; color: #172535; background: transparent; }
+    .btn-icon { display: inline-flex; align-items: center; gap: 6px; height: 36px; background: white; border: 1px solid #ccd6de; color: #334250; border-radius: 6px; padding: 0 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-icon:hover:not(:disabled) { border-color: #b9cdea; background: #f2f7ff; color: #1267dd; }
+    .btn-icon:disabled { opacity: .6; cursor: wait; }
+    .btn-icon:focus-visible, .input:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
+    .spinning { animation: spin .8s linear infinite; }
+    .map-wrapper { flex: 1; min-height: 500px; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid #dfe5ea; background: #0a0e27; }
     .map-container { position: absolute; inset: 0; width: 100%; height: 100%; }
     .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.85); color: white; padding: 40px 20px; text-align: center; z-index: 5; }
     .overlay h3 { margin: 0 0 8px; }
     .overlay p { color: #cbd5e1; margin: 0 0 14px; }
-    .overlay-error { background: rgba(127, 29, 29, 0.92); }
+    .overlay-error { background: rgba(122, 27, 20, 0.92); }
+    .overlay-detail { display: block; margin: -6px 0 14px; color: #f5c6c1; font-size: 11px; max-width: 460px; overflow-wrap: anywhere; }
     .loader { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,.15); border-top-color: white; border-radius: 50%; margin-bottom: 14px; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .overlay-corner { position: absolute; top: 12px; left: 12px; max-width: 360px; padding: 10px 14px; border-radius: 10px; font-size: 12px; line-height: 1.5; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
-    .overlay-warn { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-    .overlay-info { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-    .overlay-debug { background: #ffffff; color: #0f172a; border: 1px solid #cbd5e1; max-width: 520px !important; }
+    .overlay-corner { position: absolute; top: 12px; left: 12px; max-width: min(360px, calc(100% - 70px)); padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+    .overlay-warn { background: #fff0ef; color: #b42318; border: 1px solid #f6cfcb; }
+    .overlay-info { background: #fff6e8; color: #7a4a0c; border: 1px solid #efc98f; }
+    .overlay-debug { background: #ffffff; color: #172535; border: 1px solid #dfe5ea; max-width: min(520px, calc(100% - 70px)) !important; }
+    .txt-green { color: #13875a; font-weight: 700; }
+    .txt-red { color: #b42318; font-weight: 700; }
+    .map-legend { position: absolute; left: 12px; bottom: 34px; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px 12px; max-width: calc(100% - 24px); padding: 7px 10px; border: 1px solid #dfe5ea; border-radius: 8px; background: rgba(255,255,255,.95); box-shadow: 0 2px 8px rgba(15,23,42,.15); font-size: 11px; color: #334250; }
+    .map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+    .map-legend i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+    @media (max-width: 640px) {
+      .page { padding: 10px 12px 16px; height: calc(100vh - 64px); }
+      .filters { width: 100%; }
+      .search-input { flex: 1 1 100%; }
+      .search-input input { width: 100%; }
+      .filters select { flex: 1 1 40%; }
+      .btn-icon span { display: none; }
+      .map-wrapper { min-height: 420px; }
+      .map-legend { bottom: 30px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .pulse-dot, .spinning { animation: none; } }
     .overlay-corner em { font-style: normal; font-weight: 700; }
     :host ::ng-deep .maplibregl-map { position: relative; overflow: hidden; width: 100%; height: 100%; }
     :host ::ng-deep .maplibregl-canvas-container { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -182,15 +219,15 @@ interface RenderMapClient extends MapClient {
     :host ::ng-deep .marker-pin.active { background: #22c55e; }
     :host ::ng-deep .marker-pin.suspended { background: #ef4444; animation: pinPulse 2s infinite; }
     :host ::ng-deep .marker-pin.cut { background: #94a3b8; }
-    :host ::ng-deep .marker-pin.other { background: #6366f1; }
+    :host ::ng-deep .marker-pin.other { background: #1267dd; }
     @keyframes pinPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.6), 0 3px 8px rgba(0,0,0,.4); } 50% { box-shadow: 0 0 0 12px rgba(239,68,68,0), 0 3px 8px rgba(0,0,0,.4); } }
     :host ::ng-deep .maplibregl-popup { max-width: 280px !important; }
     :host ::ng-deep .maplibregl-popup-content { border-radius: 12px !important; padding: 14px !important; box-shadow: 0 8px 30px rgba(0,0,0,.25) !important; }
     :host ::ng-deep .popup-name { font-weight: 700; color: #0f172a; font-size: 14px; margin-bottom: 6px; }
     :host ::ng-deep .popup-meta { font-size: 12px; color: #64748b; line-height: 1.6; }
     :host ::ng-deep .popup-meta strong { color: #0f172a; }
-    :host ::ng-deep .popup-btn { display: inline-block; background: #6366f1; color: white !important; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; margin-top: 10px; }
-    :host ::ng-deep .popup-btn:hover { background: #4f46e5; }
+    :host ::ng-deep .popup-btn { display: inline-block; background: #1267dd; color: white !important; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; margin-top: 10px; }
+    :host ::ng-deep .popup-btn:hover { background: #0d58c0; }
     :host ::ng-deep .popup-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-left: 4px; }
     :host ::ng-deep .popup-badge.green { background: #dcfce7; color: #166534; }
     :host ::ng-deep .popup-badge.red { background: #fee2e2; color: #991b1b; }
@@ -275,7 +312,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.initMap(STYLE_URL, generation, false);
     } catch (e: any) {
       console.error('[mapa] boot error:', e);
-      this.mapBootError.set('Error inicializando mapa: ' + (e?.message || e));
+      this.mapBootError.set('Detalle técnico: ' + (e?.message || e));
       this.mapBooting.set(false);
     }
   }
@@ -517,24 +554,37 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     console.log('[mapa] rendering', renderClients.length, 'markers');
     for (const c of renderClients) {
       const color = this.colorFor(c);
+      const label = (text: string) => '<strong style="color:#172535">' + text + ':</strong> ';
       const popupHtml = `
-        <div style="font-weight:700;color:#0f172a;font-size:14px;margin-bottom:6px">
-          ${this.escape(c.nombre || '-')} ${this.badgeFor(c)}
+        <div style="font-weight:700;color:#172535;font-size:14px;margin-bottom:6px">
+          ${this.escape(c.nombre || '—')} ${this.badgeFor(c)}
         </div>
-        <div style="font-size:12px;color:#64748b;line-height:1.6">
-          ${c.plan ? '<strong style="color:#0f172a">Plan:</strong> ' + this.escape(c.plan) + '<br>' : ''}
-          ${c.estado ? '<strong style="color:#0f172a">Estado:</strong> ' + this.escape(c.estado) + '<br>' : ''}
-          ${c.estadoFacturas ? '<strong style="color:#0f172a">Facturas:</strong> ' + this.escape(c.estadoFacturas) + '<br>' : ''}
-          ${c.ip ? '<strong style="color:#0f172a">IP:</strong> ' + this.escape(c.ip) + '<br>' : ''}
-          ${c.telefono ? '<strong style="color:#0f172a">Tel:</strong> ' + this.escape(c.telefono) + '<br>' : ''}
-          ${c.zona ? '<strong style="color:#0f172a">Zona:</strong> ' + this.escape(c.zona) + '<br>' : ''}
+        <div style="font-size:12px;color:#667582;line-height:1.6">
+          ${c.plan ? label('Plan') + this.escape(formatPlanName(c.plan)) + '<br>' : ''}
+          ${c.estado ? label('Estado') + this.escape(c.estado) + '<br>' : ''}
+          ${c.estadoFacturas ? label('Facturas') + this.escape(c.estadoFacturas) + '<br>' : ''}
+          ${c.ip ? label('IP') + '<span style="font-family:ui-monospace,\'Cascadia Mono\',Consolas,monospace">' + this.escape(c.ip) + '</span><br>' : ''}
+          ${c.telefono ? label('Teléfono') + this.escape(c.telefono) + '<br>' : ''}
+          ${c.zona ? label('Zona') + this.escape(c.zona) + '<br>' : ''}
           ${c.direccion ? '<em>' + this.escape(c.direccion) + '</em><br>' : ''}
-          ${c.overlapCount > 1 ? '<strong style="color:#d97706">Nota:</strong> hay ' + c.overlapCount + ' clientes en este mismo punto; los pins se separaron visualmente.<br>' : ''}
-          <small style="color:#94a3b8">GPS: ${c.source === 'wisphub' ? 'WispHub' : 'tecnico'}${c.accuracy ? ' · ±' + Math.round(c.accuracy) + 'm' : ''}</small>
+          ${c.overlapCount > 1 ? '<strong style="color:#b36b12">Nota:</strong> hay ' + c.overlapCount + ' clientes en este mismo punto; los marcadores se separaron un poco para poder verlos.<br>' : ''}
+          <small style="color:#8792a0">Ubicación: ${c.source === 'wisphub' ? 'WispHub' : 'GPS del técnico'}${c.accuracy ? ' · precisión ±' + Math.round(c.accuracy) + ' m' : ''}</small>
         </div>
-        <a href="/clients/${c.id}" style="display:inline-block;background:#6366f1;color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-top:10px">Ver ficha del cliente</a>
       `;
-      const popup = new Popup({ offset: 25, closeButton: true }).setHTML(popupHtml);
+      const content = document.createElement('div');
+      content.innerHTML = popupHtml;
+      const link = document.createElement('a');
+      link.href = `/clients/${c.id}`;
+      link.textContent = 'Ver ficha del cliente';
+      link.setAttribute('style', 'display:inline-block;background:#1267dd;color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none;margin-top:10px');
+      // Navegación interna (sin recargar toda la aplicación)
+      link.addEventListener('click', (event) => {
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
+        event.preventDefault();
+        void this.router.navigate(['/clients', c.id]);
+      });
+      content.appendChild(link);
+      const popup = new Popup({ offset: 25, closeButton: true }).setDOMContent(content);
       const marker = new Marker({ element: this.createMarkerElement(color, c.nombre), anchor: 'bottom' })
         .setLngLat([c.renderLng, c.renderLat])
         .setPopup(popup)
@@ -616,15 +666,15 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
 
   // Color HEX para el pin del cliente
   private colorFor(c: MapClient): string {
-    if (c.estado === 'Suspendido' || c.estadoFacturas?.includes('endiente')) return '#ef4444'; // rojo
-    if (c.estado === 'Activo') return '#22c55e'; // verde
-    if (c.estado === 'Cortado') return '#94a3b8'; // gris
-    return '#6366f1'; // indigo (otros: Gratis, Retirado, etc.)
+    if (c.estado === 'Suspendido' || c.estadoFacturas?.includes('endiente')) return '#b42318'; // rojo
+    if (c.estado === 'Activo') return '#13875a'; // verde
+    if (c.estado === 'Cortado') return '#8792a0'; // gris
+    return '#1267dd'; // azul (otros: Gratis, Retirado, etc.)
   }
 
   fitAll() {
     if (!this.map || this.filtered().length === 0) {
-      this.toast.info('No hay clientes con GPS para encuadrar');
+      this.toast.info('No hay clientes con ubicación para mostrar');
       return;
     }
     const renderClients = this.withVisualOffsets(this.filtered());
@@ -645,9 +695,12 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     return 'other';
   }
   private badgeFor(c: MapClient): string {
-    if (c.estado === 'Activo' && !c.estadoFacturas?.includes('endiente')) return '<span class="popup-badge green">ACTIVO</span>';
-    if (c.estado === 'Suspendido' || c.estadoFacturas?.includes('endiente')) return '<span class="popup-badge red">SUSPENDIDO</span>';
-    return '<span class="popup-badge gray">' + this.escape(c.estado || '?') + '</span>';
+    const badge = (bg: string, fg: string, text: string) =>
+      `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-left:4px;background:${bg};color:${fg}">${text}</span>`;
+    if (c.estado === 'Activo' && !c.estadoFacturas?.includes('endiente')) return badge('#e9f8f1', '#13875a', 'Activo');
+    if (c.estado === 'Suspendido') return badge('#fff0ef', '#b42318', 'Suspendido');
+    if (c.estadoFacturas?.includes('endiente')) return badge('#fff0ef', '#b42318', 'Pago pendiente');
+    return badge('#eef1f4', '#52606d', this.escape(c.estado || 'Sin estado'));
   }
   private escape(s: any): string {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

@@ -5,15 +5,15 @@
     <div>
       <span class="eyebrow"><i></i> ISP Max</span>
       <h1>Resumen operativo</h1>
-      <p>{{ monthLabel() }} · actualización {{ formatTime(lastUpdated()) }}</p>
+      <p>{{ monthLabel() }} · actualizado {{ formatTime(lastUpdated()) }}</p>
     </div>
     <div class="toolbar-right">
       <div class="source-strip" aria-label="Estado de integraciones">
-        <span [class.online]="sourceOnline('wisphub')"><i></i><svg lucideDatabase size="15"></svg>WispHub</span>
-        <span [class.online]="sourceOnline('mikrotik')"><i></i><svg lucideRouter size="15"></svg>MikroTik</span>
-        <span [class.online]="sourceOnline('olt')"><i></i><svg lucideRadioTower size="15"></svg>OLT</span>
+        <span [class.online]="sourceOnline('wisphub')" [class.offline]="!loading() && !sourceOnline('wisphub')" [title]="sourceTitle('wisphub')" [attr.aria-label]="sourceTitle('wisphub')"><i></i><svg lucideDatabase size="15" aria-hidden="true"></svg>WispHub</span>
+        <span [class.online]="sourceOnline('mikrotik')" [class.offline]="!loading() && !sourceOnline('mikrotik')" [title]="sourceTitle('mikrotik')" [attr.aria-label]="sourceTitle('mikrotik')"><i></i><svg lucideRouter size="15" aria-hidden="true"></svg>MikroTik</span>
+        <span [class.online]="sourceOnline('olt')" [class.offline]="!loading() && !sourceOnline('olt')" [title]="sourceTitle('olt')" [attr.aria-label]="sourceTitle('olt')"><i></i><svg lucideRadioTower size="15" aria-hidden="true"></svg>OLT</span>
       </div>
-      <button class="refresh-button" type="button" (click)="load(false)" [disabled]="refreshing()" title="Actualizar dashboard" aria-label="Actualizar dashboard">
+      <button class="refresh-button" type="button" (click)="load(false)" [disabled]="refreshing()" title="Actualizar resumen" aria-label="Actualizar resumen">
         <svg lucideRefreshCw size="18" [class.spinning]="refreshing()"></svg>
       </button>
     </div>
@@ -22,13 +22,13 @@
   @if (sourceErrors().length) {
     <div class="partial-warning" role="status">
       <svg lucideTriangleAlert size="17"></svg>
-      <span>Datos parciales: {{ sourceErrors().join(', ') }}</span>
+      <span>No se pudo leer: <strong>{{ sourceErrors().join(', ') }}</strong>. El resto del resumen está al día; esas cifras pueden estar desactualizadas.</span>
       <button type="button" (click)="load(false)">Reintentar</button>
     </div>
   }
 
   @if (loading()) {
-    <section class="dashboard-loading" aria-label="Cargando dashboard">
+    <section class="dashboard-loading" aria-label="Cargando resumen" aria-busy="true">
       @for (row of [1,2,3,4,5,6,7,8]; track row) { <i></i> }
     </section>
   } @else {
@@ -40,17 +40,17 @@
       </a>
       <a routerLink="/auditoria-red" class="kpi-card wan">
         <span class="kpi-icon"><svg lucideGauge size="20"></svg></span>
-        <div><small>Uso de Internet</small><strong>{{ formatBits((wan()?.rxBps || 0) + (wan()?.txBps || 0)) }}</strong><p>{{ wanUtilization() | number:'1.1-1' }}% del enlace</p></div>
+        <div><small>Uso de Internet</small>@if (wan()) { <strong>{{ formatBits((wan()?.rxBps || 0) + (wan()?.txBps || 0)) }}</strong><p>{{ wanUtilization() | number:'1.1-1' }}% del enlace</p> } @else { <strong class="muted-value">Sin lectura</strong><p>MikroTik no respondió</p> }</div>
         <svg class="kpi-arrow" lucideArrowRight size="17"></svg>
       </a>
       <a routerLink="/olt" class="kpi-card olt">
         <span class="kpi-icon"><svg lucideRadioTower size="20"></svg></span>
-        <div><small>ONUs en línea</small><strong>{{ olt()?.totals?.onlineOnus || 0 }}</strong><p>{{ olt()?.totals?.offlineOnus || 0 }} fuera de línea</p></div>
+        <div><small>ONUs en línea</small>@if (olt()) { <strong>{{ olt()?.totals?.onlineOnus || 0 }}</strong><p>{{ olt()?.totals?.offlineOnus || 0 }} fuera de línea</p> } @else { <strong class="muted-value">Sin lectura</strong><p>OLT no respondió</p> }</div>
         <svg class="kpi-arrow" lucideArrowRight size="17"></svg>
       </a>
       <a routerLink="/invoices" class="kpi-card finance">
         <span class="kpi-icon"><svg lucideCircleDollarSign size="20"></svg></span>
-        <div><small>Cobrado este mes</small><strong>RD$ {{ finance().collected | number:'1.0-0' }}</strong><p>{{ finance().paidCount }} pagos</p></div>
+        <div><small>Cobrado este mes</small><strong>RD$ {{ finance().collected | number:'1.0-0' }}</strong><p>{{ finance().paidCount }} {{ finance().paidCount === 1 ? 'pago' : 'pagos' }}</p></div>
         <svg class="kpi-arrow" lucideArrowRight size="17"></svg>
       </a>
       <a routerLink="/incidents" class="kpi-card alerts" [class.critical]="(noc()?.critical || 0) > 0">
@@ -79,9 +79,9 @@
         </div>
         <div class="network-details">
           <div><small>Estabilidad 24 h</small><strong>{{ wanHistory()?.summary?.stabilityPercent || 0 | number:'1.1-1' }}%</strong></div>
-          <div><small>Ping promedio</small><strong>@if (wanHistory()?.summary?.avgPingMs != null) { {{ wanHistory()!.summary.avgPingMs | number:'1.0-0' }} ms } @else { -- }</strong></div>
+          <div><small>Ping promedio</small><strong>@if (wanHistory()?.summary?.avgPingMs != null) { {{ wanHistory()!.summary.avgPingMs | number:'1.0-0' }} ms } @else { <span class="muted-value">—</span> }</strong></div>
           <div><small>En línea</small><strong>{{ live()?.stats?.onlineClients || 0 }}</strong></div>
-          <div><small>Sin presencia</small><strong>{{ live()?.stats?.offlineClients || 0 }}</strong></div>
+          <div><small>Sin conexión</small><strong>{{ live()?.stats?.offlineClients || 0 }}</strong></div>
         </div>
         <footer><span>Última muestra {{ formatTime(audit()?.latestWan?.capturedAt) }}</span><a routerLink="/auditoria-red">Ver auditoría <svg lucideArrowRight size="15"></svg></a></footer>
       </article>
@@ -94,9 +94,9 @@
         <div class="attention-list">
           @for (item of attention(); track item.title) {
             <a [routerLink]="item.route" [class]="'attention-item ' + item.tone">
-              <span class="attention-dot">@if (item.tone === 'success') { <svg lucideCircleCheck size="17"></svg> } @else { <svg lucideAlertTriangle size="17"></svg> }</span>
+              <span class="attention-dot" aria-hidden="true">@if (item.tone === 'success') { <svg lucideCircleCheck size="17"></svg> } @else { <svg lucideAlertTriangle size="17"></svg> }</span>
               <div><strong>{{ item.title }}</strong><p>{{ item.detail }}</p></div>
-              <svg lucideArrowRight size="16"></svg>
+              <svg lucideArrowRight size="16" aria-hidden="true"></svg>
             </a>
           }
         </div>
@@ -105,10 +105,10 @@
 
     <section class="secondary-grid">
       <article class="panel billing-panel">
-        <header class="panel-header"><div><span class="section-kicker">Cobranza</span><h2>Rendimiento del mes</h2></div><span>{{ finance().issuedCount }} facturas</span></header>
+        <header class="panel-header"><div><span class="section-kicker">Cobranza</span><h2>Rendimiento del mes</h2></div><span>{{ finance().issuedCount }} {{ finance().issuedCount === 1 ? 'factura' : 'facturas' }}</span></header>
         <div class="billing-hero"><small>Cobrado este mes</small><strong>RD$ {{ finance().collected | number:'1.0-0' }}</strong><span>RD$ {{ finance().billed | number:'1.0-0' }} facturados en el mes</span></div>
         <div class="progress-track"><i [style.width.%]="finance().collectionRate"></i></div>
-        <div class="progress-label"><span>{{ finance().collectionRate | number:'1.1-1' }}% de las facturas emitidas</span><strong>RD$ {{ finance().pending | number:'1.0-0' }} pendiente</strong></div>
+        <div class="progress-label"><span>{{ finance().collectionRate | number:'1.1-1' }}% cobrado de lo facturado</span><strong>RD$ {{ finance().pending | number:'1.0-0' }} pendiente</strong></div>
         <div class="billing-stats">
           <div><small>Ingreso esperado</small><strong>RD$ {{ finance().expected | number:'1.0-0' }}</strong></div>
           <div><small>Clientes pendientes</small><strong>{{ pendingClients().length }}</strong></div>
@@ -119,17 +119,17 @@
       <article class="panel fiber-panel">
         <header class="panel-header"><div><span class="section-kicker">Fibra</span><h2>Salud de la OLT</h2></div><span [class.source-down]="!olt()?.connected">{{ olt()?.connected ? 'Conectada' : 'Sin conexión' }}</span></header>
         <div class="fiber-summary">
-          <div><strong>{{ olt()?.totals?.onlineOnus || 0 }}</strong><small>Online</small></div>
-          <div><strong>{{ olt()?.totals?.offlineOnus || 0 }}</strong><small>Offline</small></div>
-          <div><strong>{{ signalAlerts() }}</strong><small>Señal</small></div>
+          <div><strong>{{ olt()?.totals?.onlineOnus || 0 }}</strong><small>En línea</small></div>
+          <div><strong>{{ olt()?.totals?.offlineOnus || 0 }}</strong><small>Fuera de línea</small></div>
+          <div><strong>{{ signalAlerts() }}</strong><small>Señal débil</small></div>
           <div><strong>{{ olt()?.totals?.unconfiguredOnus || 0 }}</strong><small>Sin autorizar</small></div>
         </div>
         <div class="pon-list">
           @if (ponAttention().length === 0) {
-            <div class="quiet-state"><svg lucideCircleCheck size="19"></svg>Todos los PON están saludables</div>
+            @if (olt()) { <div class="quiet-state"><svg lucideCircleCheck size="19" aria-hidden="true"></svg>Todos los PON están saludables</div> } @else { <div class="quiet-state muted-value">Sin datos de la OLT por ahora</div> }
           } @else {
             @for (pon of ponAttention(); track pon.ponIndex) {
-              <a routerLink="/olt"><span><i [class.critical]="pon.critical > 0"></i><strong>PON {{ pon.pon }}</strong></span><small>{{ pon.online }}/{{ pon.total }} online</small><em>{{ pon.critical }} críticas · {{ pon.weak }} débiles</em></a>
+              <a routerLink="/olt"><span><i [class.critical]="pon.critical > 0" aria-hidden="true"></i><strong>PON {{ pon.pon }}</strong></span><small>{{ pon.online }}/{{ pon.total }} en línea</small><em>{{ pon.critical }} críticas · {{ pon.weak }} débiles</em></a>
             }
           }
         </div>
@@ -157,9 +157,9 @@
             @for (client of pendingClients().slice(0, 7); track client.id_servicio) {
               <a [routerLink]="['/clients', client.id_servicio]">
                 <span class="avatar">{{ client.nombre.slice(0, 2).toUpperCase() }}</span>
-                <div><strong>{{ client.nombre }}</strong><small>{{ client.plan_internet?.nombre | planLabel }} · Corte {{ client.fecha_corte || '--' }}</small></div>
+                <div><strong>{{ client.nombre }}</strong><small>{{ client.plan_internet?.nombre | planLabel }}@if (client.fecha_corte) { · Corte {{ client.fecha_corte }} }</small></div>
                 <em>RD$ {{ clientDebt(client) | number:'1.0-0' }}</em>
-                <svg lucideArrowRight size="15"></svg>
+                <svg lucideArrowRight size="15" aria-hidden="true"></svg>
               </a>
             }
           }

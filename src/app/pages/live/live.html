@@ -8,10 +8,10 @@
       <strong>{{ status().connected ? 'Conectado' : 'Sin conexión' }}</strong>
       <span class="status-dot"></span>
     </div>
-    <div class="system-status" [class.is-down]="!syncHealthy()">
+    <div class="system-status" [class.is-down]="!syncHealthy()" [title]="wisphubStateTitle()">
       <svg lucideDatabase size="16" aria-hidden="true"></svg>
       <span>WispHub</span>
-      <strong>{{ syncHealthy() ? 'Sincronizado' : 'Revisar' }}</strong>
+      <strong>{{ wisphubStateLabel() }}</strong>
       <span class="status-dot"></span>
     </div>
     <div class="refresh-status">
@@ -23,10 +23,10 @@
       }
     </div>
     <div class="sync-status-text">
-      <span>Sync WispHub/MikroTik {{ syncAge() }}</span>
+      <span>Última sincronización: {{ syncAge() }}</span>
       @if (syncStatus()?.lastSyncResult; as result) {
         <small>
-          {{ result.updated }} actualizados · {{ result.errors }} errores
+          {{ result.updated }} actualizados · {{ result.errors }} {{ result.errors === 1 ? 'error' : 'errores' }}
           @if (result.missingFromWisphub) { · {{ result.missingFromWisphub }} por reconciliar }
         </small>
       }
@@ -48,11 +48,11 @@
         <option [ngValue]="10000">10 s</option>
         <option [ngValue]="30000">30 s</option>
       </select>
-      <button class="icon-button" type="button" (click)="togglePause()" [title]="paused() ? 'Reanudar' : 'Pausar'">
+      <button class="icon-button" type="button" (click)="togglePause()" [title]="paused() ? 'Reanudar actualización automática' : 'Pausar actualización automática'" [attr.aria-label]="paused() ? 'Reanudar actualización automática' : 'Pausar actualización automática'" [attr.aria-pressed]="paused()">
         @if (paused()) { <svg lucidePlay size="17" aria-hidden="true"></svg> }
         @else { <svg lucidePause size="17" aria-hidden="true"></svg> }
       </button>
-      <button class="icon-button" type="button" (click)="manualRefresh()" title="Actualizar ahora" [disabled]="refreshing()">
+      <button class="icon-button" type="button" (click)="manualRefresh()" title="Actualizar ahora" aria-label="Actualizar ahora" [disabled]="refreshing()">
         <svg lucideRefreshCw size="17" [class.spinning]="refreshing()" aria-hidden="true"></svg>
       </button>
     </div>
@@ -61,7 +61,7 @@
   @if (errorMessage()) {
     <section class="error-banner" role="alert">
       <svg lucideCircleAlert size="18" aria-hidden="true"></svg>
-      <div><strong>No pudimos actualizar la red</strong><span>{{ errorMessage() }}</span></div>
+      <div><strong>No pudimos actualizar la red</strong><span>{{ errorMessage() }}@if (lastUpdate()) { · Datos mostrados de las {{ formatClock(lastUpdate()) }} }</span></div>
       <button type="button" (click)="manualRefresh()">Reintentar</button>
     </section>
   }
@@ -85,14 +85,14 @@
     </button>
     <button class="kpi-item differences" type="button" (click)="setQuickFilter('differences')" [class.active]="quickFilter() === 'differences'">
       <span class="kpi-icon"><svg lucideZap size="20" aria-hidden="true"></svg></span>
-      <span class="kpi-copy"><small>Diferencias</small><strong>{{ stats().differences }}</strong><em>{{ stats().missingMikrotik }} sin cola</em></span>
+      <span class="kpi-copy"><small>Diferencias</small><strong>{{ stats().differences }}</strong><em>{{ stats().missingMikrotik }} sin cola en MikroTik</em></span>
     </button>
     <div class="kpi-item wan-kpi">
       <span class="kpi-icon"><svg lucideActivity size="20" aria-hidden="true"></svg></span>
       <span class="kpi-copy">
         <small>Internet usado ahora</small>
         <strong>{{ formatBps(wanTotalBps()) }}</strong>
-        <em>↓ {{ formatBps(wan()?.rxBps || 0) }} · ↑ {{ formatBps(wan()?.txBps || 0) }}</em>
+        @if (wan()) { <em>↓ {{ formatBps(wan()?.rxBps || 0) }} · ↑ {{ formatBps(wan()?.txBps || 0) }}</em> } @else { <em>Sin lectura del enlace</em> }
       </span>
       <span class="wan-meter"><i [style.width.%]="wanDownloadPct()"></i><i class="upload" [style.width.%]="wanUploadPct()"></i></span>
     </div>
@@ -121,7 +121,7 @@
     </select>
     <select [ngModel]="planFilter()" (ngModelChange)="updatePlan($event)" aria-label="Filtrar por plan">
       <option value="">Todos los planes</option>
-      @for (plan of plans(); track plan) { <option [value]="plan">{{ plan }}</option> }
+      @for (plan of plans(); track plan) { <option [value]="plan">{{ plan | planLabel }}</option> }
     </select>
     <select [ngModel]="interfaceFilter()" (ngModelChange)="updateInterface($event)" aria-label="Filtrar por interfaz">
       <option value="">Todas las interfaces</option>
@@ -138,7 +138,7 @@
       </select>
     </label>
     @if (hasActiveFilters()) {
-      <button class="clear-button" type="button" (click)="clearFilters()"><svg lucideFilterX size="16" aria-hidden="true"></svg> Limpiar</button>
+      <button class="clear-button" type="button" (click)="clearFilters()"><svg lucideFilterX size="16" aria-hidden="true"></svg> Limpiar filtros</button>
     }
   </section>
 
@@ -149,23 +149,31 @@
     <button type="button" (click)="setQuickFilter('overdue')" [class.active]="quickFilter() === 'overdue'"><i class="dot amber"></i>Morosos <span>{{ stats().overdueClients }}</span></button>
     <button type="button" (click)="setQuickFilter('no_ip')" [class.active]="quickFilter() === 'no_ip'"><i class="dot gray"></i>Sin IP <span>{{ stats().clientsWithoutIp }}</span></button>
     <button type="button" (click)="setQuickFilter('differences')" [class.active]="quickFilter() === 'differences'"><i class="dot blue"></i>Diferencias <span>{{ stats().differences }}</span></button>
-    <button type="button" (click)="setQuickFilter('overlimit')" [class.active]="quickFilter() === 'overlimit'"><i class="dot orange"></i>Uso alto</button>
+    <button type="button" (click)="setQuickFilter('overlimit')" [class.active]="quickFilter() === 'overlimit'"><i class="dot orange"></i>Uso alto (70 % o más)</button>
   </section>
 
   <section class="workspace">
     <div class="table-panel">
       @if (loading()) {
-        <div class="loading-table" aria-label="Cargando monitoreo">
+        <div class="loading-table" aria-label="Cargando monitoreo" aria-busy="true">
           @for (row of [1,2,3,4,5,6,7,8]; track row) {
             <div class="skeleton-row"><i></i><span></span><span></span><span></span><span></span><span></span></div>
           }
         </div>
       } @else if (filteredClients().length === 0) {
         <div class="empty-state">
-          <svg lucideSearch size="28" aria-hidden="true"></svg>
-          <strong>No encontramos clientes</strong>
-          <span>Ajusta los filtros o limpia la búsqueda para volver a ver la red.</span>
-          <button type="button" (click)="clearFilters()">Limpiar filtros</button>
+          @if (!allClients().length && errorMessage()) { <svg lucideWifiOff size="28" aria-hidden="true"></svg> }
+          @else if (hasActiveFilters()) { <svg lucideSearch size="28" aria-hidden="true"></svg> }
+          @else { <svg lucideCircleCheck size="28" aria-hidden="true"></svg> }
+          <strong>{{ emptyTitle() }}</strong>
+          <span>{{ emptyDetail() }}</span>
+          @if (!allClients().length && errorMessage()) {
+            <button type="button" (click)="manualRefresh()">Reintentar</button>
+          } @else if (hasActiveFilters()) {
+            <button type="button" (click)="clearFilters()">Limpiar filtros</button>
+          } @else if (activeView() !== 'operation') {
+            <button type="button" (click)="setView('operation')">Ver todos los clientes</button>
+          }
         </div>
       } @else {
         <div class="table-scroll">
@@ -177,7 +185,7 @@
                 <th>Usuario MikroTik</th>
                 <th>IP / Interfaz</th>
                 <th>Tiempo conectado</th>
-                <th>RX / TX</th>
+                <th>Bajada / Subida</th>
                 <th>Sincronización</th>
                 <th class="actions-col">Acciones</th>
               </tr>
@@ -191,21 +199,21 @@
                   [class.selected]="selectedClient() && clientKey(selectedClient()!) === clientKey(client)"
                   [class.row-warning]="hasIncident(client)"
                 >
-                  <td class="status-col"><span class="presence-dot" [class.online]="client.isOnline" [class.transmitting]="client.isTransmitting" [class.disabled]="client.isDisabled"></span></td>
+                  <td class="status-col"><span class="presence-dot" [class.online]="client.isOnline" [class.transmitting]="client.isTransmitting" [class.disabled]="client.isDisabled" [title]="connectionLabel(client)"></span></td>
                   <td>
                     <div class="client-cell">
                       <strong>{{ displayName(client) }}</strong>
-                      <span>{{ client.client?.phone || client.client?.plan || 'Sin datos de contacto' }}</span>
+                      <span>{{ client.client?.phone || (client.client?.plan ? (client.client?.plan | planLabel) : '—') }}</span>
                     </div>
                   </td>
                   <td>
-                    <div class="mono-cell"><strong>{{ client.client?.username || client.sessionUser || client.queueName }}</strong><span>{{ client.queueName }}</span></div>
+                    <div class="mono-cell"><strong>{{ client.client?.username || client.sessionUser || client.queueName }}</strong>@if ((client.client?.username || client.sessionUser) && (client.client?.username || client.sessionUser) !== client.queueName) { <span [title]="'Cola: ' + client.queueName">{{ client.queueName }}</span> }</div>
                   </td>
                   <td>
-                    <div class="mono-cell"><strong>{{ client.ip || 'Sin IP' }}</strong><span>{{ client.interface || client.client?.interface || 'Sin interfaz' }}</span></div>
+                    <div class="mono-cell"><strong [class.muted-cell]="!client.ip">{{ client.ip || 'Sin IP' }}</strong><span>{{ client.interface || client.client?.interface || '—' }}</span></div>
                   </td>
                   <td>
-                    <div class="uptime-cell"><strong>{{ client.sessionUptime || '—' }}</strong><span>{{ connectionLabel(client) }}</span></div>
+                    <div class="uptime-cell"><strong [title]="client.sessionUptime || ''">{{ formatUptime(client.sessionUptime) }}</strong><span [class]="'conn-label ' + (client.isDisabled ? 'is-disabled' : client.isOnline ? 'is-online' : 'is-offline')">{{ connectionLabel(client) }}</span></div>
                   </td>
                   <td>
                     <div class="traffic-cell">
@@ -213,7 +221,7 @@
                         <path class="download-line" [attr.d]="clientSparkline(client, 'download')"></path>
                         <path class="upload-line" [attr.d]="clientSparkline(client, 'upload')"></path>
                       </svg>
-                      <span><b>{{ formatBps(client.downloadBps) }}</b> / {{ formatBps(client.uploadBps) }}</span>
+                      <span><b title="Bajada">↓ {{ formatBps(client.downloadBps) }}</b><br><span title="Subida">↑ {{ formatBps(client.uploadBps) }}</span></span>
                     </div>
                   </td>
                   <td>
@@ -253,20 +261,20 @@
           <span class="presence-dot" [class.online]="selected.isOnline" [class.transmitting]="selected.isTransmitting"></span>
           <div><strong>{{ displayName(selected) }}</strong><span>Cliente ID: {{ selected.client?.id || 'Sin asociar' }}</span></div>
           <span class="connection-badge" [class.online]="selected.isOnline">{{ connectionLabel(selected) }}</span>
-          <button class="icon-button light" type="button" (click)="closeDrawer()" title="Cerrar detalle"><svg lucideX size="18" aria-hidden="true"></svg></button>
+          <button class="icon-button light" type="button" (click)="closeDrawer()" title="Cerrar detalle (Esc)" aria-label="Cerrar detalle"><svg lucideX size="18" aria-hidden="true"></svg></button>
         </header>
 
         <div class="drawer-actions">
-          <button type="button" (click)="openWhatsapp()" [disabled]="!selected.client?.phone"><svg lucideMessageCircle size="18" aria-hidden="true"></svg><span>Mensaje</span></button>
-          <button type="button" (click)="pingSelected()" [disabled]="!selected.ip || pinging()"><svg lucideRadioTower size="18" aria-hidden="true"></svg><span>Ping</span></button>
+          <button type="button" (click)="openWhatsapp()" [disabled]="!selected.client?.phone" [title]="selected.client?.phone ? 'Escribir por WhatsApp' : 'Este cliente no tiene teléfono registrado'"><svg lucideMessageCircle size="18" aria-hidden="true"></svg><span>Mensaje</span></button>
+          <button type="button" (click)="pingSelected()" [disabled]="!selected.ip || pinging()" [title]="selected.ip ? 'Hacer ping a ' + selected.ip : 'Sin IP asignada'"><svg lucideRadioTower size="18" aria-hidden="true"></svg><span>Ping</span></button>
           @if (selected.client?.id) {
             <a [routerLink]="['/clients', selected.client?.id]"><svg lucideExternalLink size="18" aria-hidden="true"></svg><span>Perfil</span></a>
           }
-          <button type="button" (click)="copyIp()" [disabled]="!selected.ip"><svg lucideCopy size="18" aria-hidden="true"></svg><span>Copiar IP</span></button>
+          <button type="button" (click)="copyIp()" [disabled]="!selected.ip" [title]="selected.ip ? 'Copiar ' + selected.ip : 'Sin IP asignada'"><svg lucideCopy size="18" aria-hidden="true"></svg><span>Copiar IP</span></button>
         </div>
 
         @if (pingResult()) {
-          <div class="ping-result" [class.failed]="pingResult() === 'Sin respuesta'"><svg lucideActivity size="15" aria-hidden="true"></svg>{{ pingResult() }}</div>
+          <div class="ping-result" [class.failed]="pingResult() === 'Sin respuesta'" role="status"><svg lucideActivity size="15" aria-hidden="true"></svg>{{ pingResult() }}</div>
         }
 
         <div class="drawer-scroll">
@@ -274,9 +282,9 @@
             <h3><svg lucideCircleCheck size="17" aria-hidden="true"></svg>Datos del cliente</h3>
             <dl class="detail-grid">
               <div><dt>Nombre</dt><dd>{{ selected.client?.name || 'Sin asociación' }}</dd></div>
-              <div><dt>Plan</dt><dd>{{ selected.client?.plan || 'Sin plan' }}</dd></div>
+              <div><dt>Plan</dt><dd [title]="selected.client?.plan || ''">{{ selected.client?.plan | planLabel }}</dd></div>
               <div><dt>Teléfono</dt><dd>{{ selected.client?.phone || 'Sin teléfono' }}</dd></div>
-              <div><dt>Estado cuenta</dt><dd [class.danger-text]="isOverdue(selected)">{{ selected.client?.invoiceStatus || selected.client?.status || 'Sin datos' }}</dd></div>
+              <div><dt>Estado de cuenta</dt><dd [class.danger-text]="isOverdue(selected)">{{ selected.client?.invoiceStatus || selected.client?.status || 'Sin datos' }}</dd></div>
               <div class="wide"><dt>Dirección</dt><dd>{{ selected.client?.address || 'Sin dirección' }}</dd></div>
               <div><dt>Zona</dt><dd>{{ selected.client?.zone || 'Sin zona' }}</dd></div>
               <div><dt>Precio</dt><dd>{{ formatMoney(selected.client?.price) }}</dd></div>
@@ -287,7 +295,7 @@
             <h3><svg lucideWifi size="17" aria-hidden="true"></svg>Conectividad</h3>
             <dl class="detail-grid">
               <div><dt>Usuario MikroTik</dt><dd class="mono">{{ selected.client?.username || selected.sessionUser || selected.queueName }}</dd></div>
-              <div><dt>Tiempo conectado</dt><dd>{{ selected.sessionUptime || 'Sin sesión' }}</dd></div>
+              <div><dt>Tiempo conectado</dt><dd>{{ selected.sessionUptime ? formatUptime(selected.sessionUptime) : 'Sin sesión' }}</dd></div>
               <div><dt>Interfaz</dt><dd class="mono">{{ selected.interface || selected.client?.interface || 'Sin interfaz' }}</dd></div>
               <div><dt>Última lectura</dt><dd>{{ formatClock(lastUpdate()) }}</dd></div>
               <div><dt>IP asignada</dt><dd class="mono">{{ selected.ip || 'Sin IP' }}</dd></div>
@@ -298,7 +306,8 @@
           </section>
 
           <section class="drawer-section traffic-section">
-            <div class="section-heading"><h3><svg lucideActivity size="17" aria-hidden="true"></svg>Tráfico RX / TX</h3><span><i class="legend down"></i>{{ formatBps(selected.downloadBps) }} <i class="legend up"></i>{{ formatBps(selected.uploadBps) }}</span></div>
+            <div class="section-heading"><h3><svg lucideActivity size="17" aria-hidden="true"></svg>Tráfico</h3><span><i class="legend down"></i>Bajada {{ formatBps(selected.downloadBps) }} <i class="legend up"></i>Subida {{ formatBps(selected.uploadBps) }}</span></div>
+            @if (selectedHistory().length < 2) { <div class="compact-empty">Reuniendo lecturas para la gráfica…</div> }
             <svg class="detail-chart" viewBox="0 0 320 64" preserveAspectRatio="none" role="img" aria-label="Historial reciente de descarga y subida">
               <line x1="0" y1="16" x2="320" y2="16"></line><line x1="0" y1="32" x2="320" y2="32"></line><line x1="0" y1="48" x2="320" y2="48"></line>
               <path class="download-line" [attr.d]="selectedDownloadPath()"></path>
@@ -312,7 +321,7 @@
               <h3><svg lucideCircleCheck size="17" aria-hidden="true"></svg>Piloto portal de pago</h3>
               <span class="pilot-state">{{ selected.client?.paymentPilotEnabled ? 'Habilitado' : 'Inactivo' }}</span>
             </div>
-            <p class="pilot-mode">Manual por cliente · Automatización desactivada</p>
+            <p class="pilot-mode">Se activa cliente por cliente. No hay cortes automáticos.</p>
             <div class="pilot-actions">
               <button type="button" class="pilot-preview" (click)="previewPaymentPortal()" [disabled]="actionLoading()" title="Abrir una vista previa del portal">
                 <svg lucideExternalLink size="15" aria-hidden="true"></svg>Vista previa
@@ -332,7 +341,7 @@
             } @else {
               <div class="equipment-list">
                 @for (item of equipment(); track item.id) {
-                  <div><span class="equipment-icon"><svg lucideServer size="16" aria-hidden="true"></svg></span><p><strong>{{ item.type?.name || item.model || 'Equipo' }}</strong><small>{{ item.brand || '' }} {{ item.model || '' }}</small></p><p class="equipment-serial"><strong>{{ item.serialNumber || item.macAddress || 'Sin serial' }}</strong><small>{{ item.status }}</small></p></div>
+                  <div><span class="equipment-icon"><svg lucideServer size="16" aria-hidden="true"></svg></span><p><strong>{{ item.type?.name || item.model || 'Equipo' }}</strong><small>{{ item.brand || '' }} {{ item.model || '' }}</small></p><p class="equipment-serial"><strong>{{ item.serialNumber || item.macAddress || 'Sin serial' }}</strong><small>{{ equipmentStatusLabel(item.status) }}</small></p></div>
                 }
               </div>
             }

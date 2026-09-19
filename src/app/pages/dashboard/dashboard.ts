@@ -133,13 +133,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const olt = this.olt();
     const live = this.live();
     const audit = this.audit();
-    if ((noc?.critical || 0) > 0) items.push({ tone: 'critical', title: `${noc!.critical} incidentes críticos`, detail: `${noc!.affectedClients} clientes afectados por incidentes activos`, route: '/incidents' });
-    else if ((noc?.active || 0) > 0) items.push({ tone: 'warning', title: `${noc!.active} incidentes activos`, detail: `${noc!.open} todavía no han sido reconocidos`, route: '/incidents' });
-    if (olt && !olt.connected) items.push({ tone: 'critical', title: 'OLT sin telemetría reciente', detail: 'Revise conectividad y la última sincronización de la C320', route: '/olt' });
-    if ((olt?.totals.offlineOnus || 0) > 0) items.push({ tone: 'warning', title: `${olt!.totals.offlineOnus} ONUs fuera de línea`, detail: `${olt!.totals.onlineOnus} permanecen operativas`, route: '/olt' });
-    if (this.signalAlerts() > 0) items.push({ tone: 'warning', title: `${this.signalAlerts()} alertas de señal óptica`, detail: 'Potencia débil, crítica o con caída reciente', route: '/olt' });
-    if ((olt?.totals.unconfiguredOnus || 0) > 0) items.push({ tone: 'info', title: `${olt!.totals.unconfiguredOnus} ONUs por autorizar`, detail: 'Equipos detectados que esperan aprovisionamiento', route: '/olt' });
-    if ((live?.stats.differences || 0) > 0) items.push({ tone: 'info', title: `${live!.stats.differences} diferencias de sincronización`, detail: 'WispHub y MikroTik requieren conciliación', route: '/live' });
+    if ((noc?.critical || 0) > 0) items.push({ tone: 'critical', title: this.plural(noc!.critical, 'incidente crítico', 'incidentes críticos'), detail: `${this.plural(noc!.affectedClients, 'cliente afectado', 'clientes afectados')} por incidentes activos`, route: '/incidents' });
+    else if ((noc?.active || 0) > 0) items.push({ tone: 'warning', title: this.plural(noc!.active, 'incidente activo', 'incidentes activos'), detail: noc!.open === 1 ? '1 todavía no ha sido reconocido' : `${noc!.open} todavía no han sido reconocidos`, route: '/incidents' });
+    if (olt && !olt.connected) items.push({ tone: 'critical', title: 'OLT sin telemetría reciente', detail: 'Revise la conexión con la OLT y su última lectura', route: '/olt' });
+    if ((olt?.totals.offlineOnus || 0) > 0) items.push({ tone: 'warning', title: `${olt!.totals.offlineOnus} ${olt!.totals.offlineOnus === 1 ? 'ONU' : 'ONUs'} fuera de línea`, detail: `${olt!.totals.onlineOnus} siguen en línea`, route: '/olt' });
+    if (this.signalAlerts() > 0) items.push({ tone: 'warning', title: this.plural(this.signalAlerts(), 'alerta de señal óptica', 'alertas de señal óptica'), detail: 'Potencia débil, crítica o con caída reciente', route: '/olt' });
+    if ((olt?.totals.unconfiguredOnus || 0) > 0) items.push({ tone: 'info', title: `${olt!.totals.unconfiguredOnus} ${olt!.totals.unconfiguredOnus === 1 ? 'ONU' : 'ONUs'} por autorizar`, detail: 'Equipos detectados que esperan aprovisionamiento', route: '/olt' });
+    if ((live?.stats.differences || 0) > 0) items.push({ tone: 'info', title: this.plural(live!.stats.differences, 'diferencia entre WispHub y MikroTik', 'diferencias entre WispHub y MikroTik'), detail: 'Revise los clientes marcados en Monitoreo en vivo', route: '/live' });
     if ((audit?.lastError || '').trim()) items.push({ tone: 'warning', title: 'Auditoría de red degradada', detail: audit!.lastError!, route: '/auditoria-red' });
     if (items.length === 0) items.push({ tone: 'success', title: 'Operación estable', detail: 'No hay alertas prioritarias en las fuentes conectadas', route: '/live' });
     return items.slice(0, 5);
@@ -238,6 +238,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
+  sourceTitle(source: 'wisphub' | 'mikrotik' | 'olt'): string {
+    const names = { wisphub: 'WispHub', mikrotik: 'MikroTik', olt: 'OLT' };
+    return `${names[source]}: ${this.sourceOnline(source) ? 'conectado' : 'sin conexión'}`;
+  }
+
   sourceOnline(source: 'wisphub' | 'mikrotik' | 'olt'): boolean {
     if (source === 'wisphub') return this.syncStatus()?.lastSyncResult?.sources?.wisphub === 'ok';
     if (source === 'mikrotik') return Boolean(this.mikrotik()?.connected);
@@ -262,6 +267,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   clientDebt(client: WispHubClient): number {
     const balance = Number(client.saldo || 0);
     return balance > 0 ? balance : Number(client.precio_plan || 0);
+  }
+
+  private plural(count: number, singular: string, pluralText: string): string {
+    return `${count} ${count === 1 ? singular : pluralText}`;
   }
 
   private normalized(value: string | null | undefined): string {

@@ -6,6 +6,7 @@ import {
   LucideAlertTriangle,
   LucideChevronLeft,
   LucideChevronRight,
+  LucideCircleAlert,
   LucideCircleCheck,
   LucideClock3,
   LucideMessageSquare,
@@ -27,12 +28,13 @@ import { ToastService } from '../../services/toast.service';
   standalone: true,
   imports: [
     FormsModule, RouterLink, NavbarComponent, LucideActivity, LucideAlertTriangle,
-    LucideChevronLeft, LucideChevronRight, LucideCircleCheck, LucideClock3,
+    LucideChevronLeft, LucideChevronRight, LucideCircleAlert, LucideCircleCheck, LucideClock3,
     LucideMessageSquare, LucideRefreshCw, LucideRotateCcw, LucideSearch,
     LucideShieldCheck, LucideUserRoundCheck, LucideUsers, LucideX,
   ],
   templateUrl: './incidents.html',
   styleUrl: './incidents.scss',
+  host: { '(document:keydown.escape)': 'selected() && close()' },
 })
 export class IncidentsComponent implements OnInit {
   private readonly noc = inject(NocService);
@@ -52,8 +54,12 @@ export class IncidentsComponent implements OnInit {
   pageSize = 25;
   total = signal(0);
   lastUpdated = signal<Date | null>(null);
+  /** Formulario en línea del panel de detalle (reemplaza los prompt() del navegador). */
+  pendingAction = signal<'assign' | 'note' | 'resolve' | null>(null);
+  actionText = signal('');
 
   totalPages = computed(() => Math.max(1, Math.ceil(this.total() / this.pageSize)));
+  hasFilters = computed(() => this.status() !== 'active' || !!this.severity() || !!this.search().trim());
 
   ngOnInit(): void {
     this.load();
@@ -74,7 +80,7 @@ export class IncidentsComponent implements OnInit {
         this.loading.set(false);
       },
       error: error => {
-        this.error.set(error?.error?.error || 'No se pudo cargar el centro NOC');
+        this.error.set(error?.error?.error || 'No se pudo cargar el centro NOC. Revise la conexión e intente de nuevo.');
         this.loading.set(false);
       },
     });
@@ -106,7 +112,7 @@ export class IncidentsComponent implements OnInit {
     this.noc.evaluate().subscribe({
       next: result => {
         this.evaluating.set(false);
-        this.toast.success(`Evaluacion completa: ${result.created} nuevos, ${result.resolved} recuperados`);
+        this.toast.success(`Evaluación completa: ${result.created} nuevos, ${result.resolved} recuperados`);
         this.load();
       },
       error: error => {
@@ -117,6 +123,7 @@ export class IncidentsComponent implements OnInit {
   }
 
   open(incident: NocIncident): void {
+    if (this.selected()?.id !== incident.id) this.cancelAction();
     this.selected.set(incident);
     this.noc.detail(incident.id).subscribe({
       next: detail => this.selected.set(detail),
@@ -125,6 +132,7 @@ export class IncidentsComponent implements OnInit {
   }
 
   close(): void {
+    this.cancelAction();
     this.selected.set(null);
   }
 
@@ -135,21 +143,51 @@ export class IncidentsComponent implements OnInit {
   assign(): void {
     const current = this.selected();
     if (!current) return;
-    const assignedTo = prompt('Responsable del incidente', current.assignedTo || '')?.trim();
-    if (assignedTo === undefined) return;
-    this.runAction('assign', { assignedTo });
+    this.pendingAction.set('assign');
+    this.actionText.set(current.assignedTo || '');
   }
 
   addNote(): void {
-    const note = prompt('Nota operativa')?.trim();
-    if (!note) return;
-    this.runAction('note', { note });
+    if (!this.selected()) return;
+    this.pendingAction.set('note');
+    this.actionText.set('');
   }
 
   resolve(): void {
-    const note = prompt('Detalle de la solucion aplicada')?.trim();
-    if (note === undefined) return;
-    this.runAction('resolve', { note });
+    if (!this.selected()) return;
+    this.pendingAction.set('resolve');
+    this.actionText.set('');
+  }
+
+  cancelAction(): void {
+    this.pendingAction.set(null);
+    this.actionText.set('');
+  }
+
+  submitAction(): void {
+    const action = this.pendingAction();
+    if (!action) return;
+    const text = this.actionText().trim();
+    if (action === 'note' && !text) return;
+    if (action === 'assign') this.runAction('assign', { assignedTo: text });
+    else this.runAction(action, { note: text });
+  }
+
+  actionTitle(): string {
+    return { assign: 'Asignar responsable', note: 'Agregar nota', resolve: 'Resolver incidente' }[this.pendingAction() || 'note'];
+  }
+
+  actionPlaceholder(): string {
+    return {
+      assign: 'Nombre del técnico o responsable (vacío para quitarlo)',
+      note: 'Qué se revisó o qué se hizo',
+      resolve: 'Qué solución se aplicó (opcional)',
+    }[this.pendingAction() || 'note'];
+  }
+
+  eventAuthor(value?: string | null): string {
+    if (!value || value === 'system') return 'Sistema';
+    return value;
   }
 
   reopen(): void {
@@ -157,7 +195,7 @@ export class IncidentsComponent implements OnInit {
   }
 
   severityLabel(value: string): string {
-    return { critical: 'Critico', high: 'Alto', medium: 'Medio', low: 'Bajo' }[value] || value;
+    return { critical: 'Crítico', high: 'Alto', medium: 'Medio', low: 'Bajo' }[value] || value;
   }
 
   statusLabel(value: IncidentStatus): string {
@@ -169,7 +207,7 @@ export class IncidentsComponent implements OnInit {
   }
 
   formatDate(value?: string | null): string {
-    if (!value) return '-';
+    if (!value) return '—';
     return new Intl.DateTimeFormat('es-DO', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value));
   }
 
@@ -193,8 +231,10 @@ export class IncidentsComponent implements OnInit {
     this.noc.action(incident.id, action, data).subscribe({
       next: updated => {
         this.actionLoading.set(false);
+        this.cancelAction();
         this.selected.set({ ...incident, ...updated });
-        this.toast.success('Incidente actualizado');
+        const messages = { acknowledge: 'Incidente reconocido', resolve: 'Incidente resuelto', reopen: 'Incidente reabierto', assign: 'Responsable actualizado', note: 'Nota agregada' };
+        this.toast.success(messages[action]);
         this.load();
         this.open({ ...incident, ...updated });
       },

@@ -32,6 +32,7 @@ import {
   LucideZap,
 } from '@lucide/angular';
 import { NavbarComponent } from '../../components/layout/navbar';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { ClientActionsService } from '../../services/client-actions.service';
 import { MikrotikService } from '../../services/mikrotik.service';
 import { ServerSyncStatus, SyncService } from '../../services/sync.service';
@@ -189,6 +190,7 @@ const ALERT_TTL_MS = 5 * 60 * 1000;
     NavbarComponent,
     FormsModule,
     RouterLink,
+    PlanLabelPipe,
     LucideActivity,
     LucideBan,
     LucideChevronLeft,
@@ -217,6 +219,7 @@ const ALERT_TTL_MS = 5 * 60 * 1000;
     LucideZap,
   ],
   templateUrl: './live.html',
+  host: { '(document:keydown.escape)': 'selectedClient() && closeDrawer()' },
 })
 export class LiveComponent implements OnInit, OnDestroy {
   private readonly mt = inject(MikrotikService);
@@ -430,7 +433,8 @@ export class LiveComponent implements OnInit, OnDestroy {
     this.sync.runServerSync().subscribe({
       next: result => {
         this.syncingNow.set(false);
-        this.toast.success(`Sincronización completa: ${result?.updated || 0} clientes, ${result?.errors || 0} errores`);
+        const errors = result?.errors || 0;
+        this.toast.success(`Sincronización completa: ${result?.updated || 0} clientes actualizados${errors ? `, ${errors} con errores` : ''}`);
         this.refreshSupportingData();
         this.refresh(true);
       },
@@ -518,14 +522,14 @@ export class LiveComponent implements OnInit, OnDestroy {
     const client = this.selectedClient();
     if (!client?.ip || this.pinging()) return;
     this.pinging.set(true);
-    this.pingResult.set('Consultando...');
+    this.pingResult.set('Haciendo ping…');
     this.mt.ping(client.ip, 4).subscribe({
       next: rows => {
         const times = rows
           .map(row => this.parseLatency(row?.time || row?.['avg-rtt']))
           .filter((value): value is number => value !== null);
         if (!times.length) this.pingResult.set('Sin respuesta');
-        else this.pingResult.set(`${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)} ms · ${times.length}/4`);
+        else this.pingResult.set(`Responde: ${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)} ms promedio · ${times.length} de 4 respuestas`);
         this.pinging.set(false);
       },
       error: () => {
@@ -556,7 +560,7 @@ export class LiveComponent implements OnInit, OnDestroy {
   blockSelected(): void {
     const selected = this.selectedClient();
     if (!selected?.client?.paymentPilotEnabled) {
-      this.toast.info('Habilita primero el piloto del portal para este cliente');
+      this.toast.info('Primero habilite el piloto del portal de pago para este cliente');
       return;
     }
     this.applyAction('block');
@@ -566,7 +570,7 @@ export class LiveComponent implements OnInit, OnDestroy {
     const selected = this.selectedClient();
     if (!selected?.client?.id || this.actionLoading()) return;
     const label = enabled ? 'Habilitar' : 'Deshabilitar';
-    if (!confirm(`${label} el piloto del portal de pago para ${this.displayName(selected)}?\n\nEsto no cambia el servicio por si solo.`)) return;
+    if (!confirm(`¿${label} el piloto del portal de pago para ${this.displayName(selected)}?\n\nEsto no cambia el servicio por sí solo.`)) return;
 
     this.actionLoading.set(true);
     this.actions.setPaymentPilot(selected.client.id, enabled).subscribe({
@@ -637,6 +641,51 @@ export class LiveComponent implements OnInit, OnDestroy {
   eventLabel(action: string): string {
     const labels: Record<string, string> = { block: 'Servicio bloqueado', moroso: 'Marcado como moroso', unblock: 'Servicio reactivado' };
     return labels[action] || action;
+  }
+
+  wisphubStateLabel(): string {
+    if (!this.syncStatus()) return 'Sin datos';
+    return this.syncHealthy() ? 'Sincronizado' : 'Con errores';
+  }
+
+  wisphubStateTitle(): string {
+    const result = this.syncStatus()?.lastSyncResult;
+    if (!result) return 'Aún no hay una sincronización registrada';
+    if (this.syncHealthy()) return 'La última sincronización terminó sin errores';
+    return `La última sincronización tuvo ${result.errors || 0} errores. Pulse el botón de sincronizar para intentarlo de nuevo.`;
+  }
+
+  /** "1w2d3h4m5s" (formato MikroTik) -> "1 sem 2 d 3 h" (máximo 3 partes). */
+  formatUptime(value?: string | null): string {
+    if (!value) return '—';
+    const names: Record<string, string> = { w: 'sem', d: 'd', h: 'h', m: 'min', s: 's' };
+    const parts = [...value.matchAll(/(\d+)([wdhms])/g)]
+      .filter(match => Number(match[1]) > 0)
+      .map(match => `${Number(match[1])} ${names[match[2]]}`);
+    return parts.length ? parts.slice(0, 3).join(' ') : value;
+  }
+
+  equipmentStatusLabel(status: string): string {
+    const labels: Record<string, string> = { stock: 'En stock', assigned: 'Asignado', rma: 'En garantía', lost: 'Perdido', retired: 'Retirado' };
+    return labels[status] || status;
+  }
+
+  emptyTitle(): string {
+    if (!this.allClients().length) return this.errorMessage() ? 'Sin datos de MikroTik' : 'Todavía no hay clientes para mostrar';
+    if (this.search() || this.zoneFilter() || this.planFilter() || this.interfaceFilter() || this.quickFilter() !== 'all') return 'Ningún cliente coincide con los filtros';
+    if (this.activeView() === 'incidents') return 'Sin incidencias';
+    if (this.activeView() === 'sync') return 'Todo sincronizado';
+    return 'No encontramos clientes';
+  }
+
+  emptyDetail(): string {
+    if (!this.allClients().length) return this.errorMessage()
+      ? 'No se pudo leer el router. Revise la conexión con MikroTik y pulse Reintentar.'
+      : 'Cuando MikroTik responda, los clientes aparecerán aquí automáticamente.';
+    if (this.search() || this.zoneFilter() || this.planFilter() || this.interfaceFilter() || this.quickFilter() !== 'all') return 'Cambie los filtros o limpie la búsqueda para volver a ver la red.';
+    if (this.activeView() === 'incidents') return 'Todos los clientes están en línea, al día y sin diferencias.';
+    if (this.activeView() === 'sync') return 'WispHub y MikroTik coinciden para todos los clientes.';
+    return 'Limpie los filtros para volver a ver la red.';
   }
 
   formatBps(bps: number): string {

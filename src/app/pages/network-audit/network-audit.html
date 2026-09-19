@@ -1,54 +1,58 @@
-<app-navbar pageTitle="Auditoria de red" />
+<app-navbar pageTitle="Auditoría de red" />
 
 <main class="audit-page">
   <header class="audit-toolbar">
     <div>
-      <span class="eyebrow"><i></i> Historial automático cada 10 minutos</span>
+      <span class="eyebrow"><i aria-hidden="true"></i> Lecturas automáticas cada 10 minutos</span>
       <h1>Velocidad y estabilidad</h1>
-      <p>Última muestra {{ (status()?.lastSuccessAt || latestWan()?.capturedAt) ? ((status()?.lastSuccessAt || latestWan()?.capturedAt) | date:'dd/MM/yyyy HH:mm') : 'pendiente' }}</p>
+      <p>Última lectura: {{ (status()?.lastSuccessAt || latestWan()?.capturedAt) ? ((status()?.lastSuccessAt || latestWan()?.capturedAt) | date:'dd/MM/yyyy h:mm a') : 'todavía no hay lecturas' }}</p>
     </div>
     <div class="toolbar-actions">
-      <span class="collector" [class.off]="!status()?.enabled"><i></i>{{ status()?.enabled ? 'Auditoria activa' : 'Auditoria detenida' }}</span>
-      <button class="icon-btn" type="button" (click)="load()" title="Actualizar" aria-label="Actualizar"><svg lucideRefreshCw size="18"></svg></button>
+      <span class="collector" [class.off]="!status()?.enabled"><i aria-hidden="true"></i>{{ status()?.enabled ? 'Auditoría activa' : 'Auditoría detenida' }}</span>
+      <button class="icon-btn" type="button" (click)="load()" [disabled]="loading()" title="Actualizar" aria-label="Actualizar"><svg lucideRefreshCw size="18" [class.spinning]="loading()" aria-hidden="true"></svg></button>
       @if (auth.hasRole(['admin'])) {
-        <button class="primary-btn" type="button" (click)="collectNow()" [disabled]="collecting() || status()?.running">
-          <svg lucideActivity size="17" [class.spinning]="collecting()"></svg>{{ collecting() ? 'Midiendo' : 'Medir ahora' }}
+        <button class="primary-btn" type="button" (click)="collectNow()" [disabled]="collecting() || status()?.running" [title]="status()?.running ? 'Ya hay una medición en curso' : 'Tomar una lectura de todos los clientes ahora'">
+          <svg lucideActivity size="17" [class.spinning]="collecting() || status()?.running" aria-hidden="true"></svg>{{ collecting() || status()?.running ? 'Midiendo…' : 'Medir ahora' }}
         </button>
       }
     </div>
   </header>
 
   @if (error()) {
-    <div class="error-banner"><svg lucideAlertTriangle size="18"></svg><span>{{ error() }}</span><button type="button" (click)="load()">Reintentar</button></div>
+    <div class="error-banner" role="alert"><svg lucideAlertTriangle size="18" aria-hidden="true"></svg><span>{{ error() }}</span><button type="button" (click)="load()">Reintentar</button></div>
   }
 
-  <section class="kpi-row" aria-label="Resumen de auditoria">
-    <div class="kpi"><span><svg lucideWifi size="19"></svg></span><p>Clientes auditados<strong>{{ pageData()?.summary?.monitoredClients || 0 }}</strong><small>{{ pageData()?.summary?.totalSamples || 0 }} muestras</small></p></div>
-    <div class="kpi stable"><span><svg lucideCircleCheck size="19"></svg></span><p>Estabilidad<strong>{{ pageData()?.summary?.stabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ days() }} días seleccionados</small></p></div>
-    <div class="kpi availability"><span><svg lucideSignal size="19"></svg></span><p>Disponibilidad<strong>{{ pageData()?.summary?.availabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ pageData()?.summary?.attentionClients || 0 }} requieren atencion</small></p></div>
-    <div class="kpi wan"><span><svg lucideGauge size="19"></svg></span><p>WAN actual<strong>{{ mbps(latestWan()?.rxBps || 0) | number:'1.1-1' }} Mbps</strong><small>Ping {{ latestWan()?.pingAvgMs ?? '-' }} ms</small></p></div>
+  <section class="kpi-row" aria-label="Resumen de auditoría">
+    <div class="kpi"><span><svg lucideWifi size="19" aria-hidden="true"></svg></span><p>Clientes auditados<strong>{{ pageData()?.summary?.monitoredClients || 0 }}</strong><small>{{ pageData()?.summary?.totalSamples || 0 }} muestras</small></p></div>
+    <div class="kpi stable"><span><svg lucideCircleCheck size="19" aria-hidden="true"></svg></span><p>Estabilidad<strong>{{ pageData()?.summary?.stabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ days() === 1 ? 'Hoy' : 'Últimos ' + days() + ' días' }}</small></p></div>
+    <div class="kpi availability"><span><svg lucideSignal size="19" aria-hidden="true"></svg></span><p>Disponibilidad<strong>{{ pageData()?.summary?.availabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ pageData()?.summary?.attentionClients || 0 }} requieren atención</small></p></div>
+    <div class="kpi wan"><span><svg lucideGauge size="19" aria-hidden="true"></svg></span><p>Internet ahora (bajada)<strong>{{ mbps(latestWan()?.rxBps || 0) | number:'1.1-1' }} Mbps</strong><small>@if (latestWan()?.pingAvgMs != null) { Ping {{ latestWan()?.pingAvgMs }} ms } @else { Ping sin lectura }</small></p></div>
   </section>
 
-  <div class="view-tabs" role="tablist">
-    <button type="button" [class.active]="view() === 'clients'" (click)="setView('clients')"><svg lucideWifi size="17"></svg>Clientes</button>
-    <button type="button" [class.active]="view() === 'wan'" (click)="setView('wan')"><svg lucideServer size="17"></svg>WAN y OLT</button>
+  <div class="view-tabs" role="tablist" aria-label="Vista">
+    <button type="button" role="tab" [attr.aria-selected]="view() === 'clients'" [class.active]="view() === 'clients'" (click)="setView('clients')"><svg lucideWifi size="17" aria-hidden="true"></svg>Clientes</button>
+    <button type="button" role="tab" [attr.aria-selected]="view() === 'wan'" [class.active]="view() === 'wan'" (click)="setView('wan')"><svg lucideServer size="17" aria-hidden="true"></svg>Enlace a Internet y OLT</button>
   </div>
 
   @if (view() === 'clients') {
     <section class="filter-bar">
-      <label class="search"><svg lucideSearch size="17"></svg><input type="search" [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="applyFilters()" placeholder="Cliente, usuario, IP o zona" /></label>
+      <label class="search"><svg lucideSearch size="17" aria-hidden="true"></svg><input type="search" [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="applyFilters()" placeholder="Buscar cliente, usuario, IP o zona" aria-label="Buscar cliente" title="Escriba y pulse Enter" /></label>
       <select [ngModel]="days()" (ngModelChange)="days.set(+$event); applyFilters()" aria-label="Período"><option [ngValue]="1">Hoy</option><option [ngValue]="7">7 días</option><option [ngValue]="30">30 días</option><option [ngValue]="90">90 días</option><option [ngValue]="365">1 año</option></select>
       <select [ngModel]="state()" (ngModelChange)="state.set($event); applyFilters()" aria-label="Estado"><option value="all">Todos los estados</option><option value="offline">Fuera de línea</option><option value="degraded">Degradados</option><option value="stable">Estables</option></select>
-      <button class="filter-apply" type="button" (click)="applyFilters()">Aplicar</button>
-      <button class="filter-clear" type="button" (click)="clearFilters()">Limpiar</button>
-      <button class="export-btn" type="button" (click)="exportCsv()"><svg lucideDownload size="17"></svg>Exportar</button>
+      <button class="filter-apply" type="button" (click)="applyFilters()">Buscar</button>
+      <button class="filter-clear" type="button" (click)="clearFilters()" [disabled]="!hasFilters()">Limpiar</button>
+      <button class="export-btn" type="button" (click)="exportCsv()" [disabled]="exporting() || !pageData()?.total" [title]="pageData()?.total ? 'Descargar la lista filtrada en Excel (CSV)' : 'No hay datos para exportar'"><svg lucideDownload size="17" aria-hidden="true"></svg>{{ exporting() ? 'Exportando…' : 'Exportar CSV' }}</button>
     </section>
 
     <section class="data-panel">
       @if (loading()) {
-        <div class="loading-list">@for (row of [1,2,3,4,5,6]; track row) { <div><i></i><span></span><span></span></div> }</div>
+        <div class="loading-list" aria-busy="true" aria-label="Cargando lecturas">@for (row of [1,2,3,4,5,6]; track row) { <div><i></i><span></span><span></span></div> }</div>
       } @else if (!pageData()?.items?.length) {
-        <div class="empty-state"><svg lucideClock3 size="30"></svg><strong>Aun no hay muestras para esta vista</strong><span>La primera recoleccion se ejecuta al iniciar el servidor.</span></div>
+        @if (hasFilters() && pageData()?.summary?.totalSamples) {
+          <div class="empty-state"><svg lucideSearch size="30" aria-hidden="true"></svg><strong>Ningún cliente coincide con los filtros</strong><span>Cambie la búsqueda, el período o el estado.</span><button class="filter-clear" type="button" (click)="clearFilters()">Quitar filtros</button></div>
+        } @else {
+          <div class="empty-state"><svg lucideClock3 size="30" aria-hidden="true"></svg><strong>Todavía no hay lecturas para este período</strong><span>Las lecturas se guardan solas cada 10 minutos. Si la auditoría se acaba de activar, espere unos minutos@if (auth.hasRole(['admin'])) { o pulse «Medir ahora»}.</span></div>
+        }
       } @else {
         <div class="table-wrap">
           <table>
@@ -56,46 +60,53 @@
             <tbody>
               @for (row of pageData()!.items; track row.idServicio) {
                 <tr (click)="openDetail(row)" tabindex="0" (keydown.enter)="openDetail(row)">
-                  <td><div class="client-cell"><strong>{{ row.name }}</strong><span>{{ row.ip || 'Sin IP' }} · {{ row.plan || 'Sin plan' }}</span><small>{{ row.zone || 'Sin zona' }}</small></div></td>
+                  <td><div class="client-cell"><strong>{{ row.name }}</strong><span><span class="mono">{{ row.ip || 'Sin IP' }}</span> · {{ row.plan | planLabel }}</span>@if (row.zone) { <small>{{ row.zone }}</small> }</div></td>
                   <td><span [class]="'state ' + row.latestState"><i></i>{{ stateLabel(row.latestState) }}</span></td>
-                  <td><div class="metric"><strong>{{ row.availabilityPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.availabilityPercent"></i></div><small>{{ row.offlineSamples }} caidas</small></div></td>
-                  <td><div class="metric"><strong>{{ row.stabilityPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.stabilityPercent"></i></div><small>{{ row.degradedSamples }} degradadas</small></div></td>
-                  <td><div class="throughput"><strong>↓ {{ row.latestDownloadMbps | number:'1.1-2' }}</strong><span>↑ {{ row.latestUploadMbps | number:'1.1-2' }} Mbps</span></div></td>
-                  <td><div class="throughput"><strong>↓ {{ row.peakDownloadMbps | number:'1.1-2' }}</strong><span>↑ {{ row.peakUploadMbps | number:'1.1-2' }} Mbps</span></div></td>
-                  <td><div class="optic" [class]="row.opticalState"><strong>{{ row.latestRxPowerDbm == null ? '-' : (row.latestRxPowerDbm | number:'1.1-2') + ' dBm' }}</strong><span>{{ row.onuIndex || 'Sin ONU' }}</span></div></td>
+                  <td><div class="metric"><strong>{{ row.availabilityPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.availabilityPercent"></i></div><small>{{ row.offlineSamples }} {{ row.offlineSamples === 1 ? 'caída' : 'caídas' }}</small></div></td>
+                  <td><div class="metric"><strong>{{ row.stabilityPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.stabilityPercent"></i></div><small>{{ row.degradedSamples }} {{ row.degradedSamples === 1 ? 'lectura degradada' : 'lecturas degradadas' }}</small></div></td>
+                  <td><div class="throughput"><strong title="Bajada">↓ {{ row.latestDownloadMbps | number:'1.1-2' }} Mbps</strong><span title="Subida">↑ {{ row.latestUploadMbps | number:'1.1-2' }} Mbps</span></div></td>
+                  <td><div class="throughput"><strong title="Bajada">↓ {{ row.peakDownloadMbps | number:'1.1-2' }} Mbps</strong><span title="Subida">↑ {{ row.peakUploadMbps | number:'1.1-2' }} Mbps</span></div></td>
+                  <td><div class="optic" [class]="'optic ' + row.opticalState" [title]="opticalLabel(row.opticalState)"><strong>{{ row.latestRxPowerDbm == null ? '—' : (row.latestRxPowerDbm | number:'1.1-2') + ' dBm' }}</strong><span>{{ row.latestRxPowerDbm == null ? (row.onuIndex || 'Sin ONU') : opticalLabel(row.opticalState) }}</span></div></td>
                   <td><div class="samples"><strong>{{ row.sampleCount }}</strong><span>{{ row.lastCapturedAt | date:'dd/MM HH:mm' }}</span></div></td>
-                  <td><svg lucideChevronRight size="18"></svg></td>
+                  <td class="chevron"><svg lucideChevronRight size="18" aria-hidden="true"></svg></td>
                 </tr>
               }
             </tbody>
           </table>
         </div>
-        <footer class="pagination"><span>{{ pageData()?.total || 0 }} clientes</span><div><button type="button" (click)="changePage(-1)" [disabled]="page() === 1"><svg lucideChevronLeft size="17"></svg></button><strong>{{ page() }} / {{ totalPages() }}</strong><button type="button" (click)="changePage(1)" [disabled]="page() === totalPages()"><svg lucideChevronRight size="17"></svg></button></div></footer>
+        <footer class="pagination"><span>{{ pageData()?.total || 0 }} {{ pageData()?.total === 1 ? 'cliente' : 'clientes' }}</span><div><button type="button" (click)="changePage(-1)" [disabled]="page() === 1" aria-label="Página anterior"><svg lucideChevronLeft size="17" aria-hidden="true"></svg></button><strong>Página {{ page() }} de {{ totalPages() }}</strong><button type="button" (click)="changePage(1)" [disabled]="page() === totalPages()" aria-label="Página siguiente"><svg lucideChevronRight size="17" aria-hidden="true"></svg></button></div></footer>
       }
     </section>
   } @else {
     <section class="wan-summary">
-      <div><small>Promedio descarga WAN</small><strong>{{ wan()?.summary?.avgRxMbps || 0 | number:'1.1-2' }} Mbps</strong><span>Pico {{ wan()?.summary?.peakRxMbps || 0 | number:'1.1-2' }} Mbps</span></div>
-      <div><small>Promedio subida WAN</small><strong>{{ wan()?.summary?.avgTxMbps || 0 | number:'1.1-2' }} Mbps</strong><span>Pico {{ wan()?.summary?.peakTxMbps || 0 | number:'1.1-2' }} Mbps</span></div>
-      <div><small>Latencia promedio</small><strong>{{ wan()?.summary?.avgPingMs ?? '-' }} ms</strong><span>Desde MikroTik</span></div>
-      <div><small>Estabilidad WAN</small><strong>{{ wan()?.summary?.stabilityPercent || 0 | number:'1.1-2' }}%</strong><span>{{ wan()?.summary?.samples || 0 }} muestras</span></div>
+      <div><small>Bajada promedio</small><strong>{{ wan()?.summary?.avgRxMbps || 0 | number:'1.1-2' }} Mbps</strong><span>Pico {{ wan()?.summary?.peakRxMbps || 0 | number:'1.1-2' }} Mbps</span></div>
+      <div><small>Subida promedio</small><strong>{{ wan()?.summary?.avgTxMbps || 0 | number:'1.1-2' }} Mbps</strong><span>Pico {{ wan()?.summary?.peakTxMbps || 0 | number:'1.1-2' }} Mbps</span></div>
+      <div><small>Ping promedio</small><strong>@if (wan()?.summary?.avgPingMs != null) { {{ wan()?.summary?.avgPingMs }} ms } @else { — }</strong><span>Medido desde MikroTik</span></div>
+      <div><small>Estabilidad del enlace</small><strong>{{ wan()?.summary?.stabilityPercent || 0 | number:'1.1-2' }}%</strong><span>{{ wan()?.summary?.samples || 0 }} muestras</span></div>
     </section>
     <section class="data-panel">
-      <div class="table-wrap"><table class="wan-table"><thead><tr><th>Fecha</th><th>Estado</th><th>Descarga</th><th>Subida</th><th>Uso del enlace</th><th>Ping</th><th>Perdida</th><th>Clientes</th><th>OLT</th></tr></thead><tbody>
+      @if (loading()) {
+        <div class="loading-list" aria-busy="true" aria-label="Cargando lecturas">@for (row of [1,2,3,4]; track row) { <div><i></i><span></span><span></span></div> }</div>
+      } @else if (!wan()?.items?.length) {
+        <div class="empty-state"><svg lucideClock3 size="30" aria-hidden="true"></svg><strong>Todavía no hay lecturas del enlace</strong><span>Aparecerán aquí después de la próxima medición automática.</span></div>
+      } @else {
+      <div class="table-wrap"><table class="wan-table"><thead><tr><th>Fecha</th><th>Estado</th><th>Bajada</th><th>Subida</th><th>Uso del enlace</th><th>Ping</th><th>Pérdida</th><th>Clientes en línea</th><th>OLT (ONUs)</th></tr></thead><tbody>
         @for (row of wan()?.items || []; track row.id) {
-          <tr><td>{{ row.capturedAt | date:'dd/MM/yyyy HH:mm' }}</td><td><span [class]="'state ' + row.healthState"><i></i>{{ stateLabel(row.healthState) }}</span></td><td class="mono">{{ mbps(row.rxBps) | number:'1.1-2' }} Mbps</td><td class="mono">{{ mbps(row.txBps) | number:'1.1-2' }} Mbps</td><td><div class="metric"><strong>{{ row.utilizationPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.utilizationPercent"></i></div></div></td><td class="mono">{{ row.pingAvgMs ?? '-' }} ms</td><td>{{ row.pingLossPercent ?? '-' }}%</td><td>{{ row.clientsOnline }} / {{ row.clientsOnline + row.clientsOffline }}</td><td><span [class.off]="!row.oltConnected">{{ row.oltOnlineOnus }} en línea · {{ row.oltOfflineOnus }} fuera</span></td></tr>
+          <tr><td>{{ row.capturedAt | date:'dd/MM/yyyy HH:mm' }}</td><td><span [class]="'state ' + row.healthState"><i></i>{{ stateLabel(row.healthState) }}</span></td><td class="mono">{{ mbps(row.rxBps) | number:'1.1-2' }} Mbps</td><td class="mono">{{ mbps(row.txBps) | number:'1.1-2' }} Mbps</td><td><div class="metric"><strong>{{ row.utilizationPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.utilizationPercent"></i></div></div></td><td class="mono">@if (row.pingAvgMs != null) { {{ row.pingAvgMs }} ms } @else { — }</td><td>@if (row.pingLossPercent != null) { {{ row.pingLossPercent }} % } @else { — }</td><td>{{ row.clientsOnline }} / {{ row.clientsOnline + row.clientsOffline }}</td><td><span [class.off]="!row.oltConnected">@if (row.oltConnected) { {{ row.oltOnlineOnus }} en línea · {{ row.oltOfflineOnus }} fuera } @else { OLT sin conexión }</span></td></tr>
         }
       </tbody></table></div>
+      }
     </section>
   }
 
   @if (selected(); as client) {
-    <div class="drawer-layer"><button class="backdrop" type="button" (click)="closeDetail()" aria-label="Cerrar"></button><aside class="drawer">
-      <header><div><span [class]="'state ' + client.latestState"><i></i>{{ stateLabel(client.latestState) }}</span><h2>{{ client.name }}</h2><p>{{ client.ip }} · {{ client.plan || 'Sin plan' }} · {{ client.onuIndex || 'Sin ONU vinculada' }}</p></div><button class="icon-btn" type="button" (click)="closeDetail()"><svg lucideX size="19"></svg></button></header>
-      <div class="drawer-kpis"><div><small>Disponibilidad</small><strong>{{ client.availabilityPercent }}%</strong></div><div><small>Estabilidad</small><strong>{{ client.stabilityPercent }}%</strong></div><div><small>RX actual</small><strong>{{ client.latestRxPowerDbm == null ? 'Sin lectura' : (client.latestRxPowerDbm | number:'1.1-2') + ' dBm' }}</strong></div><div><small>Muestras</small><strong>{{ client.sampleCount }}</strong></div></div>
-      <div class="drawer-title"><h3>Lecturas de 10 minutos</h3><a [routerLink]="['/clients', client.idServicio]">Abrir cliente</a></div>
-      @if (detailLoading()) { <div class="mini-loading">Cargando lecturas...</div> }
-      @else { <div class="detail-list">@for (sample of detail().slice(0, 150); track sample.id) { <div><time>{{ sample.capturedAt | date:'dd/MM HH:mm' }}</time><span [class]="'state ' + sample.healthState"><i></i>{{ stateLabel(sample.healthState) }}</span><p><strong>↓ {{ mbps(sample.downloadBps) }} · ↑ {{ mbps(sample.uploadBps) }} Mbps</strong><small>{{ sample.rxPowerDbm == null ? 'Sin lectura optica' : 'RX ' + sample.rxPowerDbm + ' dBm' }} · {{ issueLabel(sample.issues) }}</small></p></div> }</div> }
+    <div class="drawer-layer"><button class="backdrop" type="button" (click)="closeDetail()" aria-label="Cerrar detalle"></button><aside class="drawer" aria-label="Detalle del cliente">
+      <header><div><span [class]="'state ' + client.latestState"><i></i>{{ stateLabel(client.latestState) }}</span><h2>{{ client.name }}</h2><p><span class="mono">{{ client.ip || 'Sin IP' }}</span> · {{ client.plan | planLabel }} · {{ client.onuIndex ? 'ONU ' + client.onuIndex : 'Sin ONU vinculada' }}</p></div><button class="icon-btn" type="button" (click)="closeDetail()" aria-label="Cerrar detalle" title="Cerrar (Esc)"><svg lucideX size="19" aria-hidden="true"></svg></button></header>
+      <div class="drawer-kpis"><div><small>Disponibilidad</small><strong>{{ client.availabilityPercent | number:'1.1-2' }}%</strong></div><div><small>Estabilidad</small><strong>{{ client.stabilityPercent | number:'1.1-2' }}%</strong></div><div><small>Señal óptica actual</small><strong>{{ client.latestRxPowerDbm == null ? 'Sin lectura' : (client.latestRxPowerDbm | number:'1.1-2') + ' dBm' }}</strong></div><div><small>Lecturas</small><strong>{{ client.sampleCount }}</strong></div></div>
+      <div class="drawer-title"><h3>Lecturas cada 10 minutos{{ days() > 14 ? ' (últimos 14 días)' : '' }}</h3><a [routerLink]="['/clients', client.idServicio]">Abrir ficha del cliente</a></div>
+      @if (detailLoading()) { <div class="mini-loading">Cargando lecturas…</div> }
+      @else if (!detail().length) { <div class="mini-loading">Sin lecturas para este cliente en el período.</div> }
+      @else { <div class="detail-list">@for (sample of detail().slice(0, 150); track sample.id) { <div><time>{{ sample.capturedAt | date:'dd/MM HH:mm' }}</time><span [class]="'state ' + sample.healthState"><i></i>{{ stateLabel(sample.healthState) }}</span><p><strong>↓ {{ mbps(sample.downloadBps) | number:'1.1-2' }} · ↑ {{ mbps(sample.uploadBps) | number:'1.1-2' }} Mbps</strong><small>{{ sample.rxPowerDbm == null ? 'Sin lectura óptica' : 'Señal ' + (sample.rxPowerDbm | number:'1.1-2') + ' dBm' }} · {{ issueLabel(sample.issues) }}</small></p></div> }</div> }
     </aside></div>
   }
 </main>

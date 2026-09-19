@@ -1,4 +1,5 @@
-import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
+import { LucideActivity, LucideSearch, LucideWifiOff } from '@lucide/angular';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { LocalDbService } from '../../services/local-db.service';
 import { WisphubService } from '../../services/wisphub.service';
@@ -6,6 +7,7 @@ import { WispHubClient } from '../../models/client.model';
 import { ToastService } from '../../services/toast.service';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 
 interface ClientPing {
   client: WispHubClient;
@@ -18,137 +20,198 @@ interface ClientPing {
 @Component({
   selector: 'app-network-monitor',
   standalone: true,
-  imports: [NavbarComponent, FormsModule, RouterLink],
+  imports: [NavbarComponent, FormsModule, RouterLink, PlanLabelPipe, LucideActivity, LucideSearch, LucideWifiOff],
   template: `
-    <app-navbar pageTitle="Monitor de Red" />
+    <app-navbar pageTitle="Estado de red" />
 
     <div class="page">
+      <p class="intro">
+        Hace ping a los clientes activos que tienen IP para saber quién responde.
+        El escaneo completo va de uno en uno para no cargar el router (unos {{ scanMinutes() }} min en total).
+      </p>
+
       <div class="toolbar">
-        <div class="stats-bar">
-          <div class="stat-pill green">
+        <div class="stats-bar" aria-live="polite">
+          <div class="stat-pill green" title="Clientes que respondieron al ping">
             <span class="pill-dot online"></span>
-            <span>{{ onlineCount() }} Online</span>
+            <span><strong>{{ onlineCount() }}</strong> responden</span>
           </div>
-          <div class="stat-pill red">
+          <div class="stat-pill red" title="Clientes que no respondieron o no se pudieron verificar">
             <span class="pill-dot offline"></span>
-            <span>{{ offlineCount() }} Offline</span>
+            <span><strong>{{ offlineCount() }}</strong> sin respuesta</span>
           </div>
           <div class="stat-pill gray">
-            <span>{{ totalCount() }} Total</span>
+            <span><strong>{{ totalCount() }}</strong> clientes con IP</span>
           </div>
           @if (scanning()) {
             <div class="stat-pill blue">
               <div class="mini-spinner"></div>
-              <span>Escaneando {{ scanProgress() }}/{{ totalCount() }}</span>
+              <span>Escaneando {{ scanProgress() }} de {{ totalCount() }}</span>
             </div>
           }
         </div>
         <div class="toolbar-right">
-          <input type="text" placeholder="Filtrar..." [(ngModel)]="filterTerm" (input)="applyFilter()" class="filter-input" />
-          <select [(ngModel)]="statusFilter" (change)="applyFilter()" class="filter-select">
+          <label class="search-box">
+            <svg lucideSearch size="16" aria-hidden="true"></svg>
+            <input type="search" placeholder="Buscar nombre o IP" [(ngModel)]="filterTerm" (input)="applyFilter()" aria-label="Buscar cliente por nombre o IP" />
+          </label>
+          <select [(ngModel)]="statusFilter" (change)="applyFilter()" class="filter-select" aria-label="Filtrar por resultado">
             <option value="">Todos</option>
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
+            <option value="online">Responden</option>
+            <option value="offline">Sin respuesta</option>
             <option value="idle">Sin escanear</option>
           </select>
-          <button class="btn btn-primary" (click)="scanAll()" [disabled]="scanning()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-            {{ scanning() ? 'Escaneando...' : 'Escanear Todo' }}
+          <button class="btn btn-primary" (click)="scanAll()" [disabled]="scanning() || totalCount() === 0"
+            [title]="totalCount() === 0 ? 'No hay clientes con IP para escanear' : 'Hace ping a todos los clientes, uno por uno'">
+            <svg lucideActivity size="16" aria-hidden="true"></svg>
+            {{ scanning() ? 'Escaneando…' : 'Escanear todos' }}
           </button>
         </div>
       </div>
 
-      <div class="grid">
-        @for (cp of filteredClients(); track cp.client.id_servicio) {
-          <div class="client-tile" [class]="'tile-' + cp.status">
-            <div class="tile-header">
-              <span class="tile-dot" [class]="'dot-' + cp.status"></span>
-              <a [routerLink]="['/clients', cp.client.id_servicio]" class="tile-name">{{ cp.client.nombre }}</a>
-            </div>
-            <div class="tile-ip">{{ cp.client.ip }}</div>
-            <div class="tile-plan">{{ cp.client.plan_internet?.nombre || '-' }}</div>
-            <div class="tile-footer">
-              <span class="tile-status">{{ getStatusLabel(cp.status) }}</span>
-              @if (cp.status === 'idle') {
-                <button class="ping-btn" (click)="pingOne(cp)">Ping</button>
-              }
-              @if (cp.status === 'pinging') {
-                <div class="mini-spinner"></div>
-              }
-            </div>
-          </div>
-        }
-      </div>
+      @if (scanning()) {
+        <div class="scan-progress" role="progressbar" [attr.aria-valuenow]="scanProgress()" aria-valuemin="0" [attr.aria-valuemax]="totalCount()">
+          <i [style.width.%]="totalCount() ? (scanProgress() / totalCount()) * 100 : 0"></i>
+        </div>
+      }
 
-      @if (filteredClients().length === 0 && allPings().length === 0) {
+      @if (loading()) {
+        <div class="grid" aria-busy="true" aria-label="Cargando clientes">
+          @for (n of [1,2,3,4,5,6,7,8]; track n) { <div class="client-tile skeleton"></div> }
+        </div>
+      } @else if (allPings().length === 0) {
         <div class="empty-state">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          <h3>Monitor de Red</h3>
-          <p>Sincroniza clientes primero, luego presiona "Escanear Todo" para ver el estado de la red</p>
+          <svg lucideWifiOff size="48" aria-hidden="true"></svg>
+          <h3>No hay clientes activos con IP</h3>
+          <p>Sincronice los clientes desde la pantalla principal («Sincronizar ahora») y vuelva aquí.</p>
+        </div>
+      } @else if (filteredClients().length === 0) {
+        <div class="empty-state">
+          <svg lucideSearch size="40" aria-hidden="true"></svg>
+          <h3>Ningún cliente coincide</h3>
+          <p>Cambie la búsqueda o el filtro de resultado.</p>
+          <button class="btn btn-outline" type="button" (click)="clearFilter()">Ver todos</button>
+        </div>
+      } @else {
+        <div class="grid">
+          @for (cp of filteredClients(); track cp.client.id_servicio) {
+            <div class="client-tile" [class]="'client-tile tile-' + cp.status">
+              <div class="tile-header">
+                <span class="tile-dot" [class]="'tile-dot dot-' + cp.status" aria-hidden="true"></span>
+                <a [routerLink]="['/clients', cp.client.id_servicio]" class="tile-name" [title]="cp.client.nombre">{{ cp.client.nombre }}</a>
+              </div>
+              <div class="tile-ip">{{ cp.client.ip }}</div>
+              <div class="tile-plan">{{ cp.client.plan_internet?.nombre | planLabel }}</div>
+              <div class="tile-footer">
+                <span class="tile-status" [class]="'tile-status st-' + cp.status">
+                  {{ getStatusLabel(cp.status) }}@if (cp.result && (cp.status === 'online' || cp.status === 'offline')) { <small> · {{ cp.result }}</small> }
+                </span>
+                @if (cp.status === 'pinging') {
+                  <div class="mini-spinner" aria-label="Haciendo ping"></div>
+                } @else if (!scanning()) {
+                  <button class="ping-btn" type="button" (click)="pingOne(cp)" [attr.aria-label]="'Hacer ping a ' + cp.client.nombre">
+                    {{ cp.status === 'idle' ? 'Ping' : 'Repetir' }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
         </div>
       }
     </div>
   `,
   styles: [`
-    .page { padding: 24px 32px; }
+    :host { display: block; background: #f8fafc; min-height: 100%; }
+    .page { padding: 24px 28px 40px; color: #334250; }
+    .intro { margin: 0 0 16px; max-width: 760px; color: #667582; font-size: 13px; line-height: 1.5; }
 
-    .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; flex-wrap: wrap; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
     .stats-bar { display: flex; gap: 8px; flex-wrap: wrap; }
-    .stat-pill { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600; }
-    .stat-pill.green { background: #f0fdf4; color: #16a34a; }
-    .stat-pill.red { background: #fef2f2; color: #ef4444; }
-    .stat-pill.gray { background: #f1f5f9; color: #64748b; }
-    .stat-pill.blue { background: #eff6ff; color: #3b82f6; }
+    .stat-pill { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid transparent; }
+    .stat-pill strong { font-weight: 800; }
+    .stat-pill.green { background: #e9f8f1; color: #13875a; border-color: #c7ebd9; }
+    .stat-pill.red { background: #fff0ef; color: #b42318; border-color: #f6cfcb; }
+    .stat-pill.gray { background: #fff; color: #667582; border-color: #dfe5ea; }
+    .stat-pill.blue { background: #edf4ff; color: #1267dd; border-color: #cfe0f8; }
 
     .pill-dot { width: 8px; height: 8px; border-radius: 50%; }
-    .pill-dot.online { background: #22c55e; animation: pulse 1.5s infinite; }
-    .pill-dot.offline { background: #ef4444; }
+    .pill-dot.online { background: #13875a; }
+    .pill-dot.offline { background: #b42318; }
 
-    .toolbar-right { display: flex; gap: 8px; align-items: center; }
-    .filter-input { padding: 8px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; outline: none; width: 160px; }
-    .filter-input:focus { border-color: #6366f1; }
-    .filter-select { padding: 8px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; background: white; }
-    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.2s; }
-    .btn-primary { background: #6366f1; color: white; }
-    .btn-primary:hover { background: #4f46e5; }
+    .toolbar-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .search-box { display: flex; align-items: center; gap: 7px; height: 38px; padding: 0 11px; border: 1px solid #ccd6de; border-radius: 6px; background: #fff; color: #667582; }
+    .search-box:focus-within { border-color: #1267dd; box-shadow: 0 0 0 2px #edf4ff; }
+    .search-box input { width: 170px; border: 0; outline: 0; font-size: 13px; color: #172535; background: transparent; }
+    .filter-select { height: 38px; padding: 0 10px; border: 1px solid #ccd6de; border-radius: 6px; font-size: 13px; background: white; color: #334250; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 38px; padding: 0 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: background .15s; }
+    .btn-primary { background: #1267dd; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #0d58c0; }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-outline { background: #fff; color: #1267dd; border-color: #b9cdea; }
+    button:focus-visible, a:focus-visible, select:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .scan-progress { height: 4px; margin-bottom: 14px; background: #e6ebf0; border-radius: 2px; overflow: hidden; }
+    .scan-progress i { display: block; height: 100%; background: #1267dd; transition: width .3s; }
+
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; }
 
     .client-tile {
-      background: white; border: 1px solid #e2e8f0; border-radius: 12px;
-      padding: 14px; transition: all 0.2s; border-left: 4px solid #e2e8f0;
+      min-width: 0; background: white; border: 1px solid #dfe5ea; border-radius: 8px;
+      padding: 12px 14px; border-left: 4px solid #ccd6de;
     }
-    .tile-online { border-left-color: #22c55e; }
-    .tile-offline { border-left-color: #ef4444; }
-    .tile-pinging { border-left-color: #3b82f6; }
-    .tile-error { border-left-color: #f59e0b; }
+    .client-tile.skeleton { height: 96px; border-left-color: #e6ebf0; background: linear-gradient(90deg, #eef1f4 25%, #f7f9fa 50%, #eef1f4 75%); background-size: 220% 100%; animation: shimmer 1.3s infinite; }
+    .tile-online { border-left-color: #13875a; }
+    .tile-offline { border-left-color: #b42318; }
+    .tile-pinging { border-left-color: #1267dd; }
+    .tile-error { border-left-color: #b36b12; }
 
-    .tile-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .tile-header { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; min-width: 0; }
     .tile-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .dot-idle { background: #cbd5e1; }
-    .dot-pinging { background: #3b82f6; animation: pulse 0.8s infinite; }
-    .dot-online { background: #22c55e; }
-    .dot-offline { background: #ef4444; }
-    .dot-error { background: #f59e0b; }
+    .dot-idle { background: #ccd6de; }
+    .dot-pinging { background: #1267dd; animation: pulse 0.8s infinite; }
+    .dot-online { background: #13875a; }
+    .dot-offline { background: #b42318; }
+    .dot-error { background: #b36b12; }
 
-    .tile-name { font-size: 14px; font-weight: 600; color: #0f172a; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .tile-name:hover { color: #6366f1; }
-    .tile-ip { font-size: 12px; font-family: 'Courier New', monospace; color: #6366f1; font-weight: 500; }
-    .tile-plan { font-size: 11px; color: #94a3b8; margin-bottom: 6px; }
-    .tile-footer { display: flex; align-items: center; justify-content: space-between; }
-    .tile-status { font-size: 11px; font-weight: 600; color: #64748b; }
+    .tile-name { min-width: 0; font-size: 13px; font-weight: 650; color: #172535; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .tile-name:hover { color: #1267dd; text-decoration: underline; }
+    .tile-ip { font-size: 12px; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; color: #334250; }
+    .tile-plan { font-size: 11px; color: #667582; margin-bottom: 8px; }
+    .tile-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 26px; }
+    .tile-status { font-size: 12px; font-weight: 650; color: #667582; }
+    .tile-status small { font-size: 11px; font-weight: 500; color: #667582; }
+    .tile-status.st-online { color: #13875a; }
+    .tile-status.st-offline { color: #b42318; }
+    .tile-status.st-error { color: #b36b12; }
+    .tile-status.st-pinging { color: #1267dd; }
 
-    .ping-btn { padding: 3px 10px; border: 1px solid #e2e8f0; border-radius: 6px; background: white; font-size: 11px; color: #6366f1; cursor: pointer; font-weight: 500; }
-    .ping-btn:hover { background: #6366f1; color: white; }
+    .ping-btn { padding: 4px 10px; border: 1px solid #ccd6de; border-radius: 6px; background: white; font-size: 12px; color: #1267dd; cursor: pointer; font-weight: 600; }
+    .ping-btn:hover { background: #1267dd; border-color: #1267dd; color: white; }
 
-    .mini-spinner { width: 14px; height: 14px; border: 2px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .mini-spinner { width: 14px; height: 14px; border: 2px solid #dfe5ea; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
 
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes shimmer { to { background-position: -220% 0; } }
 
-    .empty-state { display: flex; flex-direction: column; align-items: center; padding: 80px; gap: 12px; color: #94a3b8; }
-    .empty-state h3 { color: #475569; margin: 8px 0 0; }
+    .empty-state { display: flex; flex-direction: column; align-items: center; padding: 64px 20px; gap: 8px; color: #8792a0; text-align: center; background: #fff; border: 1px dashed #ccd6de; border-radius: 8px; }
+    .empty-state h3 { color: #172535; margin: 6px 0 0; font-size: 16px; }
+    .empty-state p { margin: 0; max-width: 420px; color: #667582; font-size: 13px; }
+
+    @media (max-width: 640px) {
+      .page { padding: 16px 12px 32px; }
+      .toolbar-right { width: 100%; }
+      .search-box { flex: 1 1 100%; }
+      .search-box input { width: 100%; }
+      .filter-select, .toolbar-right .btn { flex: 1; }
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 400px) {
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .dot-pinging, .client-tile.skeleton, .mini-spinner { animation: none; }
+    }
   `]
 })
 export class NetworkMonitorComponent implements OnInit, OnDestroy {
@@ -163,12 +226,16 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
   totalCount = signal(0);
   scanning = signal(false);
   scanProgress = signal(0);
+  loading = signal(true);
+  /** Estimado visible: ~1.5 s entre pings del escaneo completo. */
+  scanMinutes = computed(() => Math.max(1, Math.ceil((this.totalCount() * 1.5) / 60)));
   filterTerm = '';
   statusFilter = '';
   private pollInterval: any;
 
   async ngOnInit() {
-    const clients = await this.db.getClients();
+    const clients = await this.db.getClients().catch(() => [] as WispHubClient[]);
+    this.loading.set(false);
     const activeClients = clients.filter(c => c.estado?.toLowerCase() === 'activo' && c.ip);
     const pings: ClientPing[] = activeClients.map(c => ({ client: c, status: 'idle' as const }));
     this.allPings.set(pings);
@@ -193,6 +260,12 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
       result = result.filter(p => p.status === this.statusFilter);
     }
     this.filteredClients.set(result);
+  }
+
+  clearFilter() {
+    this.filterTerm = '';
+    this.statusFilter = '';
+    this.applyFilter();
   }
 
   pingOne(cp: ClientPing) {
@@ -252,7 +325,7 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
   scanAll() {
     this.scanning.set(true);
     this.scanProgress.set(0);
-    this.toast.info('Escaneando red...');
+    this.toast.info('Escaneando la red…');
 
     const pings = this.allPings();
     let idx = 0;
@@ -260,7 +333,7 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
     const next = () => {
       if (idx >= pings.length) {
         this.scanning.set(false);
-        this.toast.success(`Escaneo completo: ${this.onlineCount()} online, ${this.offlineCount()} offline`);
+        this.toast.success(`Escaneo terminado: ${this.onlineCount()} responden, ${this.offlineCount()} sin respuesta`);
         return;
       }
 
@@ -299,10 +372,10 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
 
   getStatusLabel(status: string): string {
     switch (status) {
-      case 'online': return 'Online';
-      case 'offline': return 'Offline';
-      case 'pinging': return 'Ping...';
-      case 'error': return 'Error';
+      case 'online': return 'Responde';
+      case 'offline': return 'Sin respuesta';
+      case 'pinging': return 'Haciendo ping…';
+      case 'error': return 'No se pudo verificar';
       default: return 'Sin escanear';
     }
   }
