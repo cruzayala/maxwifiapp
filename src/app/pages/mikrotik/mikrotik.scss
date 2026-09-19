@@ -70,7 +70,17 @@ app-mikrotik {
 
 .header-actions { gap: 10px; }
 .updated-at { display: flex; flex-direction: column; align-items: flex-end; color: #7a879b; font-size: 12px; text-transform: uppercase; }
-.updated-at strong { color: #344054; font-size: 12px; font-weight: 650; }
+.updated-at strong { color: #344054; font-size: 12px; font-weight: 650; text-transform: none; }
+.updated-at.stale,
+.updated-at.stale strong { color: #b36b12; }
+.health-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid #dfe5ea; border-radius: 15px; background: #fff; color: #334250; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.health-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: #667582; }
+.health-chip.ok { border-color: #bfe6d3; color: #13875a; }
+.health-chip.ok .dot { background: #13875a; }
+.health-chip.warn { border-color: #efc98a; background: #fff6e8; color: #b36b12; }
+.health-chip.warn .dot { background: #d08a1c; }
+.health-chip.crit { border-color: #f1b8b3; background: #fff0ef; color: #b42318; }
+.health-chip.crit .dot { background: #b42318; }
 .icon-button {
   width: 36px;
   height: 36px;
@@ -150,7 +160,8 @@ app-mikrotik {
 .kpi-strip strong { margin-top: 2px; color: #182235; font-size: 18px; line-height: 1.15; }
 .kpi-strip em { color: #8a95a6; font-size: 12px; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.overview-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .8fr); gap: 14px; margin-bottom: 14px; }
+.overview-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .8fr); gap: 14px; margin-bottom: 14px; align-items: start; }
+.overview-grid > app-mt-router-health { grid-column: 2; grid-row: 1 / span 2; }
 .panel { border: 1px solid #dce2ea; border-radius: 8px; background: #fff; overflow: hidden; }
 .panel > header { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 14px 16px; border-bottom: 1px solid #e8ecf1; }
 .panel header > div { gap: 10px; min-width: 0; }
@@ -176,16 +187,30 @@ app-mikrotik {
 .traffic-key.upload { background: #168b78; }
 .traffic-key.packets { background: #7a6caf; }
 
-.health-list { padding: 8px 16px 12px; }
-.health-list > div { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid #edf0f4; }
-.health-list > div:last-child { border-bottom: 0; }
-.health-list span { display: flex; align-items: center; gap: 7px; color: #667389; font-size: 12px; }
-.health-list strong { color: #263248; font-size: 12px; }
-.health-list i { grid-column: 1 / -1; height: 4px; border-radius: 3px; background: #e9edf2; overflow: hidden; }
-.health-list b { display: block; height: 100%; background: #2b7c9f; }
-.health-list b.temperature { background: #c97823; }
+.top-panel > header { flex-wrap: wrap; }
+.segmented { display: inline-flex; margin-left: auto; padding: 2px; border: 1px solid #dfe5ea; border-radius: 7px; background: #f8fafc; }
+.segmented button { min-height: 28px; padding: 0 11px; border: 0; border-radius: 5px; background: transparent; color: #667582; font-size: 12px; font-weight: 650; cursor: pointer; }
+.segmented button.active { background: #fff; color: #172535; box-shadow: 0 1px 2px rgba(23, 37, 53, .12); }
+.rank-col { width: 36px; }
+.rank { display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 6px; background: #eef1f4; color: #667582; font-size: 11px; font-weight: 800; }
+.rank.podium { background: #edf4ff; color: #1267dd; }
+.client-link { max-width: 220px; color: #1267dd; font-size: 12px; font-weight: 700; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.client-link:hover { text-decoration: underline; }
+.ip-copy { display: inline-flex; align-items: center; gap: 4px; }
+.ip-copy button { width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #8a95a6; cursor: pointer; }
+.ip-copy button:hover { border-color: #ccd6de; color: #1267dd; background: #fff; }
+.usage-cell { display: flex; align-items: center; gap: 6px; }
+.usage-cell small { color: #667582; font-size: 11px; }
+.usage-cell.hot .mini-usage span { background: #b42318; }
+.usage-cell.hot small { color: #b42318; font-weight: 750; }
+.issue-tag { display: inline-flex; align-items: center; min-height: 19px; margin: 3px 0 0 4px; padding: 0 6px; border-radius: 9px; background: #fff0ef; color: #b42318; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.muted-text { color: #8a95a6; }
+.select-label { color: #667582; font-size: 11px; font-weight: 650; }
+.issue-rail button.lvl-crit:not(.active) { border-color: #f1b8b3; color: #b42318; }
+.issue-rail button.lvl-warn:not(.active) { border-color: #efc98a; color: #b36b12; }
+.heading-actions { margin-left: auto; }
+.mikrotik-page .heading-actions .text-button { margin-left: 0; }
 
-.top-panel > header .text-button,
 .workspace-heading .text-button { margin-left: auto; }
 .text-button,
 .action-button,
@@ -365,6 +390,7 @@ app-mikrotik {
   .kpi-strip article:nth-child(2n) { border-right: 0; }
   .kpi-strip article:nth-child(3) { border-right: 1px solid #e8ecf1; }
   .kpi-strip article:nth-child(-n+4) { border-bottom: 1px solid #e8ecf1; }
+  .overview-grid > app-mt-router-health { grid-column: auto; grid-row: auto; }
   .overview-grid,
   .infrastructure-grid,
   .security-layout { grid-template-columns: 1fr; }
@@ -389,7 +415,7 @@ app-mikrotik {
   .kpi-strip article { border-right: 0; border-bottom: 1px solid #e8ecf1; }
   .kpi-strip article:last-child { border-bottom: 0; }
   .toolbar-controls { align-items: stretch; flex-direction: column; }
-  .ipam-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 36px; align-items: center; }
+  .ipam-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 36px 36px; align-items: center; }
   .ipam-toolbar .search-control { min-width: 0; }
   .select-control select { width: 100%; }
   .mt-mini-kpis { grid-template-columns: 1fr; }

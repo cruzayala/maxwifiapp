@@ -18,9 +18,15 @@
       </div>
     </div>
     <div class="header-actions">
-      <div class="updated-at">
-        <span>Actualizado</span>
-        <strong>{{ lastUpdate()?.toLocaleTimeString('es-DO') || '--:--:--' }}</strong>
+      @if (status().connected && routerHealth().level !== 'none') {
+        <button type="button" class="health-chip" [class]="routerHealth().level" (click)="changeTab('overview')"
+          [title]="routerHealth().reasons.length ? routerHealth().reasons.join(' · ') : 'CPU, memoria, almacenamiento y sensores en rango normal'">
+          <span class="dot" aria-hidden="true"></span>Router: {{ routerHealth().label }}
+        </button>
+      }
+      <div class="updated-at" [class.stale]="dataStale()" [title]="lastUpdate() ? 'Última lectura: ' + lastUpdate()!.toLocaleTimeString('es-DO') : 'Aún sin datos'">
+        <span>{{ dataStale() ? 'Datos atrasados' : 'Actualizado' }}</span>
+        <strong>{{ lastUpdate() ? lastUpdateText() : '--:--:--' }}</strong>
       </div>
       <button class="icon-button" type="button" (click)="refreshAll()" [disabled]="refreshing()" title="Actualizar datos" aria-label="Actualizar datos">
         <svg lucideRefreshCw size="18" [class.spinning]="refreshing()" aria-hidden="true"></svg>
@@ -54,6 +60,7 @@
     </section>
   } @else {
     @if (activeTab() === 'overview') {
+      <app-mt-global-search [clients]="clients()" [unknownDevices]="unknownDevices()" [ipamRows]="ipamRows()" [formatRate]="formatBpsFn" (open)="openSearchResult($event)" />
       <section class="kpi-strip" aria-label="Indicadores operativos">
         <article>
           <span class="kpi-icon blue"><svg lucideArrowDownToLine size="19" aria-hidden="true"></svg></span>
@@ -95,37 +102,49 @@
           </div>
         </article>
 
-        <article class="panel health-panel">
-          <header><div><span class="section-icon"><svg lucideServer size="18" aria-hidden="true"></svg></span><div><h2>Salud del CCR</h2><p>{{ systemResource('uptime') }} encendido</p></div></div></header>
-          <div class="health-list">
-            <div><span><svg lucideCpu size="16" aria-hidden="true"></svg>CPU</span><strong>{{ systemResource('cpu-load') }}%</strong><i><b [style.width.%]="+systemResource('cpu-load') || 0"></b></i></div>
-            <div><span><svg lucideHardDrive size="16" aria-hidden="true"></svg>Memoria</span><strong>{{ memoryUsage().toFixed(0) }}%</strong><i><b [style.width.%]="memoryUsage()"></b></i></div>
-            <div><span><svg lucideZap size="16" aria-hidden="true"></svg>Temperatura</span><strong>{{ temperature() }}</strong><i><b class="temperature" [style.width.%]="50"></b></i></div>
-          </div>
-        </article>
+        <app-mt-router-health [system]="system()" />
+
+        <app-mt-network-issues [clients]="clients()" [ipamData]="ipam()" (filter)="showIssue($event)" (ipam)="openIpamConflicts()" />
       </section>
 
       <section class="panel top-panel">
         <header>
-          <div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Mayor consumo ahora</h2><p>Tráfico instantáneo por cola</p></div></div>
-          <button class="text-button" type="button" (click)="changeTab('reconciliation')">Ver todos</button>
+          <div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Ranking de consumo</h2><p>{{ rankingMode() === 'now' ? 'Tráfico de este momento por cola · se actualiza cada 15 s' : 'Datos acumulados por cola desde su último reinicio de contadores' }}</p></div></div>
+          <div class="segmented" role="group" aria-label="Tipo de ranking">
+            <button type="button" [class.active]="rankingMode() === 'now'" [attr.aria-pressed]="rankingMode() === 'now'" (click)="setRankingMode('now')">Ahora</button>
+            <button type="button" [class.active]="rankingMode() === 'total'" [attr.aria-pressed]="rankingMode() === 'total'" (click)="setRankingMode('total')">Acumulado</button>
+          </div>
+          <button class="text-button" type="button" (click)="showTopConsumers()">Ver todos</button>
         </header>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Cliente</th><th>IP</th><th>Plan</th><th>Subida</th><th>Descarga</th><th>Uso</th><th>Estado</th></tr></thead>
+            <thead><tr><th class="rank-col">#</th><th>Cliente</th><th>IP</th><th>Plan</th>
+              @if (rankingMode() === 'now') { <th>Subida</th><th>Descarga</th><th>Uso del plan</th><th>Del WAN</th> }
+              @else { <th>Subida acumulada</th><th>Descarga acumulada</th><th>Total</th> }
+              <th>Estado</th></tr></thead>
             <tbody>
-              @for (row of topClients(); track row.ip) {
+              @for (row of topClients(); track row.ip + row.queueName; let i = $index) {
                 <tr>
-                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.zone || '—' }}</small></div></div></td>
-                  <td class="mono">{{ row.ip }}</td>
+                  <td class="rank-col"><span class="rank" [class.podium]="i < 3">{{ i + 1 }}</span></td>
+                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div>
+                    @if (row.client?.id) { <a class="client-link" [routerLink]="['/clients', row.client?.id]" title="Abrir expediente del cliente">{{ row.client?.name }}</a> } @else { <strong>{{ row.queueName }}</strong> }
+                    <small>{{ row.client?.zone || (row.client ? '—' : 'Cola sin cliente en WispHub') }}</small></div></div></td>
+                  <td><span class="ip-copy"><span class="mono">{{ row.ip }}</span><button type="button" (click)="copyAvailableIp(row.ip)" [title]="'Copiar ' + row.ip" [attr.aria-label]="'Copiar IP ' + row.ip"><svg lucideCopy size="12" aria-hidden="true"></svg></button></span></td>
                   <td>{{ row.client?.plan ? (row.client?.plan | planLabel) : formatLimit(row.maxUploadBps + '/' + row.maxDownloadBps) }}</td>
-                  <td class="rate upload">{{ formatBps(row.uploadBps) }}</td>
-                  <td class="rate download">{{ formatBps(row.downloadBps) }}</td>
-                  <td><div class="mini-usage"><span [style.width.%]="Math.max(row.uploadPct, row.downloadPct)"></span></div></td>
+                  @if (rankingMode() === 'now') {
+                    <td class="rate upload">{{ formatBps(row.uploadBps) }}</td>
+                    <td class="rate download">{{ formatBps(row.downloadBps) }}</td>
+                    <td><div class="usage-cell" [class.hot]="Math.max(row.uploadPct, row.downloadPct) >= 90"><div class="mini-usage"><span [style.width.%]="Math.max(row.uploadPct, row.downloadPct)"></span></div><small>{{ Math.max(row.uploadPct, row.downloadPct).toFixed(0) }}%</small></div></td>
+                    <td>{{ wanShare(row).toFixed(1) }}%</td>
+                  } @else {
+                    <td>{{ formatBytes(row.totalUploadBytes) }}</td>
+                    <td>{{ formatBytes(row.totalDownloadBytes) }}</td>
+                    <td><strong>{{ formatBytes(row.totalBytes) }}</strong></td>
+                  }
                   <td><span class="state-badge" [class.online]="row.isOnline">{{ row.isOnline ? 'En línea' : 'Sin conexión' }}</span></td>
                 </tr>
               } @empty {
-                <tr><td colspan="7" class="empty-row">Sin tráfico activo</td></tr>
+                <tr><td [attr.colspan]="rankingMode() === 'now' ? 9 : 8" class="empty-row">{{ rankingMode() === 'now' ? 'Ningún cliente está transmitiendo en este momento' : 'Aún no hay consumo acumulado en las colas' }}</td></tr>
               }
             </tbody>
           </table>
@@ -137,10 +156,20 @@
       <section class="workspace-heading">
         <div><h2>Clientes y colas</h2><p>{{ live()?.stats?.mikrotikQueues || 0 }} colas · {{ live()?.stats?.differences || 0 }} diferencias operativas</p></div>
         <div class="toolbar-controls">
-          <label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="Cliente, usuario o IP" [ngModel]="clientQuery()" (ngModelChange)="setClientQuery($event)" /></label>
-          <label class="select-control"><svg lucideSlidersHorizontal size="16" aria-hidden="true"></svg><select [ngModel]="syncFilter()" (ngModelChange)="setSyncFilter($event)"><option value="all">Todos</option><option value="differences">Con diferencias</option><option value="online">En línea</option><option value="offline">Sin conexión</option><option value="disabled">Deshabilitados</option></select></label>
+          <label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="Cliente, usuario, IP o MAC" aria-label="Buscar colas" [ngModel]="clientQuery()" (ngModelChange)="setClientQuery($event)" /></label>
+          <label class="select-control"><svg lucideSlidersHorizontal size="16" aria-hidden="true"></svg><select aria-label="Filtrar colas" [ngModel]="syncFilter()" (ngModelChange)="setSyncFilter($event)"><option value="all">Todos</option><option value="differences">Con diferencias</option><option value="online">En línea</option><option value="offline">Sin conexión</option><option value="disabled">Deshabilitados (sin límite)</option>@for (kind of issueOrder; track kind) { <option [value]="kind">{{ issueInfo[kind].title }}</option> }</select></label>
+          <label class="select-control"><span class="select-label">Orden</span><select aria-label="Ordenar colas" [ngModel]="clientSort()" (ngModelChange)="setClientSort($event)"><option value="default">Como en el router</option><option value="traffic">Mayor consumo ahora</option><option value="total">Mayor consumo acumulado</option><option value="usage">% del plan en uso</option><option value="ip">Por IP</option><option value="name">Por nombre</option></select></label>
+          <button class="text-button" type="button" (click)="exportClients()" [disabled]="!filteredClients().length" title="Descargar en CSV las colas que se ven con estos filtros"><svg lucideDownload size="15" aria-hidden="true"></svg>CSV</button>
         </div>
       </section>
+      @if (issueChips().length) {
+        <div class="filter-rail issue-rail" aria-label="Filtros rápidos de inconsistencias">
+          <button type="button" [class.active]="syncFilter() === 'all'" (click)="setSyncFilter('all')">Todos <span>{{ clients().length }}</span></button>
+          @for (chip of issueChips(); track chip.kind) {
+            <button type="button" [class]="'lvl-' + chip.level" [class.active]="syncFilter() === chip.filter" (click)="setSyncFilter(syncFilter() === chip.filter ? 'all' : chip.filter)">{{ chip.label }} <span>{{ chip.count }}</span></button>
+          }
+        </div>
+      }
       @if (canManage()) {
         <section class="mt-control-bar">
           <div class="mt-control-summary"><strong>{{ selectedQueueIds().size }}</strong><span>colas seleccionadas</span></div>
@@ -166,8 +195,8 @@
                 <tr [class.attention-row]="row.syncState !== 'synced'">
                   @if (canManage()) { <td class="check-col"><input type="checkbox" [disabled]="!row.queueId" [checked]="!!row.queueId && selectedQueueIds().has(row.queueId)" (change)="toggleQueueSelection(row.queueId, $any($event.target).checked)" [attr.aria-label]="'Seleccionar ' + (row.client?.name || row.queueName)" /></td> }
                   <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.username || 'Sin cliente asociado' }}</small></div></div></td>
-                  <td><strong class="mono">{{ row.ip || 'Sin IP' }}</strong><small class="cell-note mono">{{ row.macAddress || '—' }}</small></td>
-                  <td><span class="sync-badge" [class.issue]="row.syncState !== 'synced'">{{ syncLabel(row.syncState) }}</span></td>
+                  <td>@if (row.ip) { <span class="ip-copy"><strong class="mono">{{ row.ip }}</strong><button type="button" (click)="copyAvailableIp(row.ip)" [title]="'Copiar ' + row.ip" [attr.aria-label]="'Copiar IP ' + row.ip"><svg lucideCopy size="12" aria-hidden="true"></svg></button></span> } @else { <strong class="muted-text">Sin IP</strong> }<small class="cell-note mono">{{ row.macAddress || '—' }}</small></td>
+                  <td><span class="sync-badge" [class.issue]="row.syncState !== 'synced'">{{ syncLabel(row.syncState) }}</span>@for (label of rowIssues(row); track label) { <span class="issue-tag">{{ label }}</span> }</td>
                   <td>{{ compactMbps(bpsToMbps(row.maxUploadBps)) }} / {{ compactMbps(bpsToMbps(row.maxDownloadBps)) }} Mbps</td>
                   <td><strong class="rate download">{{ formatBps(row.downloadBps) }}</strong><small class="cell-note">↑ {{ formatBps(row.uploadBps) }}</small></td>
                   <td><span class="state-badge" [class.online]="row.isOnline" [class.disabled]="row.isDisabled">{{ clientStateLabel(row) }}</span></td>
@@ -188,8 +217,8 @@
 
     @if (activeTab() === 'unknown') {
       <section class="workspace-heading">
-        <div><h2>Dispositivos desconocidos</h2><p>Equipos con tráfico en el router que no coinciden con ningún cliente de WispHub</p></div>
-        <div class="toolbar-controls"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC o identidad" [ngModel]="unknownQuery()" (ngModelChange)="setUnknownQuery($event)" /></label><button class="icon-button" type="button" (click)="loadUnknown(true)" [disabled]="unknownLoading()" title="Actualizar análisis" aria-label="Actualizar análisis"><svg lucideRefreshCw size="17" [class.spinning]="unknownLoading()" aria-hidden="true"></svg></button></div>
+        <div><h2>Dispositivos desconocidos</h2><p>Equipos con tráfico en el router que no coinciden con ningún cliente de WispHub@if (unknown()?.timestamp) { · análisis {{ ago(unknown()!.timestamp) }} }</p></div>
+        <div class="toolbar-controls"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC o identidad" aria-label="Buscar dispositivos desconocidos" [ngModel]="unknownQuery()" (ngModelChange)="setUnknownQuery($event)" /></label><button class="text-button" type="button" (click)="exportUnknown()" [disabled]="!filteredUnknown().length" title="Descargar en CSV los dispositivos que se ven con estos filtros"><svg lucideDownload size="15" aria-hidden="true"></svg>CSV</button><button class="icon-button" type="button" (click)="loadUnknown(true)" [disabled]="unknownLoading()" title="Actualizar análisis" aria-label="Actualizar análisis"><svg lucideRefreshCw size="17" [class.spinning]="unknownLoading()" aria-hidden="true"></svg></button></div>
       </section>
       <div class="filter-rail">
         <button type="button" [class.active]="unknownFilter() === 'all'" (click)="setUnknownFilter('all')">Todos <span>{{ unknown()?.stats?.total || 0 }}</span></button>
@@ -204,7 +233,7 @@
             <tbody>
               @for (device of pagedUnknown(); track device.ip) {
                 <tr [class.high-risk-row]="device.risk === 'high'">
-                  <td><strong class="mono">{{ device.ip }}</strong><small class="cell-note">{{ device.identity || device.platform || 'Sin nombre detectado' }}</small></td>
+                  <td><span class="ip-copy"><strong class="mono">{{ device.ip }}</strong><button type="button" (click)="copyAvailableIp(device.ip)" [title]="'Copiar ' + device.ip" [attr.aria-label]="'Copiar IP ' + device.ip"><svg lucideCopy size="12" aria-hidden="true"></svg></button></span><small class="cell-note">{{ device.identity || device.platform || 'Sin nombre detectado' }}</small></td>
                   <td class="mono">{{ device.macAddress || '-' }}</td>
                   <td><strong>{{ device.bridgePort || device.interface || '-' }}</strong><small class="cell-note">{{ device.platform || 'Equipo no identificado' }}</small></td>
                   <td><strong>{{ device.connectionCount }} conexiones</strong><small class="cell-note">{{ formatBps(device.downloadBps) }} ↓ · {{ formatBps(device.uploadBps) }} ↑</small></td>
@@ -240,7 +269,7 @@
     }
 
     @if (activeTab() === 'firewall') {
-      <section class="workspace-heading"><div><h2>Firewall RouterOS</h2><p>Reglas del router. Cada cambio crea un respaldo automático antes de aplicarse.</p></div><button class="text-button" type="button" (click)="loadFirewall()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      <section class="workspace-heading"><div><h2>Firewall RouterOS</h2><p>Reglas del router. Cada cambio crea un respaldo automático antes de aplicarse.@if (firewall()?.timestamp) { Leído {{ ago(firewall()!.timestamp) }}. }</p></div><div class="toolbar-controls heading-actions"><button class="text-button" type="button" (click)="exportFirewall()" [disabled]="!firewallRules().length" title="Descargar en CSV las reglas de esta tabla"><svg lucideDownload size="15" aria-hidden="true"></svg>CSV</button><button class="text-button" type="button" (click)="loadFirewall()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></div></section>
       <div class="filter-rail">
         <button type="button" [class.active]="firewallTable() === 'filter'" (click)="setFirewallTable('filter')">Filtros <span>{{ firewall()?.tables?.filter?.length || 0 }}</span></button>
         <button type="button" [class.active]="firewallTable() === 'nat'" (click)="setFirewallTable('nat')">NAT <span>{{ firewall()?.tables?.nat?.length || 0 }}</span></button>
@@ -264,12 +293,13 @@
     }
 
     @if (activeTab() === 'ipam') {
-      <section class="workspace-heading"><div><h2>IPs libres y ocupadas</h2><p>Rangos del router comparados con WispHub, colas, DHCP y ARP. Use «Copiar» para tomar una IP libre.</p></div><div class="toolbar-controls ipam-toolbar"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC, cola, equipo o cliente" aria-label="Buscar dirección IP" [ngModel]="ipamQuery()" (ngModelChange)="setIpamQuery($event)" /></label><button class="icon-button" type="button" (click)="loadIpam()" [disabled]="controlLoading()" title="Actualizar inventario IP" aria-label="Actualizar inventario IP"><svg lucideRefreshCw size="17" [class.spinning]="controlLoading()" aria-hidden="true"></svg></button></div></section>
+      <section class="workspace-heading"><div><h2>IPs libres y ocupadas</h2><p>Rangos del router comparados con WispHub, colas, DHCP y ARP. Use «Copiar» para tomar una IP libre.@if (ipam()?.timestamp) { Inventario {{ ago(ipam()!.timestamp) }}. }</p></div><div class="toolbar-controls ipam-toolbar"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC, cola, equipo o cliente" aria-label="Buscar dirección IP" [ngModel]="ipamQuery()" (ngModelChange)="setIpamQuery($event)" /></label><button class="icon-button" type="button" (click)="exportIpam()" [disabled]="!filteredIpamRows().length" title="Descargar en CSV las direcciones que se ven con estos filtros" aria-label="Descargar CSV del inventario IP"><svg lucideDownload size="17" aria-hidden="true"></svg></button><button class="icon-button" type="button" (click)="loadIpam()" [disabled]="controlLoading()" title="Actualizar inventario IP" aria-label="Actualizar inventario IP"><svg lucideRefreshCw size="17" [class.spinning]="controlLoading()" aria-hidden="true"></svg></button></div></section>
       @if (ipam()?.stale) { <div class="ipam-stale"><svg lucideDatabase size="16" aria-hidden="true"></svg> MikroTik no respondió. Se muestra el último inventario guardado.</div> }
       <section class="mt-mini-kpis">
         <div class="success"><span>Libres para usar</span><strong>{{ ipam()?.stats?.available || 0 }}</strong></div><div><span>Clientes WispHub</span><strong>{{ ipam()?.stats?.matchedClients || 0 }}</strong></div><div class="warning"><span>Ocupadas sin cliente</span><strong>{{ ipam()?.stats?.occupiedWithoutClient || 0 }}</strong></div><div><span>IPs inventariadas</span><strong>{{ ipam()?.stats?.total || 0 }}</strong></div><div class="danger"><span>Conflictos IP / MAC</span><strong>{{ (ipam()?.stats?.ipConflicts || 0) + (ipam()?.stats?.macMoves || 0) }}</strong></div>
       </section>
       <section class="mt-network-band">@for (network of ipam()?.networks || []; track network.cidr) { <button type="button" [class.active]="ipamNetwork() === network.cidr" (click)="setIpamNetwork(ipamNetwork() === network.cidr ? null : network.cidr)"><header><strong class="mono">{{ network.cidr }}</strong><span>{{ network.used }} / {{ network.capacity }} · {{ network.utilization }}%</span></header><i><b [style.width.%]="Math.min(network.utilization, 100)"></b></i><small>{{ network.available }} disponibles</small>@if (network.recommended.length) { <em>Sugeridas: {{ network.recommended.join(', ') }}</em> }</button> }</section>
+      <app-mt-ip-grid [ipam]="ipam()" [network]="ipamNetwork()" (pick)="focusIpamIp($event)" />
       <div class="filter-rail ipam-filters">
         <button type="button" [class.active]="ipamFilter() === 'all'" (click)="setIpamFilter('all')">Todas <span>{{ ipam()?.stats?.total || 0 }}</span></button>
         <button type="button" [class.active]="ipamFilter() === 'available'" (click)="setIpamFilter('available')">Disponibles <span>{{ ipam()?.stats?.available || 0 }}</span></button>
@@ -281,9 +311,9 @@
       <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>IP</th><th>MAC / host</th><th>Asignación</th><th>Origen</th><th>Estado</th><th></th></tr></thead><tbody>
         @for (row of pagedIpamRows(); track row.ip) {
           <tr [class.high-risk-row]="row.conflict" [class.available-ip-row]="row.available">
-            <td><strong class="mono">{{ row.ip }}</strong><small class="cell-note">{{ row.cidr || 'Fuera de rangos' }}</small></td>
+            <td><span class="ip-copy"><strong class="mono">{{ row.ip }}</strong>@if (!row.available) { <button type="button" (click)="copyAvailableIp(row.ip)" [title]="'Copiar ' + row.ip" [attr.aria-label]="'Copiar IP ' + row.ip"><svg lucideCopy size="12" aria-hidden="true"></svg></button> }</span><small class="cell-note">{{ row.cidr || 'Fuera de rangos' }}</small></td>
             <td><strong class="mono">{{ row.macAddress || (row.available ? 'Sin uso detectado' : '-') }}</strong><small class="cell-note">{{ row.hostName || row.interface || row.poolName || '-' }}</small></td>
-            <td><strong>{{ row.client?.name || row.queueName || (row.available ? 'Lista para nuevo equipo' : 'Sin cliente WispHub') }}</strong><small class="cell-note">{{ row.client?.username || row.server || '-' }}</small></td>
+            <td>@if (row.client?.id) { <a class="client-link" [routerLink]="['/clients', row.client?.id]" title="Abrir expediente del cliente">{{ row.client?.name }}</a> } @else { <strong>{{ row.queueName || (row.available ? 'Lista para nuevo equipo' : 'Sin cliente WispHub') }}</strong> }<small class="cell-note">{{ row.client?.username || row.server || '-' }}</small></td>
             <td><span class="sync-badge" [class.issue]="!row.available && row.classification !== 'client'">{{ ipSourceLabel(row.sources) }}</span></td>
             <td><span class="state-badge" [class.online]="row.available || row.status === 'bound'" [class.disabled]="row.disabled || row.conflict">{{ ipamClassificationLabel(row) }}</span></td>
             <td class="actions-cell">@if (row.available) { <button class="action-button" type="button" (click)="copyAvailableIp(row.ip)"><svg lucideCopy size="15" aria-hidden="true"></svg>Copiar</button> } @else if (canManage() && row.dynamic && row.leaseId) { <button class="action-button" type="button" (click)="makeLeaseStatic(row)" [disabled]="controlSaving()" title="Convertir la concesión DHCP en fija"><svg lucideSave size="15" aria-hidden="true"></svg>Fijar</button> }</td>
@@ -311,7 +341,7 @@
     }
 
     @if (activeTab() === 'security') {
-      <section class="workspace-heading"><div><h2>Seguridad y diagnóstico</h2><p>Auditoría de configuración y acceso administrativo</p></div><button class="text-button" type="button" (click)="loadSecurity(true)" [disabled]="securityLoading()"><svg lucideRefreshCw size="16" [class.spinning]="securityLoading()" aria-hidden="true"></svg>Auditar</button></section>
+      <section class="workspace-heading"><div><h2>Seguridad y diagnóstico</h2><p>Auditoría de configuración y acceso administrativo@if (security()?.timestamp) { · auditado {{ ago(security()!.timestamp) }} }</p></div><button class="text-button" type="button" (click)="loadSecurity(true)" [disabled]="securityLoading()"><svg lucideRefreshCw size="16" [class.spinning]="securityLoading()" aria-hidden="true"></svg>Auditar</button></section>
       <section class="security-layout">
         <article class="security-score" [class.good]="(security()?.score || 0) >= 80"><svg lucideShieldCheck size="28" aria-hidden="true"></svg><strong>{{ security()?.score ?? '-' }}</strong><span>Puntuación de seguridad</span><small>RouterOS {{ security()?.version || '-' }}</small></article>
         <article class="panel findings-panel">

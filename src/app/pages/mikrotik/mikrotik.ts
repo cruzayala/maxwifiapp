@@ -13,9 +13,9 @@ import {
   LucideCircleAlert,
   LucideCircleCheck,
   LucideCircleGauge,
-  LucideCpu,
   LucideCopy,
   LucideDatabase,
+  LucideDownload,
   LucideHardDrive,
   LucideNetwork,
   LucidePencil,
@@ -24,7 +24,6 @@ import {
   LucideRouter,
   LucideSave,
   LucideSearch,
-  LucideServer,
   LucideShieldAlert,
   LucideShieldCheck,
   LucideSlidersHorizontal,
@@ -34,7 +33,6 @@ import {
   LucideWifi,
   LucideWifiOff,
   LucideX,
-  LucideZap,
 } from '@lucide/angular';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { AuthService } from '../../services/auth.service';
@@ -58,11 +56,19 @@ import {
   MtUnknownResponse,
 } from '../../services/mikrotik.service';
 import { ToastService } from '../../services/toast.service';
+import { ExportService } from '../../services/export.service';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
+import { MtRouterHealthComponent } from './mt-router-health';
+import { MtNetworkIssuesComponent } from './mt-network-issues';
+import { MtIpGridComponent } from './mt-ip-grid';
+import { MtGlobalSearchComponent, SearchTab } from './mt-global-search';
+import { ISSUE_INFO, ISSUE_ORDER, IssueKind, compareIp, detectIssues, evaluateRouterHealth, normalizeMac, readPref, relativeTime, writePref } from './mt-utils';
 
 type MikrotikTab = 'overview' | 'reconciliation' | 'unknown' | 'interfaces' | 'firewall' | 'ipam' | 'netwatch' | 'backups' | 'security';
 type UnknownFilter = 'all' | 'high' | 'unmanaged' | 'infrastructure';
-type SyncFilter = 'all' | 'differences' | 'online' | 'offline' | 'disabled';
+type SyncFilter = 'all' | 'differences' | 'online' | 'offline' | 'disabled' | Exclude<IssueKind, 'paused'>;
+type ClientSort = 'default' | 'traffic' | 'total' | 'usage' | 'ip' | 'name';
+type RankingMode = 'now' | 'total';
 type IpamFilter = 'all' | 'available' | 'client' | 'occupied' | 'conflict';
 
 interface WanTraffic {
@@ -83,6 +89,10 @@ interface WanTraffic {
     FormsModule,
     RouterLink,
     PlanLabelPipe,
+    MtRouterHealthComponent,
+    MtNetworkIssuesComponent,
+    MtIpGridComponent,
+    MtGlobalSearchComponent,
     LucideActivity,
     LucideArrowDownToLine,
     LucideArrowUpFromLine,
@@ -93,9 +103,9 @@ interface WanTraffic {
     LucideCircleAlert,
     LucideCircleCheck,
     LucideCircleGauge,
-    LucideCpu,
     LucideCopy,
     LucideDatabase,
+    LucideDownload,
     LucideHardDrive,
     LucideNetwork,
     LucidePencil,
@@ -104,7 +114,6 @@ interface WanTraffic {
     LucideRouter,
     LucideSave,
     LucideSearch,
-    LucideServer,
     LucideShieldAlert,
     LucideShieldCheck,
     LucideSlidersHorizontal,
@@ -114,7 +123,6 @@ interface WanTraffic {
     LucideWifi,
     LucideWifiOff,
     LucideX,
-    LucideZap,
   ],
   templateUrl: './mikrotik.html',
   styleUrl: './mikrotik.scss',
@@ -128,6 +136,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
   private readonly auth = inject(AuthService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly exporter = inject(ExportService);
 
   status = signal<MtStatus>({ configured: false, connected: false, host: '' });
   system = signal<MtSystem | null>(null);
@@ -192,22 +201,66 @@ export class MikrotikComponent implements OnInit, OnDestroy {
 
   private coreTimer?: ReturnType<typeof setInterval>;
   private unknownTimer?: ReturnType<typeof setInterval>;
+  private clockTimer?: ReturnType<typeof setInterval>;
 
   canManage = computed(() => this.auth.hasAnyRole(['admin']));
 
   clients = computed(() => this.live()?.clients || []);
+
+  // --- Funciones de análisis (solo lectura, calculadas en el navegador) ---
+  /** Reloj local para los tiempos relativos ("hace 3 min"). No hace peticiones al servidor. */
+  now = signal(Date.now());
+  clientSort = signal<ClientSort>((['default', 'traffic', 'total', 'usage', 'ip', 'name'] as ClientSort[]).find((value) => value === readPref<string>('clientSort', 'default')) ?? 'default');
+  rankingMode = signal<RankingMode>(readPref<string>('rankingMode', 'now') === 'total' ? 'total' : 'now');
+  readonly issueOrder = ISSUE_ORDER.filter((kind) => kind !== 'paused');
+  readonly issueInfo = ISSUE_INFO;
+  readonly formatBpsFn = (value: number) => this.formatBps(value);
+
+  unknownDevices = computed(() => this.unknown()?.devices ?? []);
+  ipamRows = computed(() => this.ipam()?.rows ?? []);
+  routerHealth = computed(() => evaluateRouterHealth(this.system()));
+  issues = computed(() => detectIssues(this.clients()));
+  private issueSets = computed(() => {
+    const issues = this.issues();
+    return Object.fromEntries(ISSUE_ORDER.map((kind) => [kind, new Set(issues[kind])])) as Record<IssueKind, Set<MtLiveClient>>;
+  });
+  issueChips = computed(() => ISSUE_ORDER
+    .map((kind) => ({ kind, filter: (kind === 'paused' ? 'disabled' : kind) as SyncFilter, label: ISSUE_INFO[kind].short, level: ISSUE_INFO[kind].level, count: this.issues()[kind].length }))
+    .filter((chip) => chip.count > 0));
+  lastUpdateText = computed(() => relativeTime(this.lastUpdate(), this.now()));
+  dataStale = computed(() => {
+    const last = this.lastUpdate();
+    return !!last && this.now() - last.getTime() > 60_000;
+  });
+
   filteredClients = computed(() => {
     const query = this.clientQuery().trim().toLowerCase();
+    const macQuery = normalizeMac(query);
     const filter = this.syncFilter();
-    return this.clients().filter((row) => {
-      const matchesQuery = !query || [row.client?.name, row.client?.username, row.ip, row.queueName]
-        .some((value) => String(value || '').toLowerCase().includes(query));
+    const sets = this.issueSets();
+    const rows = this.clients().filter((row) => {
+      const matchesQuery = !query || [row.client?.name, row.client?.username, row.ip, row.queueName, row.client?.zone, row.macAddress]
+        .some((value) => String(value || '').toLowerCase().includes(query))
+        || (macQuery.length >= 4 && !/^[\d.]+$/.test(query) && normalizeMac(row.macAddress).includes(macQuery));
       const matchesFilter = filter === 'all'
         || (filter === 'differences' && row.syncState !== 'synced')
         || (filter === 'online' && row.isOnline)
         || (filter === 'offline' && !row.isOnline)
-        || (filter === 'disabled' && row.isDisabled);
+        || (filter === 'disabled' && row.isDisabled)
+        || (filter in sets && sets[filter as IssueKind].has(row));
       return matchesQuery && matchesFilter;
+    });
+    const sort = this.clientSort();
+    if (sort === 'default') return rows;
+    const name = (row: MtLiveClient) => String(row.client?.name || row.queueName || '');
+    return [...rows].sort((a, b) => {
+      switch (sort) {
+        case 'traffic': return (b.uploadBps + b.downloadBps) - (a.uploadBps + a.downloadBps);
+        case 'total': return (b.totalBytes || 0) - (a.totalBytes || 0);
+        case 'usage': return Math.max(b.uploadPct, b.downloadPct) - Math.max(a.uploadPct, a.downloadPct);
+        case 'ip': return compareIp(a.ip, b.ip);
+        default: return name(a).localeCompare(name(b), 'es');
+      }
     });
   });
   clientPageCount = computed(() => Math.max(1, Math.ceil(this.filteredClients().length / this.pageSize)));
@@ -216,10 +269,18 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     return this.filteredClients().slice((page - 1) * this.pageSize, page * this.pageSize);
   });
 
-  topClients = computed(() => [...this.clients()]
-    .filter((row) => row.uploadBps + row.downloadBps > 0)
-    .sort((a, b) => (b.uploadBps + b.downloadBps) - (a.uploadBps + a.downloadBps))
-    .slice(0, 8));
+  topClients = computed(() => {
+    if (this.rankingMode() === 'total') {
+      return [...this.clients()]
+        .filter((row) => (row.totalBytes || 0) > 0)
+        .sort((a, b) => (b.totalBytes || 0) - (a.totalBytes || 0))
+        .slice(0, 10);
+    }
+    return [...this.clients()]
+      .filter((row) => row.uploadBps + row.downloadBps > 0)
+      .sort((a, b) => (b.uploadBps + b.downloadBps) - (a.uploadBps + a.downloadBps))
+      .slice(0, 10);
+  });
 
   filteredUnknown = computed(() => {
     const query = this.unknownQuery().trim().toLowerCase();
@@ -283,11 +344,14 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     this.unknownTimer = setInterval(() => {
       if (this.unknown()) this.loadUnknown(false);
     }, 300_000);
+    // Solo refresca el texto "hace X"; no consulta al servidor.
+    this.clockTimer = setInterval(() => this.now.set(Date.now()), 10_000);
   }
 
   ngOnDestroy() {
     if (this.coreTimer) clearInterval(this.coreTimer);
     if (this.unknownTimer) clearInterval(this.unknownTimer);
+    if (this.clockTimer) clearInterval(this.clockTimer);
   }
 
   changeTab(tab: MikrotikTab) {
@@ -612,6 +676,155 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     this.unknownPage.set(1);
   }
 
+  setClientSort(value: ClientSort) {
+    this.clientSort.set(value);
+    this.clientPage.set(1);
+    writePref('clientSort', value);
+  }
+
+  setRankingMode(value: RankingMode) {
+    this.rankingMode.set(value);
+    writePref('rankingMode', value);
+  }
+
+  /** Desde el panel de inconsistencias: abre Clientes y colas con ese filtro. */
+  showIssue(kind: IssueKind) {
+    this.changeTab('reconciliation');
+    this.setClientQuery('');
+    this.setSyncFilter(kind === 'paused' ? 'disabled' : kind);
+  }
+
+  openIpamConflicts() {
+    this.changeTab('ipam');
+    this.setIpamNetwork(null);
+    this.setIpamQuery('');
+    this.setIpamFilter('conflict');
+  }
+
+  /** Desde el buscador global: abre la pestaña del resultado ya filtrada. */
+  openSearchResult(event: { tab: SearchTab; query: string }) {
+    this.changeTab(event.tab);
+    if (event.tab === 'reconciliation') { this.setSyncFilter('all'); this.setClientQuery(event.query); }
+    if (event.tab === 'unknown') { this.setUnknownFilter('all'); this.setUnknownQuery(event.query); }
+    if (event.tab === 'ipam') { this.setIpamNetwork(null); this.setIpamFilter('all'); this.setIpamQuery(event.query); }
+  }
+
+  /** Clic en una IP ocupada del mapa: la muestra en la tabla del inventario. */
+  focusIpamIp(ip: string) {
+    this.setIpamFilter('all');
+    this.setIpamQuery(ip);
+    this.toast.info(`Mostrando ${ip} en la tabla`);
+  }
+
+  showTopConsumers() {
+    this.changeTab('reconciliation');
+    this.setSyncFilter('all');
+    this.setClientSort(this.rankingMode() === 'total' ? 'total' : 'traffic');
+  }
+
+  /** Etiquetas extra (IP duplicada, al tope, etc.) que no se ven en la columna de sincronización. */
+  rowIssues(row: MtLiveClient): string[] {
+    const sets = this.issueSets();
+    return (['dup-ip', 'dup-mac', 'paused', 'no-limit', 'saturated'] as IssueKind[])
+      .filter((kind) => sets[kind].has(row))
+      .map((kind) => ISSUE_INFO[kind].short);
+  }
+
+  wanShare(row: MtLiveClient): number {
+    const wan = this.wan();
+    const total = (wan?.rxBps || 0) + (wan?.txBps || 0);
+    return total ? Math.min(100, ((row.uploadBps + row.downloadBps) / total) * 100) : 0;
+  }
+
+  ago(value: string | number | Date | null | undefined): string {
+    return relativeTime(value, this.now());
+  }
+
+  // --- Exportar a CSV lo que se está viendo (respeta búsqueda y filtros) ---
+  private readonly csvMbps = (value: number) => Number((Number(value || 0) / 1_000_000).toFixed(2));
+
+  exportClients() {
+    const rows = this.filteredClients();
+    if (!rows.length) return this.toast.info('No hay filas para exportar con estos filtros');
+    this.exporter.exportCSV(rows, 'mikrotik-colas', [
+      { key: 'client.name', label: 'Cliente', transform: (value, row) => value || row.queueName },
+      { key: 'client.username', label: 'Usuario' },
+      { key: 'client.id', label: 'ID cliente' },
+      { key: 'client.zone', label: 'Zona' },
+      { key: 'ip', label: 'IP' },
+      { key: 'macAddress', label: 'MAC' },
+      { key: 'queueName', label: 'Cola' },
+      { key: 'syncState', label: 'Sincronización', transform: (value) => this.syncLabel(value) },
+      { key: 'maxUploadBps', label: 'Límite subida (Mbps)', transform: this.csvMbps },
+      { key: 'maxDownloadBps', label: 'Límite descarga (Mbps)', transform: this.csvMbps },
+      { key: 'uploadBps', label: 'Subida actual (Mbps)', transform: this.csvMbps },
+      { key: 'downloadBps', label: 'Descarga actual (Mbps)', transform: this.csvMbps },
+      { key: 'totalBytes', label: 'Consumo acumulado (GB)', transform: (value) => Number((Number(value || 0) / 1e9).toFixed(2)) },
+      { key: 'isOnline', label: 'Estado', transform: (_value, row) => this.clientStateLabel(row) },
+      { key: 'ip', label: 'Alertas', transform: (_value, row) => this.rowIssues(row).join(' / ') },
+    ]);
+    this.toast.success(`${rows.length} filas exportadas`);
+  }
+
+  exportUnknown() {
+    const rows = this.filteredUnknown();
+    if (!rows.length) return this.toast.info('No hay dispositivos para exportar con estos filtros');
+    this.exporter.exportCSV(rows, 'mikrotik-desconocidos', [
+      { key: 'ip', label: 'IP' },
+      { key: 'macAddress', label: 'MAC' },
+      { key: 'identity', label: 'Identidad' },
+      { key: 'platform', label: 'Plataforma' },
+      { key: 'bridgePort', label: 'Puerto físico', transform: (value, row) => value || row.interface || '' },
+      { key: 'connectionCount', label: 'Conexiones' },
+      { key: 'downloadBps', label: 'Descarga (Mbps)', transform: this.csvMbps },
+      { key: 'uploadBps', label: 'Subida (Mbps)', transform: this.csvMbps },
+      { key: 'queueName', label: 'Cola' },
+      { key: 'maxLimit', label: 'Límite', transform: (value, row) => row.queueId ? this.formatLimit(value) : 'Sin cola' },
+      { key: 'classification', label: 'Clasificación', transform: (value) => this.classificationLabel(value) },
+      { key: 'risk', label: 'Riesgo', transform: (value) => this.severityLabel(value) },
+    ]);
+    this.toast.success(`${rows.length} dispositivos exportados`);
+  }
+
+  exportIpam() {
+    const rows = this.filteredIpamRows();
+    if (!rows.length) return this.toast.info('No hay direcciones para exportar con estos filtros');
+    this.exporter.exportCSV(rows, 'mikrotik-ips', [
+      { key: 'ip', label: 'IP' },
+      { key: 'cidr', label: 'Rango' },
+      { key: 'macAddress', label: 'MAC' },
+      { key: 'hostName', label: 'Equipo' },
+      { key: 'client.name', label: 'Cliente' },
+      { key: 'client.username', label: 'Usuario' },
+      { key: 'queueName', label: 'Cola' },
+      { key: 'poolName', label: 'Pool' },
+      { key: 'sources', label: 'Origen', transform: (value) => this.ipSourceLabel(value || []) },
+      { key: 'classification', label: 'Estado', transform: (_value, row) => this.ipamClassificationLabel(row) },
+      { key: 'recommended', label: 'Sugerida', transform: (value) => value ? 'Sí' : '' },
+    ]);
+    this.toast.success(`${rows.length} direcciones exportadas`);
+  }
+
+  exportFirewall() {
+    const rows = this.firewallRules();
+    if (!rows.length) return this.toast.info('No hay reglas para exportar en esta tabla');
+    this.exporter.exportCSV(rows, `mikrotik-firewall-${this.firewallTable()}`, [
+      { key: 'id', label: 'ID' },
+      { key: 'comment', label: 'Comentario' },
+      { key: 'chain', label: 'Cadena', transform: (value, row) => value || row.list || '' },
+      { key: 'action', label: 'Acción', transform: (value, row) => value || row.address || '' },
+      { key: 'srcAddress', label: 'Origen' },
+      { key: 'dstAddress', label: 'Destino', transform: (value, row) => value || row.address || '' },
+      { key: 'protocol', label: 'Protocolo' },
+      { key: 'dstPort', label: 'Puerto destino' },
+      { key: 'inInterface', label: 'Interfaz', transform: (value, row) => value || row.outInterface || '' },
+      { key: 'bytes', label: 'Bytes' },
+      { key: 'packets', label: 'Paquetes' },
+      { key: 'disabled', label: 'Estado', transform: (_value, row) => row.dynamic ? 'Dinámica' : row.invalid ? 'Inválida' : row.disabled ? 'Deshabilitada' : 'Activa' },
+    ]);
+    this.toast.success(`${rows.length} reglas exportadas`);
+  }
+
   moveClientPage(delta: number) {
     this.clientPage.set(Math.min(this.clientPageCount(), Math.max(1, this.clientPage() + delta)));
   }
@@ -685,18 +898,6 @@ export class MikrotikComponent implements OnInit, OnDestroy {
 
   systemResource(key: string): string {
     return String(this.system()?.resource?.[key] ?? '-');
-  }
-
-  memoryUsage(): number {
-    const total = Number(this.system()?.resource?.['total-memory'] || 0);
-    const free = Number(this.system()?.resource?.['free-memory'] || 0);
-    return total ? Math.max(0, Math.min(100, ((total - free) / total) * 100)) : 0;
-  }
-
-  temperature(): string {
-    const item = this.system()?.health?.find((entry: any) => entry.name === 'cpu-temperature')
-      || this.system()?.health?.find((entry: any) => entry.name === 'temperature');
-    return item ? `${item.value} °${item.type || 'C'}` : '-';
   }
 
   formatBps(value: number): string {
