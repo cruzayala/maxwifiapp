@@ -1,5 +1,9 @@
-import { Component, HostListener, OnInit, inject, signal, computed } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { Component, DestroyRef, HostListener, OnInit, inject, signal, computed } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { formatDrPhone, telLink, whatsappLink } from '../../pipes/phone';
+import { ClientListStateService } from '../../services/client-list-state.service';
+import { ConfigService } from '../../services/config.service';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { WisphubService } from '../../services/wisphub.service';
@@ -15,9 +19,9 @@ import { ClientExtrasComponent } from '../../components/client-extras/client-ext
 import { ClientMetricsComponent } from '../../components/client-metrics/client-metrics';
 import { ClientEquipmentComponent } from '../../components/client-equipment/client-equipment';
 import {
-  LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideCopy, LucideExternalLink, LucideHistory,
-  LucideMapPin, LucidePackageSearch, LucidePencil, LucidePrinter, LucideReceiptText,
-  LucideSearchX, LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
+  LucideActivity, LucideCalendarClock, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign, LucideCopy,
+  LucideExternalLink, LucideGauge, LucideHistory, LucideMapPin, LucideMessageCircle, LucidePackageSearch, LucidePencil,
+  LucidePhone, LucidePrinter, LucideReceiptText, LucideSearchX, LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
 } from '@lucide/angular';
 
 type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'activity';
@@ -28,18 +32,27 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
   imports: [
     NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, PlanLabelPipe,
     ClientExtrasComponent, ClientMetricsComponent, ClientEquipmentComponent,
-    LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideCopy, LucideExternalLink, LucideHistory,
-    LucideMapPin, LucidePackageSearch, LucidePencil, LucidePrinter, LucideReceiptText,
-    LucideSearchX, LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
+    LucideActivity, LucideCalendarClock, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign, LucideCopy,
+    LucideExternalLink, LucideGauge, LucideHistory, LucideMapPin, LucideMessageCircle, LucidePackageSearch, LucidePencil,
+    LucidePhone, LucidePrinter, LucideReceiptText, LucideSearchX, LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
   ],
   template: `
     <app-navbar [pageTitle]="clientName()" />
 
     <div class="page">
-      <a routerLink="/clients" class="back-link">
-        <svg lucideChevronLeft size="16"></svg>
-        Volver a clientes
-      </a>
+      <div class="detail-nav">
+        <a routerLink="/clients" class="back-link">
+          <svg lucideChevronLeft size="16"></svg>
+          Volver a clientes
+        </a>
+        @if (navigation(); as nav) {
+          <div class="client-stepper" role="navigation" aria-label="Recorrer clientes de la lista">
+            <span class="stepper-label" [title]="nav.label"><span><b>{{ nav.index + 1 }}</b> de {{ nav.total }}</span><small>{{ nav.label }}</small></span>
+            <button type="button" class="step-btn" [disabled]="!nav.prev" (click)="goToClient(nav.prev)" aria-label="Cliente anterior" title="Cliente anterior"><svg lucideChevronLeft size="17"></svg><span>Anterior</span></button>
+            <button type="button" class="step-btn" [disabled]="!nav.next" (click)="goToClient(nav.next)" aria-label="Cliente siguiente" title="Cliente siguiente"><span>Siguiente</span><svg lucideChevronRight size="17"></svg></button>
+          </div>
+        }
+      </div>
 
       @if (loading()) {
         <div class="loading-state"><div class="spinner"></div><p>Cargando expediente del cliente…</p></div>
@@ -60,6 +73,12 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             </div>
           </div>
           <div class="profile-actions">
+            @if (whatsappUrl(); as wa) {
+              <a class="btn btn-wa" [href]="wa" target="_blank" rel="noopener" title="Abrir un chat de WhatsApp con el cliente"><svg lucideMessageCircle size="16"></svg>WhatsApp</a>
+            }
+            @if (callUrl(); as tel) {
+              <a class="btn btn-outline" [href]="tel" [title]="'Llamar al ' + phoneDisplay()"><svg lucidePhone size="16"></svg>Llamar</a>
+            }
             <button type="button" class="btn btn-outline" (click)="pingClient()" [disabled]="pinging()" title="Comprobar si el equipo del cliente responde">
               <svg lucideActivity size="16"></svg>
               {{ pinging() ? 'Haciendo ping…' : 'Ping' }}
@@ -71,6 +90,35 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             }
           </div>
         </div>
+
+        <!-- RESUMEN RÁPIDO: lo que se pregunta primero al atender a un cliente -->
+        <section class="quick-summary" aria-label="Resumen del cliente">
+          <div class="qs-item" [class.danger]="clientOpenBalance() > 0" [class.warn]="clientOpenBalance() === 0 && hasPendingStatus()" [class.ok]="clientOpenBalance() === 0 && !hasPendingStatus()">
+            <span class="qs-label"><svg lucideCircleDollarSign size="15"></svg>Saldo pendiente</span>
+            <strong>RD$ {{ clientOpenBalance() | number:'1.0-2' }}</strong>
+            <small>@if (clientOpenBalance() > 0) { {{ clientInvoicePendingCount() }} {{ clientInvoicePendingCount() === 1 ? 'factura abierta' : 'facturas abiertas' }} } @else if (hasPendingStatus()) { WispHub la marca pendiente } @else { Al día }</small>
+            @if (paymentReminderUrl(); as reminder) {
+              @if (clientOpenBalance() > 0 || hasPendingStatus()) {
+                <a class="qs-action" [href]="reminder" target="_blank" rel="noopener" title="Abre WhatsApp con el recordatorio ya escrito; usted lo revisa y lo envía"><svg lucideMessageCircle size="14"></svg>Recordar pago</a>
+              }
+            }
+          </div>
+          <div class="qs-item" [class.danger]="(cutInfo()?.days ?? 1) < 0 && hasPendingStatus()" [class.warn]="(cutInfo()?.days ?? 99) >= 0 && (cutInfo()?.days ?? 99) <= 5">
+            <span class="qs-label"><svg lucideCalendarClock size="15"></svg>Fecha de corte</span>
+            <strong>{{ cutInfo()?.label || 'Sin fecha' }}</strong>
+            <small>{{ cutInfo()?.detail || 'No registrada en WispHub' }}</small>
+          </div>
+          <div class="qs-item">
+            <span class="qs-label"><svg lucideGauge size="15"></svg>Plan</span>
+            <strong [title]="client()!.plan_internet?.nombre || ''">{{ client()!.plan_internet?.nombre | planLabel }}</strong>
+            <small>{{ planPrice() !== null ? 'RD$ ' + (planPrice() | number:'1.0-2') + ' al mes' : 'Sin precio registrado' }}</small>
+          </div>
+          <div class="qs-item">
+            <span class="qs-label"><svg lucideWifi size="15"></svg>Conexión</span>
+            <strong class="mono">{{ client()!.ip || 'Sin IP' }}@if (client()!.ip) { <button type="button" class="copy-btn" title="Copiar IP" aria-label="Copiar IP" (click)="copyValue(client()!.ip, 'IP')"><svg lucideCopy size="13"></svg></button> }</strong>
+            <small>{{ client()!.zona?.nombre || 'Sin zona' }}@if (client()!.telefono) { · {{ phoneDisplay() }} }</small>
+          </div>
+        </section>
 
         @if (pinging()) {
           <div class="ping-box pending" role="status"><strong>Haciendo ping a {{ client()!.ip || 'el cliente' }}…</strong></div>
@@ -553,6 +601,48 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Navegación entre clientes de la lista */
+    .detail-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .detail-nav .back-link { margin-bottom: 0; }
+    .client-stepper { display: flex; align-items: center; gap: 6px; }
+    .stepper-label { display: grid; text-align: right; color: #667582; font-size: 12px; line-height: 1.25; margin-right: 4px; }
+    .stepper-label b { color: #172535; }
+    .stepper-label small { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+    .step-btn { height: 34px; padding: 0 10px; display: inline-flex; align-items: center; gap: 4px; border: 1px solid #ccd6de; border-radius: 6px; background: #fff; color: #334250; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .step-btn:hover:not(:disabled) { border-color: #1267dd; color: #1267dd; }
+    .step-btn:disabled { opacity: .4; cursor: default; }
+
+    .btn-wa { background: #13875a; color: #fff; }
+    .btn-wa:hover { background: #0f704b; }
+
+    /* Resumen rápido */
+    .quick-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 14px; }
+    .qs-item { position: relative; min-width: 0; padding: 12px 14px; border: 1px solid #dfe5ea; border-left: 4px solid #ccd6de; border-radius: 8px; background: #fff; display: grid; gap: 3px; align-content: start; }
+    .qs-item.ok { border-left-color: #13875a; }
+    .qs-item.warn { border-left-color: #b36b12; background: #fffcf6; }
+    .qs-item.danger { border-left-color: #b42318; background: #fffafa; }
+    .qs-label { display: inline-flex; align-items: center; gap: 6px; color: #667582; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+    .qs-item strong { color: #172535; font-size: 18px; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .qs-item strong.mono { font-size: 15px; }
+    .qs-item.danger strong { color: #b42318; }
+    .qs-item small { color: #667582; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .qs-item.warn small, .qs-item.danger small { color: #7a4a10; }
+    .qs-action { justify-self: start; margin-top: 6px; height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #b6e3cb; border-radius: 6px; background: #f1faf5; color: #13875a; font-size: 12px; font-weight: 700; text-decoration: none; }
+    .qs-action:hover { border-color: #13875a; }
+
+    @media (max-width: 1100px) {
+      .quick-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 640px) {
+      .client-stepper { width: 100%; }
+      .stepper-label { text-align: left; margin-right: auto; }
+      .step-btn span { display: none; }
+      .quick-summary { gap: 8px; }
+      .qs-item { padding: 10px 11px; }
+      .qs-item strong { font-size: 16px; }
+    }
+
     @media (max-width: 900px) {
       .detail-grid { grid-template-columns: 1fr; }
       .form-row { grid-template-columns: 1fr; }
@@ -592,6 +682,13 @@ export class ClientDetailComponent implements OnInit {
   private receiptSvc = inject(ReceiptService);
   private toast = inject(ToastService);
   private http = inject(HttpClient);
+  private router = inject(Router);
+  private destroyRef = inject(DestroyRef);
+  private listState = inject(ClientListStateService);
+  private config = inject(ConfigService);
+
+  /** Posición del cliente dentro de la última lista filtrada (Anterior/Siguiente). */
+  navigation = signal<{ prev: number | null; next: number | null; index: number; total: number; label: string } | null>(null);
 
   client = signal<WispHubClient | null>(null);
   clientName = signal('Cliente');
@@ -692,8 +789,25 @@ export class ClientDetailComponent implements OnInit {
     return Boolean(invoice.fecha_pago) && total > 0 && (invoice.total_cobrado || 0) >= total - 0.01;
   }
 
-  async ngOnInit() {
-    const id = Number(this.route.snapshot.paramMap.get('id'));
+  ngOnInit() {
+    // Se escucha el parámetro (no solo la primera lectura) para que Anterior/Siguiente
+    // cambie de cliente sin salir de la pantalla.
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      this.loadClient(Number(params.get('id')));
+    });
+  }
+
+  private async loadClient(id: number) {
+    this.loading.set(true);
+    this.client.set(null);
+    this.clientInvoices.set([]);
+    this.editingProfile.set(false);
+    this.editingService.set(false);
+    this.invoiceModalOpen.set(false);
+    this.showWifiPassword.set(false);
+    this.pingResult.set('');
+    this.applyGps({});
+    this.navigation.set(id ? this.listState.navigationFor(id) : null);
     if (id) {
       const c = await this.db.getClient(id);
       if (c) {
@@ -710,6 +824,54 @@ export class ClientDetailComponent implements OnInit {
     }
     this.loading.set(false);
   }
+
+  goToClient(id: number | null) {
+    if (id) this.router.navigate(['/clients', id]);
+  }
+
+  // ─── Resumen rápido ───
+  /** Días hasta el próximo corte (negativo = vencido). */
+  cutInfo = computed(() => {
+    const raw = this.client()?.fecha_corte;
+    const match = String(raw || '').match(/(\d{4})-(\d{1,2})-(\d{1,2})/) || String(raw || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (!match) return null;
+    const date = match[1].length === 4
+      ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+      : new Date(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+    if (Number.isNaN(date.getTime())) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+    const label = date.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
+    let detail: string;
+    if (days === 0) detail = 'Vence hoy';
+    else if (days === 1) detail = 'Vence mañana';
+    else if (days > 1) detail = `Vence en ${days} días`;
+    else if (days === -1) detail = 'Venció ayer';
+    else detail = `Venció hace ${Math.abs(days)} días`;
+    return { label, days, detail };
+  });
+
+  hasPendingStatus = computed(() => (this.client()?.estado_facturas || '').toLowerCase().includes('pendiente'));
+
+  whatsappUrl = computed(() => whatsappLink(this.client()?.telefono));
+  callUrl = computed(() => telLink(this.client()?.telefono));
+  phoneDisplay = computed(() => formatDrPhone(this.client()?.telefono));
+
+  /** Mensaje de cobro ya escrito: el operador lo revisa y lo envía desde su WhatsApp. */
+  paymentReminderUrl = computed(() => {
+    const c = this.client();
+    if (!c) return null;
+    // "MABEL MANUEL" -> "Mabel": el mensaje suena natural aunque el nombre esté en mayúsculas.
+    const rawFirst = (c.nombre || '').trim().split(/\s+/)[0] || '';
+    const firstName = /\p{L}/u.test(rawFirst) ? rawFirst.charAt(0).toUpperCase() + rawFirst.slice(1).toLowerCase() : '';
+    const amount = this.clientOpenBalance() || this.planPrice() || 0;
+    const amountText = amount ? `RD$ ${amount.toLocaleString('es-DO', { maximumFractionDigits: 2 })}` : 'su mensualidad';
+    const cut = this.cutInfo();
+    const when = cut ? (cut.days >= 0 ? `vence el ${cut.label}` : `venció el ${cut.label}`) : 'está pendiente';
+    const company = this.config.companyName() || 'su proveedor de internet';
+    const message = `Hola${firstName ? ' ' + firstName : ''}, le saludamos de ${company}. Le recordamos que su pago de ${amountText} ${when}. Si ya pagó, por favor ignore este mensaje. ¡Gracias!`;
+    return whatsappLink(c.telefono, message);
+  });
 
   private loadGps(idServicio: number) {
     // Usamos el endpoint generico /db/clients/:id que ya existe (devuelve el cliente completo

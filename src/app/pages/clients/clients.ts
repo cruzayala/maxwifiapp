@@ -1,4 +1,4 @@
-import { Component, ElementRef, HostListener, OnInit, OnDestroy, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, OnDestroy, ViewChild, computed, effect, inject, signal } from '@angular/core';
 import { Subject, takeUntil } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { LocalDbService } from '../../services/local-db.service';
@@ -15,9 +15,12 @@ import { ToastService } from '../../services/toast.service';
 import { ClientMetric, tierStyle, consStyle, CreditTier } from '../../models/metrics.model';
 import { DecimalPipe } from '@angular/common';
 import { formatPlanName } from '../../pipes/plan-label.pipe';
+import { initialsOf } from '../../pipes/initials';
+import { formatDrPhone, telLink, whatsappLink } from '../../pipes/phone';
+import { ClientListStateService, ClientListViewState } from '../../services/client-list-state.service';
 import {
-  LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
-  LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid,
+  LucideArrowUpDown, LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
+  LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid, LucideMessageCircle,
   LucideMoreHorizontal, LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch, LucideSearchX,
   LucideSlidersHorizontal, LucideTable2, LucideTriangleAlert, LucideUserCheck,
   LucideUserX, LucideUsers, LucideWalletCards, LucideWifi, LucideX,
@@ -41,8 +44,8 @@ interface ClientGroup {
   standalone: true,
   imports: [
     NavbarComponent, RouterLink, FormsModule, ClientBlockActionsComponent, DecimalPipe,
-    LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
-    LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid,
+    LucideArrowUpDown, LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
+    LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid, LucideMessageCircle,
     LucideMoreHorizontal, LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch, LucideSearchX,
     LucideSlidersHorizontal, LucideTable2, LucideTriangleAlert, LucideUserCheck,
     LucideUserX, LucideUsers, LucideWalletCards, LucideWifi, LucideX,
@@ -70,7 +73,7 @@ interface ClientGroup {
           <span class="kpi-icon"><svg lucideTriangleAlert size="19"></svg></span><span><small>Requieren atención</small><strong>{{ countAttentionClients() }}</strong><em>cobro, riesgo o suspensión</em></span>
         </button>
         <button class="summary-card info" type="button" (click)="setQuickFilter('missing')" [class.active]="quickFilter === 'missing'">
-          <span class="kpi-icon"><svg lucideUserX size="19"></svg></span><span><small>Datos incompletos</small><strong>{{ countMissingData() }}</strong><em>{{ dataCompleteness() }}% completitud</em></span>
+          <span class="kpi-icon"><svg lucideUserX size="19"></svg></span><span><small>Datos incompletos</small><strong>{{ countMissingData() }}</strong><em>sin teléfono, IP, zona o plan</em></span>
         </button>
         <button class="summary-card revenue" type="button" (click)="setQuickFilter('high_value')" [class.active]="quickFilter === 'high_value'" [title]="'Facturación mensual estimada: RD$ ' + (totalMonthlyRevenue() | number:'1.0-0')">
           <span class="kpi-icon"><svg lucideWalletCards size="19"></svg></span><span><small>Facturación mensual</small><strong>RD$ {{ totalMonthlyRevenue() / 1000 | number:'1.0-1' }} mil</strong><em>ver planes de RD$ 1,500+</em></span>
@@ -86,8 +89,20 @@ interface ClientGroup {
 
       <section class="toolbar">
         <div class="toolbar-primary">
-          <label class="search-input"><svg lucideSearch size="18"></svg><input type="search" placeholder="Nombre, usuario, IP, teléfono, cédula, MAC o dirección" [(ngModel)]="searchTerm" (input)="filterClients()" /></label>
-          <button class="filter-toggle" type="button" [class.active]="filtersExpanded || activeFilterCount() > 0" (click)="filtersExpanded = !filtersExpanded"><svg lucideSlidersHorizontal size="17"></svg>Filtros @if (activeFilterCount()) { <span>{{ activeFilterCount() }}</span> }</button>
+          <label class="search-input"><svg lucideSearch size="18"></svg><input #searchBox type="search" placeholder="Buscar por nombre, #servicio, teléfono, IP, cédula o dirección" aria-label="Buscar clientes (atajo: tecla /)" [(ngModel)]="searchTerm" (input)="filterClients()" (keydown.escape)="searchTerm = ''; filterClients()" />@if (searchTerm) { <button type="button" class="search-clear" aria-label="Borrar búsqueda" (click)="searchTerm = ''; filterClients(); searchBox.focus()"><svg lucideX size="15"></svg></button> } @else { <kbd class="search-kbd" title="Pulse / para buscar desde cualquier parte">/</kbd> }</label>
+          <button class="filter-toggle" type="button" [class.active]="filtersExpanded || activeFilterCount() > 0" (click)="filtersExpanded = !filtersExpanded; persistView()"><svg lucideSlidersHorizontal size="17"></svg>Filtros @if (activeFilterCount()) { <span>{{ activeFilterCount() }}</span> }</button>
+          <label class="mobile-sort"><svg lucideArrowUpDown size="16"></svg><span class="sr-only">Ordenar por</span>
+            <select [ngModel]="sortCol + ':' + sortDir" (ngModelChange)="setSortOption($event)" aria-label="Ordenar clientes">
+              <option value="nombre:asc">Nombre (A-Z)</option>
+              <option value="nombre:desc">Nombre (Z-A)</option>
+              <option value="precio_plan:desc">Mayor mensualidad</option>
+              <option value="precio_plan:asc">Menor mensualidad</option>
+              <option value="estado:asc">Estado</option>
+              <option value="zona.nombre:asc">Zona</option>
+              <option value="creditScore:asc">Peor puntuación de pago</option>
+              <option value="creditScore:desc">Mejor puntuación de pago</option>
+            </select>
+          </label>
           <div class="toolbar-actions">
             <a routerLink="/clients/new" class="btn btn-green"><svg lucidePlus size="16"></svg>Nuevo cliente</a>
             <button class="btn btn-outline" type="button" (click)="exportCSV()" [disabled]="!filteredClients().length" [title]="filteredClients().length ? 'Descargar los ' + filteredClients().length + ' clientes visibles en Excel (CSV)' : 'No hay clientes para exportar'"><svg lucideDownload size="16"></svg>Exportar</button>
@@ -152,6 +167,7 @@ interface ClientGroup {
           <table class="data-table">
             <thead>
               <tr>
+                <th class="col-check"><input type="checkbox" [checked]="isPageSelected()" [indeterminate]="isPagePartiallySelected()" (change)="togglePageSelection()" aria-label="Seleccionar los clientes de esta página" title="Seleccionar esta página" /></th>
                 <th class="sortable col-client" (click)="sort('nombre')" [attr.aria-sort]="ariaSort('nombre')" title="Ordenar por nombre">Cliente {{ sortIcon('nombre') }}</th>
                 <th class="sortable col-service" (click)="sort('plan_internet.nombre')" [attr.aria-sort]="ariaSort('plan_internet.nombre')" title="Ordenar por plan">Plan y red {{ sortIcon('plan_internet.nombre') }}</th>
                 <th class="sortable col-status" (click)="sort('estado')" [attr.aria-sort]="ariaSort('estado')" title="Ordenar por estado">Estado {{ sortIcon('estado') }}</th>
@@ -163,14 +179,16 @@ interface ClientGroup {
             </thead>
             <tbody>
               @for (c of pagedClients(); track c.id_servicio) {
-                <tr (click)="openClient(c.id_servicio)" class="clickable-row">
+                <tr (click)="openClient(c.id_servicio)" class="clickable-row" [class.selected-row]="isSelected(c.id_servicio)">
+                  <td class="col-check" data-label="Seleccionar" (click)="$event.stopPropagation()"><input type="checkbox" [checked]="isSelected(c.id_servicio)" (change)="toggleSelect(c.id_servicio)" [attr.aria-label]="'Seleccionar a ' + c.nombre" /></td>
                   <td data-label="Cliente">
                     <div class="cell-client">
                       <div class="avatar-sm" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</div>
                       <div class="client-identity">
                         <span class="name">{{ c.nombre }}</span>
                         <span class="sub">#{{ c.id_servicio }}@if (c.usuario) { · {{ c.usuario }} }</span>
-                        @if (contactLine(c); as contact) { <span class="contact-line">{{ contact }}</span> }
+                        @if (c.telefono) { <span class="contact-line">{{ phoneLabel(c) }}@if (c.email) { · {{ c.email }} }</span> }
+                        @else if (c.email) { <span class="contact-line">{{ c.email }}</span> }
                         @else { <span class="contact-line missing" title="Sin teléfono registrado">—</span> }
                       </div>
                     </div>
@@ -219,8 +237,14 @@ interface ClientGroup {
                       <summary title="Acciones del cliente" aria-label="Acciones para {{ c.nombre }}"><svg lucideMoreHorizontal size="18"></svg></summary>
                       <div class="row-menu">
                         <button type="button" (click)="openClient(c.id_servicio)"><svg lucideEye size="15"></svg><span><b>Ver expediente</b><small>Datos, facturas y equipos</small></span></button>
+                        @if (whatsappFor(c); as wa) {
+                          <a class="menu-link" [href]="wa" target="_blank" rel="noopener"><svg lucideMessageCircle size="15"></svg><span><b>Escribir por WhatsApp</b><small>{{ phoneLabel(c) }}</small></span></a>
+                        }
+                        @if (callFor(c); as tel) {
+                          <a class="menu-link" [href]="tel"><svg lucidePhone size="15"></svg><span><b>Llamar</b><small>{{ phoneLabel(c) }}</small></span></a>
+                        }
                         <button type="button" [disabled]="!c.ip" (click)="copyValue(c.ip, 'IP')"><svg lucideCopy size="15"></svg><span><b>Copiar IP</b><small>{{ c.ip || 'Sin IP asignada' }}</small></span></button>
-                        <button type="button" [disabled]="!c.telefono" (click)="copyValue(c.telefono, 'Teléfono')"><svg lucidePhone size="15"></svg><span><b>Copiar teléfono</b><small>{{ c.telefono || 'Sin teléfono registrado' }}</small></span></button>
+                        <button type="button" [disabled]="!c.telefono" (click)="copyValue(c.telefono, 'Teléfono')"><svg lucideCopy size="15"></svg><span><b>Copiar teléfono</b><small>{{ c.telefono ? phoneLabel(c) : 'Sin teléfono registrado' }}</small></span></button>
                         <div class="service-actions"><span>Control de servicio</span><app-client-block-actions [idServicio]="c.id_servicio" [clientName]="c.nombre" [crmAction]="crmActionFor(c.id_servicio)" [paymentPilotEnabled]="paymentPilotFor(c.id_servicio)" (changed)="onActionChanged($event, c.id_servicio)" /></div>
                       </div>
                     </details>
@@ -255,7 +279,11 @@ interface ClientGroup {
                   <div><span>ONU</span><strong class="mono" [class.missing]="!c.sn_onu">{{ c.sn_onu || '—' }}</strong></div>
                 </div>
                 <p [class.missing]="!c.direccion">{{ c.direccion || 'Sin dirección registrada' }}</p>
-                <footer>Ver expediente <svg lucideEye size="14"></svg></footer>
+                <footer>
+                  @if (whatsappFor(c); as wa) { <a class="card-contact wa" [href]="wa" target="_blank" rel="noopener" (click)="$event.stopPropagation()" [attr.aria-label]="'WhatsApp a ' + c.nombre"><svg lucideMessageCircle size="15"></svg>WhatsApp</a> }
+                  @if (callFor(c); as tel) { <a class="card-contact" [href]="tel" (click)="$event.stopPropagation()" [attr.aria-label]="'Llamar a ' + c.nombre"><svg lucidePhone size="15"></svg>Llamar</a> }
+                  <span class="card-open">Ver expediente <svg lucideEye size="14"></svg></span>
+                </footer>
               </article>
             }
           </div>
@@ -375,7 +403,7 @@ interface ClientGroup {
       @if (!loading() && isPagedView() && filteredClients().length > pageSize) {
         <nav class="pagination" aria-label="Paginación de clientes">
           <span>Mostrando <b>{{ firstVisible() }}–{{ lastVisible() }}</b> de {{ filteredClients().length }}</span>
-          <div><label>Por página <select [(ngModel)]="pageSize" (change)="page = 1"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label><button type="button" [disabled]="page === 1" (click)="changePage(page - 1)" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button><strong>Página {{ page }} de {{ pageCount() }}</strong><button type="button" [disabled]="page === pageCount()" (click)="changePage(page + 1)" aria-label="Página siguiente"><svg lucideChevronRight size="17"></svg></button></div>
+          <div><label>Por página <select [ngModel]="pageSize" (ngModelChange)="setPageSize(+$event)"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label><button type="button" [disabled]="page === 1" (click)="changePage(page - 1)" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button><strong>Página {{ page }} de {{ pageCount() }}</strong><button type="button" [disabled]="page === pageCount()" (click)="changePage(page + 1)" aria-label="Página siguiente"><svg lucideChevronRight size="17"></svg></button></div>
         </nav>
       }
 
@@ -383,6 +411,20 @@ interface ClientGroup {
         <div class="spinner small"></div>
         <span>{{ syncMessage() }}</span>
       </div>
+
+      @if (selectedCount() > 0) {
+        <div class="selection-bar" role="region" aria-label="Acciones para los clientes seleccionados">
+          <span class="selection-count"><b>{{ selectedCount() }}</b> {{ selectedCount() === 1 ? 'cliente seleccionado' : 'clientes seleccionados' }}</span>
+          @if (selectedCount() < filteredClients().length) {
+            <button type="button" class="link-btn" (click)="selectAllFiltered()">Seleccionar los {{ filteredClients().length }}</button>
+          }
+          <div class="selection-actions">
+            <button type="button" class="btn btn-outline" (click)="copySelectedPhones()" [disabled]="!selectedWithPhone()" [title]="selectedWithPhone() ? 'Copiar ' + selectedWithPhone() + ' teléfonos, uno por línea' : 'Ninguno tiene teléfono'"><svg lucidePhone size="15"></svg>Copiar teléfonos</button>
+            <button type="button" class="btn btn-outline" (click)="exportSelected()"><svg lucideDownload size="15"></svg>Exportar</button>
+            <button type="button" class="btn btn-ghost" (click)="clearSelection()" aria-label="Quitar selección"><svg lucideX size="15"></svg><span>Quitar</span></button>
+          </div>
+        </div>
+      }
     </div>
   `,
   styles: [`
@@ -640,6 +682,39 @@ interface ClientGroup {
       .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
 
+    /* Búsqueda: botón borrar y atajo "/" */
+    .search-clear { width: 26px; height: 26px; flex: 0 0 auto; border: 0; border-radius: 4px; display: grid; place-items: center; background: transparent; color: #667582; cursor: pointer; }
+    .search-clear:hover { background: #f2f7ff; color: #1267dd; }
+    .search-kbd { flex: 0 0 auto; min-width: 20px; height: 20px; padding: 0 5px; display: grid; place-items: center; border: 1px solid #d5dde4; border-bottom-width: 2px; border-radius: 4px; background: #f8fafc; color: #667582; font: 600 11px ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .mobile-sort { display: none; }
+
+    /* Selección múltiple */
+    .col-check { width: 44px; text-align: center !important; padding-left: 10px !important; padding-right: 4px !important; }
+    .col-check input { width: 16px; height: 16px; accent-color: #1267dd; cursor: pointer; vertical-align: middle; }
+    .clickable-row.selected-row td { background: #f2f7ff; }
+    .selection-bar { position: fixed; left: calc(260px + 20px); right: 20px; bottom: 16px; z-index: 60; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px 10px 16px; border: 1px solid #b9cdea; border-radius: 8px; background: #fff; box-shadow: 0 12px 30px rgba(20, 33, 45, .18); animation: rise .18s ease-out; }
+    .selection-count { color: #334250; font-size: 13px; }.selection-count b { color: #1267dd; font-size: 15px; }
+    .link-btn { border: 0; background: transparent; color: #1267dd; font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px; }
+    .link-btn:hover { text-decoration: underline; }
+    .selection-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+    .selection-actions .btn { height: 36px; font-size: 12px; }
+    .btn-ghost { border: 0; background: transparent; color: #667582; }.btn-ghost:hover { background: #f4f7f9; color: #172535; }
+    @keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+    /* Contacto directo */
+    .row-menu > a.menu-link { min-height: 42px; padding: 6px 8px; border-radius: 4px; display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 7px; color: #455461; text-decoration: none; }
+    .row-menu > a.menu-link:hover { background: #f2f7fd; color: #1267dd; }
+    .client-card footer { justify-content: space-between; flex-wrap: wrap; }
+    .card-contact { height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #ccd6de; border-radius: 6px; color: #334250; background: #fff; font-size: 12px; font-weight: 700; text-decoration: none; }
+    .card-contact:hover { border-color: #1267dd; color: #1267dd; }
+    .card-contact.wa { border-color: #b6e3cb; color: #13875a; background: #f1faf5; }
+    .card-contact.wa:hover { border-color: #13875a; }
+    .card-open { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+
+    @media (max-width: 1024px) {
+      .selection-bar { left: 16px; right: 16px; }
+    }
+
     @media (max-width: 1200px) {
       .toolbar-primary { grid-template-columns: minmax(280px, 1fr) auto; }
       .toolbar-actions { grid-column: 1 / -1; justify-content: flex-start; }
@@ -676,6 +751,21 @@ interface ClientGroup {
       .pagination { align-items: flex-start; flex-direction: column; gap: 8px; }
       .pagination > div { width: 100%; justify-content: space-between; }
       .sync-bar { left: 0; }
+
+      /* Resumen compacto: las 6 tarjetas ocupaban casi dos pantallas antes de la lista. */
+      .summary-grid { gap: 6px; }
+      .summary-card { min-height: 0; padding: 9px 10px; grid-template-columns: minmax(0, 1fr); }
+      .summary-card .kpi-icon { display: none; }
+      .summary-card strong { margin-top: 4px; font-size: 18px; }
+      .summary-card em { margin-top: 4px; }
+      .portfolio-head p { display: none; }
+      .search-kbd { display: none; }
+      .mobile-sort { height: 40px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 1px solid #ccd6de; border-radius: 5px; background: #fff; color: #667582; }
+      .mobile-sort select { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: #334250; font-size: 13px; font-weight: 600; }
+      .selection-bar { left: 8px; right: 8px; bottom: 8px; padding: 10px; gap: 8px; }
+      .selection-actions { width: 100%; margin-left: 0; display: grid; grid-template-columns: 1fr 1fr auto; }
+      .selection-actions .btn-ghost span { display: none; }
+      .client-card footer { gap: 8px; }
     }
   `]
 })
@@ -687,7 +777,16 @@ export class ClientsComponent implements OnInit, OnDestroy {
   private survey = inject(SurveyService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private listState = inject(ClientListStateService);
   metrics = inject(MetricsService);
+
+  @ViewChild('searchBox') private searchBox?: ElementRef<HTMLInputElement>;
+  // Página y desplazamiento a recuperar tras la primera carga (al volver de un expediente).
+  private pendingRestore: { page: number; scrollY: number } | null = null;
+
+  // Selección múltiple (por número de servicio) para exportar o copiar teléfonos.
+  selected = signal<Set<number>>(new Set());
+  selectedCount = computed(() => this.selected().size);
 
   surveyLoading = signal<number | null>(null);
   expandedGroups = signal<Set<string>>(new Set());
@@ -699,7 +798,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
     const menus = (this.host.nativeElement as HTMLElement).querySelectorAll<HTMLDetailsElement>('details.row-actions[open]');
     menus.forEach((menu) => {
       const inside = !!target && menu.contains(target);
-      const choseOption = !!target?.closest('.row-menu > button');
+      const choseOption = !!target?.closest('.row-menu > button, .row-menu > a');
       if (!inside || choseOption) menu.open = false;
     });
   };
@@ -719,9 +818,10 @@ export class ClientsComponent implements OnInit, OnDestroy {
   loadedAt = signal<Date | null>(null);
   syncing = signal(false);
   syncMessage = signal('');
+  // Las métricas se recargan cada 30 s: se vuelve a filtrar sin regresar a la página 1.
   private metricsFilterEffect = effect(() => {
     this.metrics.metricsByClient();
-    if (!this.loading()) queueMicrotask(() => this.filterClients());
+    if (!this.loading()) queueMicrotask(() => this.filterClients(false));
   });
   crmActions = signal<Map<number, string>>(new Map());
   paymentPilots = signal<Set<number>>(new Set());
@@ -747,11 +847,65 @@ export class ClientsComponent implements OnInit, OnDestroy {
       .forEach((menu) => menu.open = false);
   }
 
+  // "/" enfoca el buscador desde cualquier parte de la lista (como en Gmail o GitHub).
+  @HostListener('document:keydown', ['$event'])
+  focusSearchShortcut(event: KeyboardEvent) {
+    if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return;
+    const target = event.target as HTMLElement | null;
+    if (target && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))) return;
+    event.preventDefault();
+    this.searchBox?.nativeElement.focus();
+    this.searchBox?.nativeElement.select();
+  }
+
   async ngOnInit() {
     document.addEventListener('click', this.closeMenusOnClick, true);
+    this.restoreView();
     await this.loadLocal();
+    this.applyPendingRestore();
     this.loadCrmStates();
     this.metrics.startAutoRefresh(30000);
+  }
+
+  private restoreView() {
+    const s = this.listState.loadView();
+    if (!s) return;
+    const views: ClientViewMode[] = ['table', 'cards', 'circles', 'speed', 'billing', 'amount'];
+    this.searchTerm = s.searchTerm ?? '';
+    this.quickFilter = (s.quickFilter as ClientQuickFilter) || 'all';
+    this.statusFilter = s.statusFilter ?? '';
+    this.invoiceFilter = s.invoiceFilter ?? '';
+    this.zoneFilter = s.zoneFilter ?? '';
+    this.planFilter = s.planFilter ?? '';
+    this.tierFilter = s.tierFilter ?? '';
+    this.dataFilter = s.dataFilter ?? '';
+    this.consumptionFilter = s.consumptionFilter ?? '';
+    this.sortCol = s.sortCol || 'nombre';
+    this.sortDir = s.sortDir === 'desc' ? 'desc' : 'asc';
+    if (s.viewMode && views.includes(s.viewMode as ClientViewMode)) this.viewMode = s.viewMode as ClientViewMode;
+    if ([25, 50, 100].includes(Number(s.pageSize))) this.pageSize = Number(s.pageSize);
+    this.filtersExpanded = !!s.filtersExpanded;
+    this.pendingRestore = { page: Number(s.page) || 1, scrollY: Number(s.scrollY) || 0 };
+  }
+
+  private applyPendingRestore() {
+    const restore = this.pendingRestore;
+    this.pendingRestore = null;
+    if (!restore) return;
+    this.page = Math.min(this.pageCount(), Math.max(1, restore.page));
+    this.persistView();
+    if (restore.scrollY > 0) setTimeout(() => window.scrollTo({ top: restore.scrollY }), 0);
+  }
+
+  persistView(scrollY = 0) {
+    const state: ClientListViewState = {
+      searchTerm: this.searchTerm, quickFilter: this.quickFilter, statusFilter: this.statusFilter,
+      invoiceFilter: this.invoiceFilter, zoneFilter: this.zoneFilter, planFilter: this.planFilter,
+      tierFilter: this.tierFilter, dataFilter: this.dataFilter, consumptionFilter: this.consumptionFilter,
+      sortCol: this.sortCol, sortDir: this.sortDir, page: this.page, pageSize: this.pageSize,
+      viewMode: this.viewMode, filtersExpanded: this.filtersExpanded, scrollY,
+    };
+    this.listState.saveView(state);
   }
 
   ngOnDestroy() {
@@ -774,7 +928,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
         for (const r of rows) if (r.paymentPilotEnabled) pilots.add(r.idServicio);
         this.crmActions.set(map);
         this.paymentPilots.set(pilots);
-        this.filterClients();
+        this.filterClients(false);
       },
       error: () => {},
     });
@@ -800,7 +954,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
     if (ev.action === 'clear') map.delete(id);
     else map.set(id, ev.action);
     this.crmActions.set(map);
-    this.filterClients();
+    this.filterClients(false);
   }
 
   enviarEncuesta(c: WispHubClient) {
@@ -860,6 +1014,13 @@ export class ClientsComponent implements OnInit, OnDestroy {
   setViewMode(mode: ClientViewMode) {
     this.viewMode = mode;
     this.page = 1;
+    this.persistView();
+  }
+
+  setPageSize(size: number) {
+    this.pageSize = size;
+    this.page = 1;
+    this.persistView();
   }
 
   activeRate(): number {
@@ -888,9 +1049,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
     if (!clients.length) return 0;
     const present = clients.reduce((sum, client) => sum + [
       client.ip, client.telefono, client.zona?.nombre, client.plan_internet?.nombre,
-      client.sn_onu || client.mac_cpe,
     ].filter(Boolean).length, 0);
-    return Math.round((present / (clients.length * 5)) * 100);
+    return Math.round((present / (clients.length * 4)) * 100);
   }
 
   countWithOnu(): number { return this.allClients().filter(client => Boolean(client.sn_onu)).length; }
@@ -922,7 +1082,70 @@ export class ClientsComponent implements OnInit, OnDestroy {
   firstVisible(): number { return this.filteredClients().length ? (this.page - 1) * this.pageSize + 1 : 0; }
   lastVisible(): number { return Math.min(this.page * this.pageSize, this.filteredClients().length); }
   isPagedView(): boolean { return ['table', 'cards', 'circles'].includes(this.viewMode); }
-  changePage(next: number) { this.page = Math.min(this.pageCount(), Math.max(1, next)); }
+  changePage(next: number) {
+    this.page = Math.min(this.pageCount(), Math.max(1, next));
+    this.persistView();
+    // Al cambiar de página se vuelve al inicio de la lista, no al pie.
+    this.host.nativeElement.querySelector('.view-strip, .table-container')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+
+  // ─── Contacto ───
+  whatsappFor(c: WispHubClient): string | null { return whatsappLink(c.telefono); }
+  callFor(c: WispHubClient): string | null { return telLink(c.telefono); }
+  phoneLabel(c: WispHubClient): string { return formatDrPhone(c.telefono); }
+
+  // ─── Selección múltiple ───
+  isSelected(id: number): boolean { return this.selected().has(id); }
+
+  toggleSelect(id: number) {
+    const next = new Set(this.selected());
+    if (next.has(id)) next.delete(id); else next.add(id);
+    this.selected.set(next);
+  }
+
+  isPageSelected(): boolean {
+    const page = this.pagedClients();
+    return page.length > 0 && page.every((c) => this.selected().has(c.id_servicio));
+  }
+
+  isPagePartiallySelected(): boolean {
+    const page = this.pagedClients();
+    const count = page.filter((c) => this.selected().has(c.id_servicio)).length;
+    return count > 0 && count < page.length;
+  }
+
+  togglePageSelection() {
+    const next = new Set(this.selected());
+    const page = this.pagedClients();
+    if (this.isPageSelected()) page.forEach((c) => next.delete(c.id_servicio));
+    else page.forEach((c) => next.add(c.id_servicio));
+    this.selected.set(next);
+  }
+
+  selectAllFiltered() {
+    this.selected.set(new Set(this.filteredClients().map((c) => c.id_servicio)));
+  }
+
+  clearSelection() { this.selected.set(new Set()); }
+
+  private selectedClients(): WispHubClient[] {
+    const ids = this.selected();
+    return this.filteredClients().filter((c) => ids.has(c.id_servicio));
+  }
+
+  selectedWithPhone(): number {
+    return this.selectedClients().filter((c) => !!c.telefono).length;
+  }
+
+  copySelectedPhones() {
+    const phones = [...new Set(this.selectedClients().map((c) => c.telefono).filter(Boolean))];
+    if (!phones.length) return this.toast.info('Ninguno de los clientes seleccionados tiene teléfono');
+    this.copyValue(phones.join('\n'), `${phones.length} ${phones.length === 1 ? 'teléfono' : 'teléfonos'}`);
+  }
+
+  exportSelected() {
+    this.exportRows(this.selectedClients(), 'clientes-seleccionados');
+  }
 
   copyValue(value: string | null | undefined, label: string) {
     if (!value) return this.toast.info(`${label} no disponible`);
@@ -1037,8 +1260,10 @@ export class ClientsComponent implements OnInit, OnDestroy {
       || this.crmActionFor(c.id_servicio) === 'block';
   }
 
+  // Datos imprescindibles para cobrar y dar soporte. ONU/MAC no cuenta: los clientes
+  // inalámbricos no tienen ONU y marcaban casi toda la cartera como "incompleta".
   private hasMissingData(c: WispHubClient): boolean {
-    return !c.ip || !c.telefono || !c.zona?.nombre || !c.plan_internet?.nombre || !(c.sn_onu || c.mac_cpe);
+    return !c.ip || !c.telefono || !c.zona?.nombre || !c.plan_internet?.nombre;
   }
 
   private buildGroups(
@@ -1169,26 +1394,41 @@ export class ClientsComponent implements OnInit, OnDestroy {
     }
   }
 
-  filterClients() {
-    let result = this.allClients();
-    const term = this.searchTerm.toLowerCase().trim();
+  /** Texto sin tildes y en minúsculas: "José Núñez" y "jose nunez" coinciden. */
+  private normalize(value: unknown): string {
+    return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  }
 
-    if (term) {
-      result = result.filter(c =>
-        c.nombre?.toLowerCase().includes(term) ||
-        c.ip?.includes(term) ||
-        c.telefono?.includes(term) ||
-        c.usuario?.toLowerCase().includes(term) ||
-        c.cedula?.toLowerCase().includes(term) ||
-        c.email?.toLowerCase().includes(term) ||
-        c.direccion?.toLowerCase().includes(term) ||
-        c.zona?.nombre?.toLowerCase().includes(term) ||
-        c.plan_internet?.nombre?.toLowerCase().includes(term) ||
-        c.mac_cpe?.toLowerCase().includes(term) ||
-        c.sn_onu?.toLowerCase().includes(term) ||
-        c.modelo_router_wifi?.toLowerCase().includes(term) ||
-        c.ssid_router_wifi?.toLowerCase().includes(term)
-      );
+  /**
+   * Búsqueda por palabras: todas deben aparecer en algún dato del cliente.
+   * "#130" o "130" encuentran el número de servicio; los teléfonos se comparan solo por dígitos
+   * ("809-772" encuentra "18097723061"); MAC sin separadores también coincide.
+   */
+  private matchesSearch(c: WispHubClient, words: string[]): boolean {
+    const text = this.normalize([
+      c.nombre, c.usuario, c.ip, c.telefono, c.cedula, c.email, c.direccion, c.localidad,
+      c.zona?.nombre, c.plan_internet?.nombre, formatPlanName(c.plan_internet?.nombre), c.mac_cpe, c.sn_onu,
+      c.modelo_router_wifi, c.ssid_router_wifi,
+    ].filter(Boolean).join(' '));
+    const digits = [c.telefono, c.cedula].filter(Boolean).join(' ').replace(/[^\d ]/g, '');
+    const compactMac = this.normalize(c.mac_cpe).replace(/[^a-z0-9]/g, '');
+    return words.every((word) => {
+      const id = word.replace(/^#/, '');
+      if (/^\d+$/.test(id) && String(c.id_servicio) === id) return true;
+      if (text.includes(word)) return true;
+      const wordDigits = word.replace(/\D/g, '');
+      if (wordDigits.length >= 4 && wordDigits.length === word.replace(/[\s().+-]/g, '').length && digits.replace(/ /g, '').includes(wordDigits)) return true;
+      const compactWord = word.replace(/[^a-z0-9]/g, '');
+      return compactWord.length >= 4 && compactMac.includes(compactWord);
+    });
+  }
+
+  filterClients(resetPage = true) {
+    let result = this.allClients();
+    const words = this.normalize(this.searchTerm).trim().split(/\s+/).filter(Boolean);
+
+    if (words.length) {
+      result = result.filter(c => this.matchesSearch(c, words));
     }
 
     if (this.quickFilter === 'active') {
@@ -1252,7 +1492,14 @@ export class ClientsComponent implements OnInit, OnDestroy {
     }
 
     this.filteredClients.set(result);
-    this.page = 1;
+    this.page = resetPage ? 1 : Math.min(this.page, this.pageCount());
+    // La selección solo conserva clientes que siguen visibles.
+    if (this.selected().size) {
+      const visible = new Set(result.map((c) => c.id_servicio));
+      const kept = [...this.selected()].filter((id) => visible.has(id));
+      if (kept.length !== this.selected().size) this.selected.set(new Set(kept));
+    }
+    this.persistView();
   }
 
   sort(col: string) {
@@ -1271,7 +1518,21 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   openClient(idServicio: number | string) {
+    // Guarda la vista (incluida la posición) y el orden actual para Anterior/Siguiente en el expediente.
+    this.persistView(window.scrollY);
+    this.listState.saveNavigation(this.filteredClients().map((c) => c.id_servicio), this.navigationLabel());
     this.router.navigate(['/clients', idServicio]);
+  }
+
+  private navigationLabel(): string {
+    const quick: Record<ClientQuickFilter, string> = {
+      all: 'Todos los clientes', active: 'Servicio activo', debt: 'Facturas pendientes',
+      attention: 'Requieren atención', missing: 'Datos incompletos', high_value: 'Planes de RD$ 1,500+',
+    };
+    const parts = [quick[this.quickFilter]];
+    if (this.searchTerm.trim()) parts.push(`«${this.searchTerm.trim()}»`);
+    if (this.activeFilterCount() > (this.quickFilter !== 'all' ? 1 : 0) + (this.searchTerm.trim() ? 1 : 0)) parts.push('con filtros');
+    return parts.join(' · ');
   }
 
   private getNestedVal(obj: any, path: string): any {
@@ -1303,10 +1564,15 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   getInitials(nombre: string): string {
-    // Solo letras: nombres como "`la de la banca 15" o "algeny 30" no deben producir "`L" o "A3".
-    const words = String(nombre || '').match(/\p{L}+/gu) || [];
-    const initials = ((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase();
-    return initials || '#';
+    return initialsOf(nombre);
+  }
+
+  /** Orden desde el selector móvil (en tarjetas no hay encabezados para tocar). */
+  setSortOption(value: string) {
+    const [col, dir] = value.split(':');
+    this.sortCol = col;
+    this.sortDir = dir === 'desc' ? 'desc' : 'asc';
+    this.filterClients();
   }
 
   planLabel(c: WispHubClient): string {
@@ -1363,7 +1629,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   exportCSV() {
-    this.exportSvc.exportCSV(this.filteredClients(), 'clientes', [
+    this.exportRows(this.filteredClients(), 'clientes');
+  }
+
+  private exportRows(rows: WispHubClient[], fileName: string) {
+    this.exportSvc.exportCSV(rows, fileName, [
       { key: 'id_servicio', label: 'ID' },
       { key: 'nombre', label: 'Nombre' },
       { key: 'telefono', label: 'Teléfono' },
