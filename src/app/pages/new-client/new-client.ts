@@ -17,7 +17,7 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
     LucideRefreshCw, LucideSearch, LucideTriangleAlert, LucideUserPlus, LucideX,
   ],
   template: `
-    <app-navbar pageTitle="Nuevo Cliente" />
+    <app-navbar pageTitle="Nuevo cliente" />
 
     <div class="page">
       <a routerLink="/clients" class="back-link">
@@ -27,8 +27,8 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
 
       <div class="form-wrap">
         <div class="card">
-          <h3>Datos del Servicio</h3>
-          <p class="help">Estos son los campos requeridos por WispHub</p>
+          <h3>Datos del servicio</h3>
+          <p class="help">Campos obligatorios para crear el servicio en WispHub</p>
 
           <div class="form-row">
             <div class="form-group">
@@ -54,55 +54,55 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
           <div class="form-row">
             <div class="form-group">
               <label>Usuario / Nombre del servicio *</label>
-              <input type="text" [(ngModel)]="usuarioRb" class="form-input" placeholder="Juan Perez" />
-              <span class="hint">Este es el nombre que apareceria en WispHub</span>
+              <input type="text" [(ngModel)]="usuarioRb" class="form-input" placeholder="Juan Pérez" />
+              <span class="hint">Así aparecerá el cliente en WispHub</span>
             </div>
             <div class="form-group">
               <label>Serial ONU <span class="optional">opcional</span></label>
               <input type="text" [(ngModel)]="onuSerial" class="form-input mono" maxlength="32" placeholder="Ej. 48575443..." />
-              <span class="hint">Permite dejar la instalacion esperando deteccion en la OLT</span>
+              <span class="hint">Deja la instalación esperando que la OLT detecte la ONU</span>
             </div>
           </div>
 
           <div class="form-group ip-assignment">
-            <label>Direccion IP *</label>
+            <label>Dirección IP *</label>
             <div class="ip-control">
-              <input type="text" [ngModel]="ip" class="form-input mono" readonly aria-label="Direccion IP seleccionada" [placeholder]="ipLoading() ? 'Buscando IP libre...' : 'Sin IP disponible'" />
+              <input type="text" [ngModel]="ip" class="form-input mono" readonly aria-label="Dirección IP seleccionada" [placeholder]="ipLoading() ? 'Buscando IP libre...' : 'Sin IP disponible'" />
               <button type="button" class="ip-search-button" (click)="openIpPicker()" [disabled]="ipLoading()">
                 <svg lucideSearch size="16"></svg>
                 {{ ip ? 'Cambiar IP' : 'Buscar IP' }}
               </button>
             </div>
-            @if (ipLoading()) { <span class="hint active-hint">Consultando MikroTik y SQLite...</span> }
-            @else if (ip) { <span class="hint selected-hint">{{ ip }} {{ ipWasAutoSuggested() ? 'fue sugerida automaticamente' : 'fue seleccionada' }}; se reservara al crear el cliente.</span> }
-            @else { <span class="hint error-hint">No se encontro una IP libre. Abre el buscador para reintentar.</span> }
+            @if (ipLoading()) { <span class="hint active-hint">Buscando una IP disponible...</span> }
+            @else if (ip) { <span class="hint selected-hint">{{ ip }} {{ ipWasAutoSuggested() ? 'fue sugerida automáticamente' : 'fue seleccionada' }}; se reservará al crear el cliente.</span> }
+            @else { <span class="hint error-hint">No se encontró una IP libre. Abre el buscador para reintentar.</span> }
           </div>
 
           <div class="form-row bandwidth-row">
             <div class="form-group">
-              <label>Subida en MikroTik (Mbps) *</label>
-              <input type="number" [(ngModel)]="uploadMbps" class="form-input" min="0.1" step="0.1" />
-              <span class="hint">Se propone desde el nombre del plan; puede ajustarse.</span>
+              <label>Velocidad de bajada (Mbps) *</label>
+              <input type="number" [(ngModel)]="downloadMbps" class="form-input" min="0.1" step="0.1" />
+              <span class="hint">Se completa sola al elegir el plan; puede ajustarse.</span>
             </div>
             <div class="form-group">
-              <label>Bajada en MikroTik (Mbps) *</label>
-              <input type="number" [(ngModel)]="downloadMbps" class="form-input" min="0.1" step="0.1" />
-              <span class="hint">Se guardara como limite de la Simple Queue.</span>
+              <label>Velocidad de subida (Mbps) *</label>
+              <input type="number" [(ngModel)]="uploadMbps" class="form-input" min="0.1" step="0.1" />
+              <span class="hint">Se aplicará como límite de velocidad en el MikroTik.</span>
             </div>
           </div>
         </div>
 
         <div class="card">
-          <h3>Datos Personales (opcional)</h3>
-          <p class="help">Se agregan despues de crear el cliente</p>
+          <h3>Datos personales <span class="optional">opcional</span></h3>
+          <p class="help">Se guardan después de crear el servicio</p>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Telefono</label>
+              <label>Teléfono</label>
               <input type="text" [(ngModel)]="telefono" class="form-input" placeholder="809-123-4567" />
             </div>
             <div class="form-group">
-              <label>Cedula</label>
+              <label>Cédula</label>
               <input type="text" [(ngModel)]="cedula" class="form-input" placeholder="001-0000000-0" />
             </div>
           </div>
@@ -119,8 +119,8 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
           </div>
 
           <div class="form-group">
-            <label>Direccion</label>
-            <input type="text" [(ngModel)]="direccion" class="form-input" placeholder="Calle, numero, sector" />
+            <label>Dirección</label>
+            <input type="text" [(ngModel)]="direccion" class="form-input" placeholder="Calle, número, sector" />
           </div>
         </div>
 
@@ -137,14 +137,17 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
             <div class="result-systems">
               <span [class.ok]="creation.wisphub.ok">WispHub <b>{{ creation.wisphub.ok ? 'Listo' : 'Pendiente' }}</b></span>
               <span [class.ok]="creation.mikrotik.ok">MikroTik <b>{{ creation.mikrotik.ok ? 'Listo' : 'Pendiente' }}</b></span>
-              <span [class.ok]="creation.sqlite?.ok">SQLite <b>{{ creation.sqlite?.ok ? 'Listo' : 'Pendiente' }}</b></span>
+              <span [class.ok]="creation.sqlite?.ok">Base local <b>{{ creation.sqlite?.ok ? 'Listo' : 'Pendiente' }}</b></span>
               @if (onuSerial.trim()) { <span [class.ok]="installationWaitingOptical()">OLT <b>{{ installationWaitingOptical() ? 'Esperando ONU' : 'Pendiente' }}</b></span> }
             </div>
           </section>
         }
 
         <div class="actions-bar">
-          <button class="btn btn-outline" routerLink="/clients">Cancelar</button>
+          @if (!saving() && missingFields().length) {
+            <p class="missing-fields" role="status"><svg lucideTriangleAlert size="15"></svg>Falta completar: {{ missingFields().join(', ') }}</p>
+          }
+          <button class="btn btn-outline" type="button" routerLink="/clients">Cancelar</button>
           @if (result()?.status === 'complete') {
             <button class="btn btn-outline" type="button" (click)="openCreatedClient()">Ver cliente</button>
           }
@@ -166,21 +169,21 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
       <button type="button" class="ip-picker-backdrop" aria-label="Cerrar selector de IP" (click)="closeIpPicker()"></button>
       <section class="ip-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="new-client-ip-title">
         <header>
-          <div><span>Inventario MikroTik</span><h2 id="new-client-ip-title">Elegir IP disponible</h2><p>Selecciona el segmento y luego una direccion para este cliente.</p></div>
+          <div><span>Inventario MikroTik</span><h2 id="new-client-ip-title">Elegir IP disponible</h2><p>Selecciona el segmento y luego una dirección para este cliente.</p></div>
           <button type="button" class="close-button" aria-label="Cerrar" (click)="closeIpPicker()"><svg lucideX size="18"></svg></button>
         </header>
         <div class="ip-picker-filters">
           <label><span>Segmento</span><select class="form-input" [(ngModel)]="ipPickerNetwork" (ngModelChange)="loadAvailableIps($event)"><option value="">Todos los segmentos</option>@for (network of ipCatalog()?.networks || []; track network.cidr) { <option [value]="network.cidr">{{ network.cidr }} · {{ network.available }} libres</option> }</select></label>
           <label><span>Buscar IP</span><div class="modal-search"><svg lucideSearch size="15"></svg><input type="search" [(ngModel)]="ipPickerSearch" placeholder="Ej. 192.168.16.24" /></div></label>
         </div>
-        @if (ipCatalog()?.stale) { <p class="ip-catalog-warning">Inventario guardado: la IP se comprobara en vivo antes de crear.</p> }
+        @if (ipCatalog()?.stale) { <p class="ip-catalog-warning">Inventario guardado: la IP se comprobará en vivo antes de crear.</p> }
         <div class="ip-picker-list">
           @if (ipLoading()) { <div class="ip-picker-empty"><div class="btn-spinner dark"></div><span>Buscando direcciones...</span></div> }
           @else {
             @for (address of filteredAvailableIps(); track address.ip) {
               <button type="button" [class.selected]="selectedAvailableIp()?.ip === address.ip" (click)="selectedAvailableIp.set(address)">
                 <span><strong class="mono">{{ address.ip }}</strong><small>{{ address.cidr }}</small></span>
-                <b [class.probe]="address.availabilityConfidence === 'probe_required'">{{ address.availabilityConfidence === 'probe_required' ? 'Se comprobara' : 'Verificada' }}</b>
+                <b [class.probe]="address.availabilityConfidence === 'probe_required'">{{ address.availabilityConfidence === 'probe_required' ? 'Se comprobará' : 'Verificada' }}</b>
               </button>
             } @empty { <div class="ip-picker-empty"><span>No hay IPs disponibles para este filtro.</span></div> }
           }
@@ -194,7 +197,7 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
   `,
   styles: [`
     .page { padding: 24px 32px; }
-    .back-link { display: inline-flex; align-items: center; gap: 6px; color: #6366f1; text-decoration: none; font-size: 14px; font-weight: 500; margin-bottom: 20px; }
+    .back-link { display: inline-flex; align-items: center; gap: 6px; color: #1267dd; text-decoration: none; font-size: 14px; font-weight: 500; margin-bottom: 20px; }
     .back-link:hover { text-decoration: underline; }
 
     .form-wrap { max-width: 820px; }
@@ -215,7 +218,7 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
     }
     .form-input.mono { font-family: 'Courier New', monospace; }
     .form-input[readonly] { background: #f8fafc; color: #0f172a; cursor: default; }
-    .form-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+    .form-input:focus { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221,0.1); }
     .hint { display: block; font-size: 11px; color: #94a3b8; margin-top: 4px; }
     .optional { color: #94a3b8; font-weight: 500; }
     .ip-assignment { padding: 14px; border: 1px solid #dbe5ea; border-radius: 7px; background: #f8fbfc; }
@@ -241,19 +244,19 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
 
     .actions-bar {
       position: sticky; bottom: 0;
-      display: flex; justify-content: flex-end; gap: 10px;
+      display: flex; align-items: center; justify-content: flex-end; gap: 10px;
       background: white; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0;
       box-shadow: 0 -4px 12px rgba(0,0,0,0.04);
     }
-    .btn {
+    .btn { white-space: nowrap; flex: 0 0 auto;
       display: inline-flex; align-items: center; gap: 8px;
       padding: 12px 24px; border-radius: 6px; font-size: 14px; font-weight: 600;
       cursor: pointer; border: none; transition: all 0.2s;
     }
     .btn-outline { background: white; border: 1px solid #e2e8f0; color: #475569; text-decoration: none; }
     .btn-outline:hover { background: #f1f5f9; }
-    .btn-primary { background: #6366f1; color: white; }
-    .btn-primary:hover { background: #4f46e5; }
+    .btn-primary { background: #1267dd; color: white; }
+    .btn-primary:hover { background: #0d58c0; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .btn-spinner {
@@ -265,13 +268,13 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
     .ip-picker-backdrop { position: fixed; inset: 0; z-index: 129; border: 0; background: rgba(15, 23, 42, .56); }
     .ip-picker-dialog { position: fixed; z-index: 130; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(700px, calc(100vw - 28px)); max-height: min(760px, calc(100vh - 28px)); display: grid; grid-template-rows: auto auto auto minmax(220px, 1fr) auto; overflow: hidden; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; box-shadow: 0 28px 70px rgba(15, 23, 42, .32); }
     .ip-picker-dialog > header { padding: 16px 18px; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; border-bottom: 1px solid #e2e8f0; }
-    .ip-picker-dialog > header span, .ip-picker-dialog label > span, .ip-picker-dialog > footer span { color: #64748b; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+    .ip-picker-dialog > header span, .ip-picker-dialog label > span, .ip-picker-dialog > footer span { color: #64748b; font-size: 11px; font-weight: 750; text-transform: uppercase; }
     .ip-picker-dialog > header h2 { margin: 2px 0; color: #0f172a; font-size: 18px; }.ip-picker-dialog > header p { margin: 0; color: #64748b; font-size: 11px; }
     .close-button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #475569; cursor: pointer; }
     .ip-picker-filters { padding: 13px 18px; display: grid; grid-template-columns: .85fr 1.15fr; gap: 10px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }.ip-picker-filters label { display: grid; gap: 5px; }
     .modal-search { min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; }.modal-search input { width: 100%; border: 0; outline: 0; color: #334155; }
     .ip-catalog-warning { margin: 0; padding: 9px 18px; border-bottom: 1px solid #fed7aa; background: #fff7ed; color: #9a3412; font-size: 11px; }
-    .ip-picker-list { min-height: 240px; max-height: 410px; overflow-y: auto; padding: 9px 18px; }.ip-picker-list > button { width: 100%; min-height: 52px; padding: 8px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid transparent; border-bottom-color: #e5e7eb; background: #fff; color: #334155; text-align: left; cursor: pointer; }.ip-picker-list > button:hover { background: #f3f8fa; }.ip-picker-list > button.selected { border-color: #0f7189; border-radius: 6px; background: #edf7f9; }.ip-picker-list > button span { display: grid; gap: 3px; }.ip-picker-list > button strong { font-size: 13px; }.ip-picker-list > button small { color: #64748b; font-size: 10px; }.ip-picker-list > button b { padding: 3px 7px; border-radius: 9px; color: #137652; background: #e8f7f1; font-size: 9px; }.ip-picker-list > button b.probe { color: #9a5b0a; background: #fff1d6; }
+    .ip-picker-list { min-height: 240px; max-height: 410px; overflow-y: auto; padding: 9px 18px; }.ip-picker-list > button { width: 100%; min-height: 52px; padding: 8px 11px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid transparent; border-bottom-color: #e5e7eb; background: #fff; color: #334155; text-align: left; cursor: pointer; }.ip-picker-list > button:hover { background: #f3f8fa; }.ip-picker-list > button.selected { border-color: #0f7189; border-radius: 6px; background: #edf7f9; }.ip-picker-list > button span { display: grid; gap: 3px; }.ip-picker-list > button strong { font-size: 13px; }.ip-picker-list > button small { color: #64748b; font-size: 12px; }.ip-picker-list > button b { padding: 3px 7px; border-radius: 9px; color: #137652; background: #e8f7f1; font-size: 11px; }.ip-picker-list > button b.probe { color: #9a5b0a; background: #fff1d6; }
     .ip-picker-empty { min-height: 210px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 8px; color: #64748b; font-size: 12px; }.ip-picker-dialog > footer { min-height: 66px; padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }.ip-picker-dialog > footer > div { display: grid; gap: 2px; }.ip-picker-dialog > footer strong { font-size: 13px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -285,6 +288,11 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
       .actions-bar .btn { width: 100%; justify-content: center; }
       .ip-picker-dialog { width: calc(100vw - 16px); max-height: calc(100vh - 16px); }.ip-picker-dialog > footer { align-items: stretch; flex-direction: column; }.ip-picker-dialog > footer .btn { width: 100%; justify-content: center; }
     }
+  
+    .missing-fields { display: flex; align-items: center; gap: 6px; margin: 0 auto 0 0; color: #9a5b0f; font-size: 13px; }
+    .missing-fields svg { flex: 0 0 auto; }
+    h3 .optional { margin-left: 6px; color: #8391a0; font-size: 12px; font-weight: 500; }
+    @media (max-width: 640px) { .missing-fields { width: 100%; margin: 0 0 8px; } }
   `]
 })
 export class NewClientComponent implements OnInit {
@@ -340,8 +348,18 @@ export class NewClientComponent implements OnInit {
   }
 
   canSubmit(): boolean {
-    return !!(this.zonaId && this.planId && this.usuarioRb.trim() && this.ip.trim()
-      && Number(this.uploadMbps) > 0 && Number(this.downloadMbps) > 0);
+    return this.missingFields().length === 0;
+  }
+
+  missingFields(): string[] {
+    const missing: string[] = [];
+    if (!this.zonaId) missing.push('zona');
+    if (!this.planId) missing.push('plan');
+    if (!this.usuarioRb.trim()) missing.push('nombre del servicio');
+    if (!this.ip.trim()) missing.push('dirección IP');
+    if (!(Number(this.downloadMbps) > 0)) missing.push('velocidad de bajada');
+    if (!(Number(this.uploadMbps) > 0)) missing.push('velocidad de subida');
+    return missing;
   }
 
   planChanged(planId: number) {
@@ -403,7 +421,7 @@ export class NewClientComponent implements OnInit {
     if (!address) return;
     const reservation = this.ipReservation();
     if (reservation && reservation.ip !== address.ip) {
-      this.toast.error(`La instalacion iniciada ya conserva ${reservation.ip}`);
+      this.toast.error(`La instalación iniciada ya conserva ${reservation.ip}`);
       return;
     }
     this.ip = address.ip;

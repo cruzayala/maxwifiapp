@@ -55,7 +55,7 @@ export class SyncService {
     if (!this.auth.getToken()) return;
 
     this.syncing.set(true);
-    this.syncMessage.set('Actualizando SQLite desde WispHub y MikroTik...');
+    this.syncMessage.set('Actualizando datos desde WispHub y MikroTik...');
     try {
       try {
         await firstValueFrom(this.runServerSync().pipe(timeout(180_000)));
@@ -65,7 +65,7 @@ export class SyncService {
         if (error?.status !== 409) throw error;
       }
 
-      this.syncMessage.set('Recargando datos permanentes desde SQLite...');
+      this.syncMessage.set('Recargando datos guardados...');
       const [clients, invoices] = await Promise.all([
         this.db.getClients(true),
         this.db.getInvoices(true),

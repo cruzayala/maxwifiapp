@@ -3,9 +3,9 @@
 <main class="audit-page">
   <header class="audit-toolbar">
     <div>
-      <span class="eyebrow"><i></i> Historial automatico cada 10 minutos</span>
+      <span class="eyebrow"><i></i> Historial automático cada 10 minutos</span>
       <h1>Velocidad y estabilidad</h1>
-      <p>Ultima muestra {{ (status()?.lastSuccessAt || latestWan()?.capturedAt) ? ((status()?.lastSuccessAt || latestWan()?.capturedAt) | date:'dd/MM/yyyy HH:mm') : 'pendiente' }}</p>
+      <p>Última muestra {{ (status()?.lastSuccessAt || latestWan()?.capturedAt) ? ((status()?.lastSuccessAt || latestWan()?.capturedAt) | date:'dd/MM/yyyy HH:mm') : 'pendiente' }}</p>
     </div>
     <div class="toolbar-actions">
       <span class="collector" [class.off]="!status()?.enabled"><i></i>{{ status()?.enabled ? 'Auditoria activa' : 'Auditoria detenida' }}</span>
@@ -24,7 +24,7 @@
 
   <section class="kpi-row" aria-label="Resumen de auditoria">
     <div class="kpi"><span><svg lucideWifi size="19"></svg></span><p>Clientes auditados<strong>{{ pageData()?.summary?.monitoredClients || 0 }}</strong><small>{{ pageData()?.summary?.totalSamples || 0 }} muestras</small></p></div>
-    <div class="kpi stable"><span><svg lucideCircleCheck size="19"></svg></span><p>Estabilidad<strong>{{ pageData()?.summary?.stabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ days() }} dias seleccionados</small></p></div>
+    <div class="kpi stable"><span><svg lucideCircleCheck size="19"></svg></span><p>Estabilidad<strong>{{ pageData()?.summary?.stabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ days() }} días seleccionados</small></p></div>
     <div class="kpi availability"><span><svg lucideSignal size="19"></svg></span><p>Disponibilidad<strong>{{ pageData()?.summary?.availabilityPercent || 0 | number:'1.1-2' }}%</strong><small>{{ pageData()?.summary?.attentionClients || 0 }} requieren atencion</small></p></div>
     <div class="kpi wan"><span><svg lucideGauge size="19"></svg></span><p>WAN actual<strong>{{ mbps(latestWan()?.rxBps || 0) | number:'1.1-1' }} Mbps</strong><small>Ping {{ latestWan()?.pingAvgMs ?? '-' }} ms</small></p></div>
   </section>
@@ -37,8 +37,8 @@
   @if (view() === 'clients') {
     <section class="filter-bar">
       <label class="search"><svg lucideSearch size="17"></svg><input type="search" [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="applyFilters()" placeholder="Cliente, usuario, IP o zona" /></label>
-      <select [ngModel]="days()" (ngModelChange)="days.set(+$event); applyFilters()" aria-label="Periodo"><option [ngValue]="1">Hoy</option><option [ngValue]="7">7 dias</option><option [ngValue]="30">30 dias</option><option [ngValue]="90">90 dias</option><option [ngValue]="365">1 ano</option></select>
-      <select [ngModel]="state()" (ngModelChange)="state.set($event); applyFilters()" aria-label="Estado"><option value="all">Todos los estados</option><option value="offline">Fuera de linea</option><option value="degraded">Degradados</option><option value="stable">Estables</option></select>
+      <select [ngModel]="days()" (ngModelChange)="days.set(+$event); applyFilters()" aria-label="Período"><option [ngValue]="1">Hoy</option><option [ngValue]="7">7 días</option><option [ngValue]="30">30 días</option><option [ngValue]="90">90 días</option><option [ngValue]="365">1 año</option></select>
+      <select [ngModel]="state()" (ngModelChange)="state.set($event); applyFilters()" aria-label="Estado"><option value="all">Todos los estados</option><option value="offline">Fuera de línea</option><option value="degraded">Degradados</option><option value="stable">Estables</option></select>
       <button class="filter-apply" type="button" (click)="applyFilters()">Aplicar</button>
       <button class="filter-clear" type="button" (click)="clearFilters()">Limpiar</button>
       <button class="export-btn" type="button" (click)="exportCsv()"><svg lucideDownload size="17"></svg>Exportar</button>
@@ -52,7 +52,7 @@
       } @else {
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Cliente</th><th>Estado</th><th>Disponibilidad</th><th>Estabilidad</th><th>Uso actual</th><th>Pico del periodo</th><th>Fibra</th><th>Muestras</th><th></th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Estado</th><th>Disponibilidad</th><th>Estabilidad</th><th>Uso actual</th><th>Pico del período</th><th>Fibra</th><th>Muestras</th><th></th></tr></thead>
             <tbody>
               @for (row of pageData()!.items; track row.idServicio) {
                 <tr (click)="openDetail(row)" tabindex="0" (keydown.enter)="openDetail(row)">
@@ -83,7 +83,7 @@
     <section class="data-panel">
       <div class="table-wrap"><table class="wan-table"><thead><tr><th>Fecha</th><th>Estado</th><th>Descarga</th><th>Subida</th><th>Uso del enlace</th><th>Ping</th><th>Perdida</th><th>Clientes</th><th>OLT</th></tr></thead><tbody>
         @for (row of wan()?.items || []; track row.id) {
-          <tr><td>{{ row.capturedAt | date:'dd/MM/yyyy HH:mm' }}</td><td><span [class]="'state ' + row.healthState"><i></i>{{ stateLabel(row.healthState) }}</span></td><td class="mono">{{ mbps(row.rxBps) | number:'1.1-2' }} Mbps</td><td class="mono">{{ mbps(row.txBps) | number:'1.1-2' }} Mbps</td><td><div class="metric"><strong>{{ row.utilizationPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.utilizationPercent"></i></div></div></td><td class="mono">{{ row.pingAvgMs ?? '-' }} ms</td><td>{{ row.pingLossPercent ?? '-' }}%</td><td>{{ row.clientsOnline }} / {{ row.clientsOnline + row.clientsOffline }}</td><td><span [class.off]="!row.oltConnected">{{ row.oltOnlineOnus }} en linea · {{ row.oltOfflineOnus }} fuera</span></td></tr>
+          <tr><td>{{ row.capturedAt | date:'dd/MM/yyyy HH:mm' }}</td><td><span [class]="'state ' + row.healthState"><i></i>{{ stateLabel(row.healthState) }}</span></td><td class="mono">{{ mbps(row.rxBps) | number:'1.1-2' }} Mbps</td><td class="mono">{{ mbps(row.txBps) | number:'1.1-2' }} Mbps</td><td><div class="metric"><strong>{{ row.utilizationPercent | number:'1.1-2' }}%</strong><div><i [style.width.%]="row.utilizationPercent"></i></div></div></td><td class="mono">{{ row.pingAvgMs ?? '-' }} ms</td><td>{{ row.pingLossPercent ?? '-' }}%</td><td>{{ row.clientsOnline }} / {{ row.clientsOnline + row.clientsOffline }}</td><td><span [class.off]="!row.oltConnected">{{ row.oltOnlineOnus }} en línea · {{ row.oltOfflineOnus }} fuera</span></td></tr>
         }
       </tbody></table></div>
     </section>

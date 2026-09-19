@@ -1,4 +1,4 @@
-<aside class="sidebar" [class.open]="isOpen()" aria-label="Navegacion principal">
+<aside class="sidebar" [class.open]="isOpen()" aria-label="Navegación principal">
   <div class="sidebar-brand">
     <div class="brand-mark" aria-hidden="true">
       <span></span><span></span><span></span>
@@ -7,7 +7,7 @@
       <strong>ISP <span>MAX</span></strong>
       <small>Centro de control</small>
     </div>
-    <button class="close-btn" type="button" aria-label="Cerrar menu" title="Cerrar menu" (click)="closeSidebar()">
+    <button class="close-btn" type="button" aria-label="Cerrar menú" title="Cerrar menú" (click)="closeSidebar()">
       <svg lucideX size="20"></svg>
     </button>
   </div>
@@ -61,7 +61,7 @@
                 >
                   <span class="nav-marker" aria-hidden="true"></span>
                   <span>{{ item.label }}</span>
-                  @if (item.live) { <span class="live-dot" title="Actualizacion activa"></span> }
+                  @if (item.live) { <span class="live-dot" title="Actualización activa"></span> }
                 </a>
               }
             </div>
@@ -72,9 +72,9 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="sync-status">
+    <div class="sync-status" [class]="'sync-status ' + systemState().tone" role="status">
       <span class="sync-dot" aria-hidden="true"></span>
-      <span><strong>Sistemas conectados</strong><small>Sincronizacion activa</small></span>
+      <span><strong>{{ systemState().title }}</strong><small>{{ systemState().detail }}</small></span>
     </div>
   </div>
 </aside>

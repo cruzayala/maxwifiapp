@@ -170,7 +170,7 @@ export class NotificationSchedulerService {
   }
 
   async runNow() {
-    this.toast.info('Ejecutando envio automatico ahora...');
+    this.toast.info('Ejecutando envío automático ahora...');
     await this.loadState();
     await this.runJob();
     await this.setLastRun();

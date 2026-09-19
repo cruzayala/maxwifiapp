@@ -142,6 +142,34 @@ app.use(cors({
 
 app.use(express.json({ limit: '10mb' }));
 
+// Algunas paginas de Angular comparten ruta con la API (/users, /expenses...).
+// Si el navegador recarga una de ellas debe recibir la app, no el JSON 401 de la API.
+const SPA_PAGE_PATHS = /^\/(clients(\/new|\/\d+)?|users|inventory|expenses|payroll)\/?$/;
+const SPA_INDEX_HTML = path.join(__dirname, 'dist/wishub-admin/browser/index.html');
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || !SPA_PAGE_PATHS.test(req.path)) return next();
+  if (!String(req.headers.accept || '').includes('text/html')) return next();
+  if (!fs.existsSync(SPA_INDEX_HTML)) return next();
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.sendFile(SPA_INDEX_HTML);
+});
+
+// Muchas rutas responden { error: e.message }. Si el error viene de Prisma, el mensaje trae
+// rutas del servidor y consultas internas: se registra completo y al cliente se le da uno legible.
+const PRISMA_ERROR_TEXT = /Invalid `prisma\.|prisma\.\w+\.\w+\(\)` invocation|PrismaClient\w*Error/;
+app.use((req, res, next) => {
+  const json = res.json.bind(res);
+  res.json = (body) => {
+    if (body && typeof body.error === 'string' && PRISMA_ERROR_TEXT.test(body.error)) {
+      console.error('[db-error]', req.method, req.originalUrl, body.error);
+      body = { ...body, error: 'Error interno al consultar la base de datos. Intente de nuevo o contacte al administrador.' };
+      delete body.stack;
+    }
+    return json(body);
+  };
+  next();
+});
+
 // Rate limiting solo en endpoints sensibles
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
@@ -1544,10 +1572,10 @@ async function saveSpeedTemplates(templates) {
 
 async function getMtConnection() {
   if (!MIKROTIK_ENABLED) {
-    throw new Error('MikroTik desactivado por MIKROTIK_ENABLED=false');
+    throw new Error('La conexión con el MikroTik está desactivada en la configuración del servidor');
   }
   if (!MT_HOST || !MT_USER || !MT_PASS) {
-    throw new Error('MikroTik no configurado en .env');
+    throw new Error('El MikroTik no está configurado en el servidor');
   }
 
   // Validar que la conexion existente sigue viva.
@@ -11593,8 +11621,12 @@ if (fs.existsSync(distPath)) {
 app.use((err, req, res, next) => {
   console.error('[ERR]', err.message);
   if (res.headersSent) return next(err);
+  // Los errores de Prisma incluyen rutas y consultas internas: no se muestran al operador.
+  const isDatabaseError = /^Prisma/.test(err?.name || '') || /prisma\.\w+\.\w+\(/.test(err?.message || '');
   res.status(err.status || err.statusCode || 500).json({
-    error: err.message || 'Internal server error',
+    error: isDatabaseError
+      ? 'Error interno al consultar la base de datos. Intente de nuevo o contacte al administrador.'
+      : (err.message || 'Internal server error'),
     ...(IS_PROD ? {} : { stack: err.stack }),
   });
 });

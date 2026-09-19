@@ -1,6 +1,6 @@
 <section class="remote-console">
   <header class="console-head">
-    <div><span class="eyebrow">Gestion remota</span><strong>Control ONU</strong><small>Canal compatible automatico · {{ device()?.capabilities?.profileKey || 'Esperando perfil del equipo' }}</small></div>
+    <div><span class="eyebrow">Gestión remota</span><strong>Control ONU</strong><small>Canal compatible automático · {{ device()?.capabilities?.profileKey || 'Esperando perfil del equipo' }}</small></div>
     @if (device(); as remote) {
       <div class="console-actions">
         <span class="connection-state" [class.online]="remoteOnline() || omciOnline()"><i></i>{{ remoteOnline() || omciOnline() ? 'Gestion disponible' : 'Sin canal activo' }}</span>
@@ -20,7 +20,7 @@
         <small>{{ channels.omci.oltProfile || '--' }} -> {{ channels.omci.detectedModel || '--' }}</small>
       </div>
       @if (channels.omci.available && !channels.omci.profileMatched) {
-        <p><svg lucideAlertTriangle size="15"></svg>OMCI responde, pero el perfil OLT no coincide con el modelo detectado. Las lecturas y el reinicio estan disponibles; los cambios avanzados siguen bloqueados.</p>
+        <p><svg lucideAlertTriangle size="15"></svg>OMCI responde, pero el perfil OLT no coincide con el modelo detectado. Las lecturas y el reinicio están disponibles; los cambios avanzados siguen bloqueados.</p>
       }
       @if (!channels.tr069.online && channels.omci.available) {
         <p class="omci-only"><svg lucideCircleCheck size="15"></svg>Modo OLT nativo: se ocultan las funciones que requieren el canal remoto y permanecen disponibles las funciones OMCI verificadas.</p>
@@ -29,7 +29,7 @@
   }
 
   @if (loading()) {
-    <div class="console-loading"><svg lucideRefreshCw size="20" class="spinning"></svg><span>Consultando canales de administracion...</span></div>
+    <div class="console-loading"><svg lucideRefreshCw size="20" class="spinning"></svg><span>Consultando canales de administración...</span></div>
   } @else if (device(); as remote) {
     @if ((!remote.enrolled || !remote.enabled) && !omciOnline()) {
       <div class="console-empty"><svg lucideLockOpen size="25"></svg><strong>Control selectivo desactivado</strong><span>Active esta ONU para inventariarla y administrar solamente las funciones compatibles.</span><button type="button" (click)="setEnabled(true)" [disabled]="saving()">Activar control</button></div>
@@ -42,7 +42,7 @@
         @if (tab() === 'overview') {
           <div class="metric-grid">
             <div><span>Uptime</span><strong>{{ remote.snapshot.overview.uptime || 0 }} s</strong></div><div><span>CPU</span><strong>{{ remote.snapshot.overview.cpuUsage ?? '--' }}%</strong></div>
-            <div><span>Memoria libre</span><strong>{{ formatBytes(remote.snapshot.overview.memoryFree) }}</strong></div><div><span>Ultimo reporte</span><strong>{{ formatDate(remote.snapshot.lastInformAt) }}</strong></div>
+            <div><span>Memoria libre</span><strong>{{ formatBytes(remote.snapshot.overview.memoryFree) }}</strong></div><div><span>Último reporte</span><strong>{{ formatDate(remote.snapshot.lastInformAt) }}</strong></div>
           </div>
           <dl class="summary-list"><div><dt>Equipo</dt><dd>{{ remote.manufacturer }} {{ remote.model }}</dd></div><div><dt>Firmware</dt><dd>{{ remote.softwareVersion || '--' }}</dd></div><div><dt>WAN</dt><dd>{{ remote.snapshot.wan.ip || '--' }}</dd></div><div><dt>VLAN / servicio</dt><dd>{{ remote.snapshot.wan.vlan || '--' }} / {{ remote.snapshot.wan.serviceList || '--' }}</dd></div></dl>
           <div class="telemetry-note"><svg lucideDatabase size="15"></svg><span>Telemetria normal cada {{ remote.capabilities.telemetryIntervalSeconds / 60 }} minutos; cada minuto durante fallos.</span></div>
@@ -58,23 +58,23 @@
             <div class="form-title"><div><strong>WiFi principal</strong><span>{{ capability('set_wifi')?.status === 'verified' ? 'Verificado' : 'Detectado' }}</span></div><small>La clave actual nunca se muestra ni se guarda en texto plano.</small></div>
             <label class="wide"><span>Nombre de red</span><input [(ngModel)]="wifi.ssid" name="ssid" maxlength="32" required /></label>
             <label><span>Nueva clave</span><input type="password" [(ngModel)]="wifi.password" name="password" minlength="8" maxlength="64" autocomplete="new-password" placeholder="Sin cambios" /></label>
-            <label><span>Canal</span><select [(ngModel)]="wifi.channel" name="channel"><option [ngValue]="0">Automatico</option>@for (channel of remote.capabilities.limits.wifi.channels || []; track channel) { <option [ngValue]="channel">{{ channel }}</option> }</select></label>
+            <label><span>Canal</span><select [(ngModel)]="wifi.channel" name="channel"><option [ngValue]="0">Automático</option>@for (channel of remote.capabilities.limits.wifi.channels || []; track channel) { <option [ngValue]="channel">{{ channel }}</option> }</select></label>
             <label><span>Potencia</span><select [(ngModel)]="wifi.transmitPower" name="transmitPower">@for (power of remote.capabilities.limits.wifi.transmitPowers || [100]; track power) { <option [ngValue]="power">{{ power }}%</option> }</select></label>
             <label><span>Estandar</span><select [(ngModel)]="wifi.standard" name="standard">@for (standard of remote.capabilities.limits.wifi.standards || ['11bgn']; track standard) { <option [value]="standard">{{ standard }}</option> }</select></label>
-            <label><span>Maximo clientes</span><input type="number" [(ngModel)]="wifi.maxClients" name="maxClients" min="1" [max]="remote.capabilities.limits.wifi.maxClients || 32" /></label>
+            <label><span>Máximo clientes</span><input type="number" [(ngModel)]="wifi.maxClients" name="maxClients" min="1" [max]="remote.capabilities.limits.wifi.maxClients || 32" /></label>
             <div class="toggle-row wide"><label><input type="checkbox" [(ngModel)]="wifi.enabled" name="wifiEnabled" /> Radio</label><label><input type="checkbox" [(ngModel)]="wifi.broadcast" name="broadcast" /> SSID visible</label><label><input type="checkbox" [(ngModel)]="wifi.wmm" name="wmm" /> WMM</label><label><input type="checkbox" [(ngModel)]="wifi.wps" name="wps" /> WPS</label></div>
             <button class="primary wide" type="submit" [disabled]="saving() || blocked('set_wifi')">Aplicar y verificar WiFi</button>
           </form>
         }
 
         @if (tab() === 'lan') {
-          <div class="section-heading"><div><strong>Puertos Ethernet</strong><span>Estado y configuracion individual</span></div><span class="capability" [class.blocked]="blocked('set_lan_port')">{{ capability('set_lan_port')?.status }}</span></div>
+          <div class="section-heading"><div><strong>Puertos Ethernet</strong><span>Estado y configuración individual</span></div><span class="capability" [class.blocked]="blocked('set_lan_port')">{{ capability('set_lan_port')?.status }}</span></div>
           <div class="port-list">@for (port of remote.snapshot.lanPorts; track port['port']) { <div class="port-row"><b>LAN {{ port['port'] }}</b><span [class.up]="port['status'] === 'Up'">{{ port['status'] }}</span><select [(ngModel)]="port['speed']" [name]="'speed' + port['port']"><option value="Auto">Auto</option><option value="10">10 Mbps</option><option value="100">100 Mbps</option><option value="1000">1 Gbps</option></select><select [(ngModel)]="port['duplex']" [name]="'duplex' + port['port']"><option value="Auto">Auto</option><option value="Half">Half</option><option value="Full">Full</option></select><label><input type="checkbox" [(ngModel)]="port['enabled']" [name]="'enabled' + port['port']" /> Activo</label><button type="button" (click)="saveLanPort(port)" [disabled]="saving() || blocked('set_lan_port')">Guardar</button></div> }</div>
           <form class="control-form compact" (ngSubmit)="queue('set_dhcp', dhcp)"><div class="form-title wide"><div><strong>LAN y DHCP</strong><span>{{ capability('set_dhcp')?.status }}</span></div></div><label><span>IP inicial</span><input [(ngModel)]="dhcp.minAddress" name="minAddress" /></label><label><span>IP final</span><input [(ngModel)]="dhcp.maxAddress" name="maxAddress" /></label><label><span>Mascara</span><input [(ngModel)]="dhcp.subnetMask" name="subnetMask" /></label><label><span>Gateway</span><input [(ngModel)]="dhcp.router" name="router" /></label><label><span>DNS</span><input [(ngModel)]="dhcp.dnsServers" name="dnsServers" /></label><label><span>Concesion (s)</span><input type="number" [(ngModel)]="dhcp.leaseTime" name="leaseTime" /></label><label class="check wide"><input type="checkbox" [(ngModel)]="dhcp.enabled" name="dhcpEnabled" /> Servidor DHCP habilitado</label><button class="primary wide" type="submit" [disabled]="saving() || blocked('set_dhcp')">Aplicar LAN y DHCP</button></form>
         }
 
         @if (tab() === 'wan') {
-          <div class="locked-banner"><svg lucideBan size="17"></svg><div><strong>WAN visible, cambios bloqueados</strong><span>Debe certificarse con una ONU recuperable antes de habilitar esta accion.</span></div></div>
+          <div class="locked-banner"><svg lucideBan size="17"></svg><div><strong>WAN visible, cambios bloqueados</strong><span>Debe certificarse con una ONU recuperable antes de habilitar esta acción.</span></div></div>
           <form class="control-form" (ngSubmit)="queue('set_wan', wan)"><label><span>Direccionamiento</span><select [(ngModel)]="wan.addressingType" name="addressing"><option>Static</option><option>DHCP</option></select></label><label><span>IP WAN</span><input [(ngModel)]="wan.ipAddress" name="wanIp" /></label><label><span>Gateway</span><input [(ngModel)]="wan.gateway" name="wanGateway" /></label><label><span>DNS</span><input [(ngModel)]="wan.dnsServers" name="wanDns" /></label><label><span>VLAN</span><input type="number" [(ngModel)]="wan.vlan" name="vlan" /></label><label><span>MTU</span><input type="number" [(ngModel)]="wan.mtu" name="mtu" /></label><label class="wide"><span>Lista de servicios</span><input [(ngModel)]="wan.serviceList" name="serviceList" /></label><button class="primary wide" type="submit" disabled>Bloqueado hasta certificacion</button></form>
         }
 
@@ -95,8 +95,8 @@
         }
 
         @if (tab() === 'system') {
-          <form class="control-form compact" (ngSubmit)="queue('set_time', time)"><div class="form-title wide"><div><strong>Hora, NTP y reportes</strong><span>{{ capability('set_time')?.status }}</span></div></div><label><span>NTP principal</span><input [(ngModel)]="time.ntpServer1" name="ntp1" /></label><label><span>NTP alterno</span><input [(ngModel)]="time.ntpServer2" name="ntp2" /></label><label><span>Zona</span><input [(ngModel)]="time.timeZone" name="timezone" /></label><label><span>Intervalo de gestion (s)</span><input type="number" [(ngModel)]="time.informInterval" name="inform" min="60" /></label><button class="primary wide" type="submit" [disabled]="saving() || blocked('set_time')">Aplicar tiempo</button></form>
-          <div class="system-actions"><div><strong>Reiniciar ONU</strong><span>{{ remote.managementChannels?.omci?.available ? 'Se enviara directamente por la OLT y quedara auditado.' : 'Se enviara por el canal remoto disponible.' }}</span><button type="button" (click)="requestReboot()" [disabled]="saving()">Reiniciar</button></div><div class="blocked"><strong>Firmware</strong><span>Bloqueado hasta validar OUI, version y recuperacion.</span><button type="button" disabled>Actualizar firmware</button></div><div class="blocked"><strong>Restauracion de fabrica</strong><span>No certificada para este firmware.</span><button type="button" disabled>Restaurar</button></div></div>
+          <form class="control-form compact" (ngSubmit)="queue('set_time', time)"><div class="form-title wide"><div><strong>Hora, NTP y reportes</strong><span>{{ capability('set_time')?.status }}</span></div></div><label><span>NTP principal</span><input [(ngModel)]="time.ntpServer1" name="ntp1" /></label><label><span>NTP alterno</span><input [(ngModel)]="time.ntpServer2" name="ntp2" /></label><label><span>Zona</span><input [(ngModel)]="time.timeZone" name="timezone" /></label><label><span>Intervalo de gestión (s)</span><input type="number" [(ngModel)]="time.informInterval" name="inform" min="60" /></label><button class="primary wide" type="submit" [disabled]="saving() || blocked('set_time')">Aplicar tiempo</button></form>
+          <div class="system-actions"><div><strong>Reiniciar ONU</strong><span>{{ remote.managementChannels?.omci?.available ? 'Se enviará directamente por la OLT y quedará auditado.' : 'Se enviará por el canal remoto disponible.' }}</span><button type="button" (click)="requestReboot()" [disabled]="saving()">Reiniciar</button></div><div class="blocked"><strong>Firmware</strong><span>Bloqueado hasta validar OUI, versión y recuperacion.</span><button type="button" disabled>Actualizar firmware</button></div><div class="blocked"><strong>Restauracion de fabrica</strong><span>No certificada para este firmware.</span><button type="button" disabled>Restaurar</button></div></div>
         }
 
         @if (tab() === 'history') {
@@ -104,7 +104,7 @@
         }
 
         @if (tab() === 'parameters') {
-          <div class="parameter-search"><svg lucideSearch size="16"></svg><input [(ngModel)]="parameterSearch" (keyup.enter)="loadParameters()" placeholder="Buscar parametro tecnico" /><button type="button" (click)="loadParameters()">Buscar</button></div>
+          <div class="parameter-search"><svg lucideSearch size="16"></svg><input [(ngModel)]="parameterSearch" (keyup.enter)="loadParameters()" placeholder="Buscar parámetro técnico" /><button type="button" (click)="loadParameters()">Buscar</button></div>
           @if (parameters().length) {
             <div class="parameter-pager">
               <span>{{ parameters().length }} parametros encontrados</span>

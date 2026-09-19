@@ -71,7 +71,7 @@ interface RenderMapClient extends MapClient {
           <span class="kpi"><strong>{{ filtered().length }}</strong> en mapa</span>
           <span class="kpi kpi-green"><strong>{{ countByEstado('Activo') }}</strong> activos</span>
           <span class="kpi kpi-red"><strong>{{ countByEstado('Suspendido') }}</strong> suspendidos</span>
-          <span class="kpi kpi-blue"><strong>{{ countBySource('tecnico') }}</strong> GPS tecnico</span>
+          <span class="kpi kpi-blue"><strong>{{ countBySource('tecnico') }}</strong> GPS técnico</span>
         </div>
         <div class="filters">
           <input type="text" placeholder="Buscar nombre/IP..." [(ngModel)]="search" (input)="render()" class="input" />
@@ -120,12 +120,12 @@ interface RenderMapClient extends MapClient {
               @if (stats(); as s) {
                 <br>De {{ s.totalClients }} clientes en DB, 0 tienen GPS capturado.
               }
-              <br>Captura desde la ficha de cada cliente con <em>📍 Capturar mi ubicacion actual</em>.
+              <br>Captura desde la ficha de cada cliente con <em>📍 Capturar mi ubicación actual</em>.
             </div>
           } @else if (stats(); as s) {
             <div class="overlay-corner overlay-debug">
               <strong>{{ s.totalClients }}</strong> clientes en DB ·
-              <span style="color:#16a34a;font-weight:700">{{ s.withGpsTecnico }} con GPS tecnico</span> ·
+              <span style="color:#16a34a;font-weight:700">{{ s.withGpsTecnico }} con GPS técnico</span> ·
               {{ s.withCoordsWispHub }} con coords WispHub ·
               <strong>{{ s.shownInMap }} en mapa</strong>
               @if (s.skippedBadCoords > 0) {
@@ -191,7 +191,7 @@ interface RenderMapClient extends MapClient {
     :host ::ng-deep .popup-meta strong { color: #0f172a; }
     :host ::ng-deep .popup-btn { display: inline-block; background: #6366f1; color: white !important; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; margin-top: 10px; }
     :host ::ng-deep .popup-btn:hover { background: #4f46e5; }
-    :host ::ng-deep .popup-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; margin-left: 4px; }
+    :host ::ng-deep .popup-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-left: 4px; }
     :host ::ng-deep .popup-badge.green { background: #dcfce7; color: #166534; }
     :host ::ng-deep .popup-badge.red { background: #fee2e2; color: #991b1b; }
     :host ::ng-deep .popup-badge.gray { background: #f1f5f9; color: #475569; }

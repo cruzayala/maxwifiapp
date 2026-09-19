@@ -48,7 +48,7 @@
     <section class="connection-empty">
       <svg lucideWifiOff size="34" aria-hidden="true"></svg>
       <h2>MikroTik no disponible</h2>
-      <p>{{ status().error || 'No se pudo establecer la sesion API.' }}</p>
+      <p>{{ status().error || 'No se pudo conectar con el MikroTik.' }}</p>
       <button type="button" (click)="refreshAll()"><svg lucideRefreshCw size="16" aria-hidden="true"></svg>Reintentar</button>
     </section>
   } @else {
@@ -264,7 +264,7 @@
 
     @if (activeTab() === 'ipam') {
       <section class="workspace-heading"><div><h2>Inventario y disponibilidad IP</h2><p>Rangos MikroTik cruzados con WispHub, queues, DHCP, ARP y direcciones del router</p></div><div class="toolbar-controls ipam-toolbar"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC, queue, host o cliente" [ngModel]="ipamQuery()" (ngModelChange)="setIpamQuery($event)" /></label><button class="icon-button" type="button" (click)="loadIpam()" [disabled]="controlLoading()" title="Actualizar IPAM"><svg lucideRefreshCw size="17" [class.spinning]="controlLoading()" aria-hidden="true"></svg></button></div></section>
-      @if (ipam()?.stale) { <div class="ipam-stale"><svg lucideDatabase size="16" aria-hidden="true"></svg> MikroTik no respondió. Se muestra el último inventario persistente de SQLite.</div> }
+      @if (ipam()?.stale) { <div class="ipam-stale"><svg lucideDatabase size="16" aria-hidden="true"></svg> MikroTik no respondió. Se muestra el último inventario guardado.</div> }
       <section class="mt-mini-kpis">
         <div class="success"><span>Disponibles seguras</span><strong>{{ ipam()?.stats?.available || 0 }}</strong></div><div><span>Clientes WispHub</span><strong>{{ ipam()?.stats?.matchedClients || 0 }}</strong></div><div class="warning"><span>Ocupadas sin cliente</span><strong>{{ ipam()?.stats?.occupiedWithoutClient || 0 }}</strong></div><div><span>IPs inventariadas</span><strong>{{ ipam()?.stats?.total || 0 }}</strong></div><div class="danger"><span>Conflictos IP / MAC</span><strong>{{ (ipam()?.stats?.ipConflicts || 0) + (ipam()?.stats?.macMoves || 0) }}</strong></div>
       </section>

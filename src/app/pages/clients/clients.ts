@@ -14,6 +14,7 @@ import { SurveyService } from '../../services/survey.service';
 import { ToastService } from '../../services/toast.service';
 import { ClientMetric, tierStyle, consStyle, CreditTier } from '../../models/metrics.model';
 import { DecimalPipe } from '@angular/common';
+import { formatPlanName } from '../../pipes/plan-label.pipe';
 import {
   LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
   LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid,
@@ -52,7 +53,7 @@ interface ClientGroup {
     <div class="page">
       <section class="portfolio-head">
         <div><span>Cartera operativa</span><h2>Clientes y servicio</h2><p>Consulta comercial, red y cobros desde un solo lugar.</p></div>
-        <div class="portfolio-status" [class.error]="loadError()"><i></i><span><b>{{ loadError() ? 'Datos no disponibles' : 'Datos sincronizados' }}</b><small>SQLite conserva el historial persistente</small></span></div>
+        <div class="portfolio-status" [class.error]="loadError()"><i></i><span><b>{{ loadError() ? 'Datos no disponibles' : 'Cartera cargada' }}</b><small>{{ loadError() ? 'Revise la conexión con el servidor' : (loadedAt() ? 'Actualizada a las ' + (loadedAt()!.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit' })) : 'Cargando…') }}</small></span></div>
       </section>
 
       <section class="summary-grid" aria-label="Indicadores de clientes">
@@ -135,7 +136,7 @@ interface ClientGroup {
         <div class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           <h3>Sin clientes</h3>
-          <p>Presiona "Sincronizar" para cargar los 369 clientes desde WispHub</p>
+          <p>Presiona "Sincronizar" para traer la cartera desde WispHub.</p>
         </div>
       } @else {
         @if (viewMode === 'table') {
@@ -161,14 +162,15 @@ interface ClientGroup {
                       <div class="client-identity">
                         <span class="name">{{ c.nombre }}</span>
                         <span class="sub">#{{ c.id_servicio }} · {{ c.usuario || 'Sin usuario' }}</span>
-                        <span class="contact-line">{{ c.telefono || 'Sin teléfono' }} · {{ c.email || 'Sin correo' }}</span>
+                        @if (contactLine(c); as contact) { <span class="contact-line">{{ contact }}</span> }
+                        @else { <span class="contact-line missing">Sin teléfono</span> }
                       </div>
                     </div>
                   </td>
                   <td data-label="Plan y red">
                     <div class="service-cell">
-                      <span class="plan-name">{{ c.plan_internet?.nombre || 'Sin plan' }}</span>
-                      <span class="network-line"><b class="mono">{{ c.ip || 'Sin IP' }}</b><small>{{ c.mac_cpe || c.sn_onu || 'Sin MAC / ONU' }}</small></span>
+                      <span class="plan-name" [title]="c.plan_internet?.nombre || ''">{{ planLabel(c) }}</span>
+                      <span class="network-line"><b class="mono" [class.missing]="!c.ip">{{ c.ip || 'Sin IP' }}</b>@if (c.mac_cpe || c.sn_onu) { <small class="mono">{{ c.mac_cpe || c.sn_onu }}</small> }</span>
                     </div>
                   </td>
                   <td data-label="Estado">
@@ -180,8 +182,8 @@ interface ClientGroup {
                   </td>
                   <td data-label="Ubicación">
                     <div class="location-cell">
-                      <span>{{ c.zona?.nombre || 'Sin zona' }}</span>
-                      <small>{{ c.direccion || c.localidad || 'Sin dirección' }}</small>
+                      <span [class.missing]="!c.zona?.nombre">{{ c.zona?.nombre || 'Sin zona' }}</span>
+                      @if (c.direccion || c.localidad) { <small [title]="c.direccion || c.localidad">{{ c.direccion || c.localidad }}</small> }
                     </div>
                   </td>
                   <td data-label="Salud" (click)="$event.stopPropagation()">
@@ -201,7 +203,7 @@ interface ClientGroup {
                         }
                       </div>
                     } @else {
-                      <span class="empty-tier">Sin métricas</span>
+                      <span class="empty-tier" title="Aún no hay suficiente historial de pagos y consumo">—</span>
                     }
                   </td>
                   <td data-label="Acciones" (click)="$event.stopPropagation()">
@@ -233,7 +235,7 @@ interface ClientGroup {
                   <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ c.estado || '-' }}</span>
                 </div>
                 <div class="client-card-service">
-                  <span>{{ c.plan_internet?.nombre || 'Sin plan' }}</span>
+                  <span>{{ planLabel(c) }}</span>
                   <strong>RD$ {{ monthlyAmount(c) | number:'1.0-0' }}</strong>
                 </div>
                 <div class="client-card-grid">
@@ -255,7 +257,7 @@ interface ClientGroup {
               <button class="circle-client" type="button" (click)="openClient(c.id_servicio)">
                 <span class="circle-avatar" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</span>
                 <strong>{{ c.nombre }}</strong>
-                <span>{{ c.plan_internet?.nombre || 'Sin plan' }}</span>
+                <span>{{ planLabel(c) }}</span>
                 <small>{{ c.zona?.nombre || 'Sin zona' }} · {{ billingCycleLabel(c) }}</small>
               </button>
             }
@@ -285,7 +287,7 @@ interface ClientGroup {
                     </button>
                   }
                   @if (group.clients.length > 8) {
-                    <div class="more-row">+{{ group.clients.length - 8 }} clientes mas</div>
+                    <div class="more-row">+{{ group.clients.length - 8 }} clientes más</div>
                   }
                 </div>
               </section>
@@ -319,7 +321,7 @@ interface ClientGroup {
                     </button>
                   }
                   @if (group.clients.length > 8) {
-                    <div class="more-row">+{{ group.clients.length - 8 }} clientes mas</div>
+                    <div class="more-row">+{{ group.clients.length - 8 }} clientes más</div>
                   }
                 </div>
               </section>
@@ -346,13 +348,13 @@ interface ClientGroup {
                     <button type="button" class="amount-row" (click)="openClient(c.id_servicio)">
                       <span>
                         <strong>{{ c.nombre }}</strong>
-                        <small>{{ c.plan_internet?.nombre || 'Sin plan' }} · {{ c.zona?.nombre || 'Sin zona' }}</small>
+                        <small>{{ planLabel(c) }} · {{ c.zona?.nombre || 'Sin zona' }}</small>
                       </span>
                       <em>RD$ {{ monthlyAmount(c) | number:'1.0-0' }}</em>
                     </button>
                   }
                   @if (group.clients.length > 8) {
-                    <div class="more-row">+{{ group.clients.length - 8 }} clientes mas</div>
+                    <div class="more-row">+{{ group.clients.length - 8 }} clientes más</div>
                   }
                 </div>
               </section>
@@ -377,12 +379,12 @@ interface ClientGroup {
   styles: [`
     .page { padding: 18px 20px 28px; color: #263442; }
     .portfolio-head { min-height: 64px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-    .portfolio-head > div:first-child > span { color: #1267dd; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .portfolio-head > div:first-child > span { color: #1267dd; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .portfolio-head h2 { margin: 4px 0 0; color: #172535; font-size: 20px; }
-    .portfolio-head p { margin: 4px 0 0; color: #73808d; font-size: 11px; }
+    .portfolio-head p { margin: 4px 0 0; color: #73808d; font-size: 13px; }
     .portfolio-status { display: flex; align-items: center; gap: 9px; padding-left: 16px; border-left: 1px solid #dfe5ea; }
     .portfolio-status > i { width: 9px; height: 9px; border-radius: 50%; background: #17a66a; box-shadow: 0 0 0 4px #e4f6ee; }
-    .portfolio-status b, .portfolio-status small { display: block; }.portfolio-status b { font-size: 11px; }.portfolio-status small { margin-top: 3px; color: #7c8995; font-size: 9px; }.portfolio-status.error > i { background: #b42318; box-shadow: 0 0 0 4px #fff0ef; }
+    .portfolio-status b, .portfolio-status small { display: block; }.portfolio-status b { font-size: 13px; }.portfolio-status small { margin-top: 3px; color: #7c8995; font-size: 11px; }.portfolio-status.error > i { background: #b42318; box-shadow: 0 0 0 4px #fff0ef; }
 
     .summary-grid { display: grid; grid-template-columns: repeat(6, minmax(145px, 1fr)); gap: 9px; margin-bottom: 10px; }
     .summary-card { min-width: 0; min-height: 94px; padding: 12px; border: 1px solid #dfe5ea; border-radius: 6px; display: grid; grid-template-columns: 36px minmax(0, 1fr); align-items: start; gap: 10px; text-align: left; background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
@@ -391,32 +393,32 @@ interface ClientGroup {
     .kpi-icon { width: 36px; height: 36px; border-radius: 5px; display: grid; place-items: center; background: #edf4ff; color: #1267dd; }
     .summary-card.success .kpi-icon { background: #e9f8f1; color: #13875a; }.summary-card.warning .kpi-icon { background: #fff6e8; color: #b36b12; }.summary-card.danger .kpi-icon { background: #fff0ef; color: #b42318; }.summary-card.info .kpi-icon { background: #eef3f7; color: #526b80; }.summary-card.revenue .kpi-icon { background: #f1f0ff; color: #6659c7; }
     .summary-card small, .summary-card strong, .summary-card em { display: block; min-width: 0; }
-    .summary-card small { color: #667582; font-size: 9px; font-weight: 800; text-transform: uppercase; }
+    .summary-card small { color: #667582; font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .summary-card strong { margin-top: 6px; color: #172535; font-size: 21px; line-height: 1; overflow-wrap: anywhere; }
-    .summary-card em { margin-top: 7px; color: #81909c; font-size: 9px; line-height: 1.3; font-style: normal; white-space: normal; }
+    .summary-card em { margin-top: 7px; color: #81909c; font-size: 11px; line-height: 1.3; font-style: normal; white-space: normal; }
 
     .insight-strip { min-height: 43px; margin-bottom: 10px; padding: 0 13px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center; border: 1px solid #dfe5ea; border-radius: 6px; background: #f8fafb; }
-    .insight-strip > div { min-height: 24px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border-right: 1px solid #dfe5ea; color: #697784; font-size: 10px; }
+    .insight-strip > div { min-height: 24px; padding: 0 13px; display: flex; align-items: center; gap: 7px; border-right: 1px solid #dfe5ea; color: #697784; font-size: 12px; }
     .insight-strip > div:first-child { padding-left: 0; }.insight-strip > div:last-child { padding-right: 0; border-right: 0; }.insight-strip svg { color: #1267dd; flex: 0 0 auto; }.insight-strip b { color: #344250; }
 
     .toolbar { margin-bottom: 10px; border: 1px solid #dce3e8; border-radius: 6px; background: #fff; }
     .toolbar-primary { min-height: 62px; padding: 10px; display: grid; grid-template-columns: minmax(300px, 1fr) auto auto; align-items: center; gap: 8px; }
     .search-input { height: 40px; min-width: 0; padding: 0 12px; display: flex; align-items: center; gap: 8px; border: 1px solid #ccd6de; border-radius: 5px; color: #81909c; background: #fff; }
     .search-input:focus-within { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221, .08); }
-    .search-input input { width: 100%; border: 0; outline: 0; background: transparent; color: #263442; font-size: 11px; }
-    .filter-toggle { height: 40px; padding: 0 12px; border: 1px solid #ccd6de; border-radius: 5px; display: inline-flex; align-items: center; gap: 7px; background: #fff; color: #4f5e6c; font-size: 10px; font-weight: 750; }
-    .filter-toggle.active { border-color: #a7c5e5; background: #f1f7ff; color: #1267dd; }.filter-toggle span { min-width: 18px; height: 18px; display: grid; place-items: center; border-radius: 9px; background: #1267dd; color: #fff; font-size: 8px; }
+    .search-input input { width: 100%; border: 0; outline: 0; background: transparent; color: #263442; font-size: 13px; }
+    .filter-toggle { height: 40px; padding: 0 12px; border: 1px solid #ccd6de; border-radius: 5px; display: inline-flex; align-items: center; gap: 7px; background: #fff; color: #4f5e6c; font-size: 12px; font-weight: 750; }
+    .filter-toggle.active { border-color: #a7c5e5; background: #f1f7ff; color: #1267dd; }.filter-toggle span { min-width: 18px; height: 18px; display: grid; place-items: center; border-radius: 9px; background: #1267dd; color: #fff; font-size: 11px; }
     .toolbar-actions { display: flex; align-items: center; gap: 6px; }
-    .btn { height: 40px; padding: 0 12px; border: 1px solid transparent; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 10px; font-weight: 750; cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap; }
+    .btn { height: 40px; padding: 0 12px; border: 1px solid transparent; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 750; cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap; }
     .btn:disabled { opacity: .55; cursor: wait; }.btn-outline { border-color: #ccd6de; background: #fff; color: #4e5e6c; }.btn-outline:hover { background: #f4f7f9; }.btn-primary { background: #1267dd; color: #fff; }.btn-primary:hover { background: #0d58c0; }.btn-green { background: #13875a; color: #fff; text-decoration: none; }.btn-green:hover { background: #0f704b; }
     .advanced-filters { padding: 12px 10px; display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)) auto; align-items: end; gap: 8px; border-top: 1px solid #e2e7eb; background: #f8fafb; }
-    .advanced-filters label > span { display: block; margin-bottom: 5px; color: #687784; font-size: 9px; font-weight: 750; }
-    .advanced-filters select { width: 100%; height: 36px; padding: 0 8px; border: 1px solid #ccd6de; border-radius: 4px; outline: 0; background: #fff; color: #354351; font-size: 10px; }
-    .clear-filter { height: 36px; padding: 0 10px; border: 1px solid #d3dbe2; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; background: #fff; color: #596875; font-size: 10px; font-weight: 700; white-space: nowrap; }
-    .result-bar { min-height: 34px; padding: 0 11px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #edf0f2; color: #778591; font-size: 10px; }.result-bar b { color: #344250; }.result-bar button { border: 0; background: transparent; color: #1267dd; font-size: 10px; font-weight: 750; }
+    .advanced-filters label > span { display: block; margin-bottom: 5px; color: #687784; font-size: 11px; font-weight: 750; }
+    .advanced-filters select { width: 100%; height: 36px; padding: 0 8px; border: 1px solid #ccd6de; border-radius: 4px; outline: 0; background: #fff; color: #354351; font-size: 12px; }
+    .clear-filter { height: 36px; padding: 0 10px; border: 1px solid #d3dbe2; border-radius: 4px; display: inline-flex; align-items: center; gap: 5px; background: #fff; color: #596875; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .result-bar { min-height: 34px; padding: 0 11px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid #edf0f2; color: #778591; font-size: 12px; }.result-bar b { color: #344250; }.result-bar button { border: 0; background: transparent; color: #1267dd; font-size: 12px; font-weight: 750; }
 
     .view-strip { min-height: 47px; margin: 0 0 10px; padding: 5px; display: grid; grid-template-columns: repeat(6, minmax(105px, 1fr)); gap: 3px; border: 1px solid #dfe5ea; border-radius: 6px; background: #f5f7f9; }
-    .view-strip button { min-width: 0; border: 1px solid transparent; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: #5c6a77; font-size: 10px; font-weight: 750; }
+    .view-strip button { min-width: 0; border: 1px solid transparent; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; background: transparent; color: #5c6a77; font-size: 12px; font-weight: 750; }
     .view-strip button:hover { background: #fff; }.view-strip button.active { border-color: #ccd7e0; background: #fff; color: #1267dd; box-shadow: 0 1px 4px rgba(20, 33, 45, .07); }
 
     .table-container {
@@ -427,17 +429,17 @@ interface ClientGroup {
     .data-table { width: 100%; border-collapse: collapse; min-width: 960px; table-layout: fixed; }
 
     .data-table th {
-      text-align: left; font-size: 9px; font-weight: 800; color: #687784;
+      text-align: left; font-size: 11px; font-weight: 800; color: #687784;
       text-transform: uppercase;
       padding: 11px 12px; background: #f7f9fa; border-bottom: 1px solid #dce3e8;
       position: sticky; top: 0; z-index: 1;
     }
     .col-client { width: 235px; }.col-service { width: 170px; }.col-status { width: 105px; }.col-billing { width: 130px; }.col-location { width: 160px; }.col-score { width: 110px; }.col-actions { width: 50px; }
     .sortable { cursor: pointer; user-select: none; }
-    .sortable:hover { color: #6366f1; }
+    .sortable:hover { color: #1267dd; }
 
     .data-table td {
-      padding: 11px 12px; font-size: 11px; color: #334250; vertical-align: middle;
+      padding: 11px 12px; font-size: 13px; color: #334250; vertical-align: middle;
       border-bottom: 1px solid #edf0f2;
     }
 
@@ -453,29 +455,30 @@ interface ClientGroup {
     }
     .avatar-sm.active { background: #13875a; }.avatar-sm.suspended { background: #b42318; }.avatar-sm.free { background: #1267dd; }.avatar-sm.default { background: #72808d; }
 
-    .client-identity { min-width: 0; }.name { display: block; font-weight: 750; color: #172535; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .sub { display: block; font-size: 9px; color: #85929d; margin-top: 3px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .contact-line { display: block; margin-top: 3px; color: #657482; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .client-identity { min-width: 0; }.name { display: block; font-weight: 750; color: #172535; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sub { display: block; font-size: 11px; color: #85929d; margin-top: 3px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .contact-line { display: block; margin-top: 3px; color: #657482; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-    .mono { font-family: 'Courier New', monospace; font-size: 12px; }
+    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; letter-spacing: -.01em; }
+    .missing { color: #a0aab4 !important; font-weight: 500 !important; font-style: italic; }
     .ip { color: #6366f1; font-weight: 500; }
     .price { font-weight: 700; color: #0f172a; }
     .date { font-size: 12px; color: #64748b; }
 
-    .plan-name { display: block; font-size: 10px; font-weight: 750; color: #263442; line-height: 1.25; }
+    .plan-name { display: block; font-size: 12px; font-weight: 750; color: #263442; line-height: 1.25; }
     .service-cell, .location-cell { min-width: 0; }
-    .network-line { margin-top: 4px; display: block; }.network-line b, .network-line small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.network-line b { color: #1267dd; font-size: 9px; }.network-line small { margin-top: 3px; color: #87939e; font-size: 7px; }
+    .network-line { margin-top: 4px; display: block; }.network-line b, .network-line small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.network-line b { color: #1267dd; font-size: 11px; }.network-line small { margin-top: 3px; color: #87939e; font-size: 11px; }
     .location-cell span { display: block; font-weight: 700; color: #334250; }
     .location-cell small {
-      display: block; margin-top: 3px; color: #87939e; font-size: 8px; line-height: 1.35;
+      display: block; margin-top: 3px; color: #87939e; font-size: 11px; line-height: 1.35;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
 
-    .billing-cell strong, .billing-cell small { display: block; }.billing-cell strong { margin-bottom: 5px; color: #263442; font-size: 10px; }.billing-cell small { margin-top: 5px; color: #7f8c97; font-size: 8px; }
+    .billing-cell strong, .billing-cell small { display: block; }.billing-cell strong { margin-bottom: 5px; color: #263442; font-size: 12px; }.billing-cell small { margin-top: 5px; color: #7f8c97; font-size: 11px; }
 
     .badge {
       display: inline-block; padding: 3px 7px;
-      border-radius: 10px; font-size: 8px; font-weight: 750; white-space: nowrap;
+      border-radius: 10px; font-size: 11px; font-weight: 750; white-space: nowrap;
     }
     .badge-active { background: #dcfce7; color: #16a34a; }
     .badge-suspended { background: #fee2e2; color: #dc2626; }
@@ -483,7 +486,7 @@ interface ClientGroup {
     .badge-default { background: #f1f5f9; color: #64748b; }
     .badge-paid { background: #dcfce7; color: #16a34a; }
     .badge-pending { background: #fef3c7; color: #d97706; }
-    .crm-state { display: block; width: max-content; margin-top: 5px; padding: 3px 6px; border-radius: 3px; font-size: 7px; font-weight: 800; }.crm-state.badge-warn { border: 0; }.crm-state.badge-danger { border: 0; }
+    .crm-state { display: block; width: max-content; margin-top: 5px; padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: 800; }.crm-state.badge-warn { border: 0; }.crm-state.badge-danger { border: 0; }
 
     .loading-state, .empty-state {
       display: flex; flex-direction: column;
@@ -492,7 +495,7 @@ interface ClientGroup {
     .empty-state h3 { color: #475569; margin: 8px 0 0; }
     .empty-state p { margin: 0; text-align: center; }.error-state svg { color: #b42318; }
 
-    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     .spinner.small { width: 18px; height: 18px; border-width: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -504,23 +507,23 @@ interface ClientGroup {
     }
     .sync-bar.visible { bottom: 0; }
 
-    .badge-warn { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
-    .badge-danger { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
+    .badge-warn { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
+    .badge-danger { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
 
-    .score-cell { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }.tier-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border-radius: 10px; font-size: 8px; font-weight: 750; white-space: nowrap; cursor: help; }.cons-pill { display: inline-flex; align-items: center; padding: 3px 5px; border-radius: 10px; font-size: 9px; cursor: help; }.empty-tier { color: #9aa6b0; font-size: 8px; }
+    .score-cell { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }.tier-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border-radius: 10px; font-size: 11px; font-weight: 750; white-space: nowrap; cursor: help; }.cons-pill { display: inline-flex; align-items: center; padding: 3px 5px; border-radius: 10px; font-size: 11px; cursor: help; }.empty-tier { color: #9aa6b0; font-size: 11px; }
 
     .row-actions { position: relative; }.row-actions > summary { width: 32px; height: 32px; margin-left: auto; border: 1px solid #d8e0e6; border-radius: 4px; display: grid; place-items: center; color: #586775; background: #fff; cursor: pointer; list-style: none; }.row-actions > summary::-webkit-details-marker { display: none; }.row-actions[open] > summary { border-color: #1267dd; color: #1267dd; background: #f2f7ff; }
     .row-menu { width: 230px; margin: 7px 0 2px -180px; padding: 5px; display: grid; gap: 2px; border: 1px solid #d5dde4; border-radius: 5px; background: #fff; box-shadow: 0 8px 20px rgba(20, 33, 45, .08); }
-    .row-menu > button { min-height: 42px; padding: 6px 8px; border: 0; border-radius: 4px; display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 7px; text-align: left; background: transparent; color: #455461; }.row-menu > button:hover:not(:disabled) { background: #f2f7fd; color: #1267dd; }.row-menu > button:disabled { opacity: .45; }.row-menu b, .row-menu small { display: block; }.row-menu b { font-size: 9px; }.row-menu small { margin-top: 3px; color: #84919c; font-size: 7px; }
-    .service-actions { padding: 8px; border-top: 1px solid #e5e9ed; }.service-actions > span { display: block; margin-bottom: 7px; color: #7b8894; font-size: 7px; font-weight: 800; text-transform: uppercase; }
+    .row-menu > button { min-height: 42px; padding: 6px 8px; border: 0; border-radius: 4px; display: grid; grid-template-columns: 22px 1fr; align-items: center; gap: 7px; text-align: left; background: transparent; color: #455461; }.row-menu > button:hover:not(:disabled) { background: #f2f7fd; color: #1267dd; }.row-menu > button:disabled { opacity: .45; }.row-menu b, .row-menu small { display: block; }.row-menu b { font-size: 11px; }.row-menu small { margin-top: 3px; color: #84919c; font-size: 11px; }
+    .service-actions { padding: 8px; border-top: 1px solid #e5e9ed; }.service-actions > span { display: block; margin-bottom: 7px; color: #7b8894; font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
-    .pagination { min-height: 52px; margin-top: 10px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #dce3e8; border-radius: 6px; background: #fff; color: #75838f; font-size: 9px; }.pagination > span b { color: #344250; }.pagination > div { display: flex; align-items: center; gap: 8px; }.pagination label { display: flex; align-items: center; gap: 6px; }.pagination select { height: 32px; border: 1px solid #d5dde4; border-radius: 4px; background: #fff; color: #43515e; font-size: 9px; }.pagination button { width: 32px; height: 32px; border: 1px solid #d5dde4; border-radius: 4px; display: grid; place-items: center; background: #fff; color: #475664; }.pagination button:disabled { opacity: .35; }.pagination strong { min-width: 92px; text-align: center; color: #43515e; font-size: 9px; }
+    .pagination { min-height: 52px; margin-top: 10px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #dce3e8; border-radius: 6px; background: #fff; color: #75838f; font-size: 11px; }.pagination > span b { color: #344250; }.pagination > div { display: flex; align-items: center; gap: 8px; }.pagination label { display: flex; align-items: center; gap: 6px; }.pagination select { height: 32px; border: 1px solid #d5dde4; border-radius: 4px; background: #fff; color: #43515e; font-size: 11px; }.pagination button { width: 32px; height: 32px; border: 1px solid #d5dde4; border-radius: 4px; display: grid; place-items: center; background: #fff; color: #475664; }.pagination button:disabled { opacity: .35; }.pagination strong { min-width: 92px; text-align: center; color: #43515e; font-size: 11px; }
 
     .btn-survey {
       display: inline-flex; align-items: center; gap: 4px;
       background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
-      border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600;
+      border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 600;
       cursor: pointer; margin-top: 4px; transition: all 0.15s;
     }
     .btn-survey:hover:not(:disabled) { background: #dbeafe; border-color: #3b82f6; }
@@ -528,7 +531,7 @@ interface ClientGroup {
     .btn-clear-survey {
       display: inline-flex; align-items: center; gap: 4px;
       background: #f8fafc; color: #475569; border: 1px solid #cbd5e1;
-      border-radius: 8px; padding: 5px 10px; font-size: 11px; font-weight: 600;
+      border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 600;
       cursor: pointer; margin-top: 4px; margin-left: 4px; transition: all 0.15s;
     }
     .btn-clear-survey:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
@@ -567,10 +570,10 @@ interface ClientGroup {
     .client-card-service strong { color: #0f172a; font-size: 14px; white-space: nowrap; }
     .client-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .client-card-grid div { min-width: 0; border: 1px solid #e7ecef; border-radius: 5px; padding: 8px; }
-    .client-card-grid span { display: block; color: #94a3b8; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+    .client-card-grid span { display: block; color: #94a3b8; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
     .client-card-grid strong { display: block; margin-top: 3px; color: #334155; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .client-card p { margin: 12px 0 0; color: #64748b; font-size: 12px; line-height: 1.4; min-height: 34px; }
-    .client-card footer { min-height: 34px; margin-top: 10px; padding-top: 9px; border-top: 1px solid #e7ecef; display: flex; align-items: center; justify-content: flex-end; gap: 6px; color: #1267dd; font-size: 10px; font-weight: 750; }
+    .client-card footer { min-height: 34px; margin-top: 10px; padding-top: 9px; border-top: 1px solid #e7ecef; display: flex; align-items: center; justify-content: flex-end; gap: 6px; color: #1267dd; font-size: 12px; font-weight: 750; }
 
     .circle-grid {
       display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -592,7 +595,7 @@ interface ClientGroup {
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .circle-client span:not(.circle-avatar) { margin-top: 5px; color: #475569; font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .circle-client small { margin-top: 4px; color: #94a3b8; font-size: 11px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .circle-client small { margin-top: 4px; color: #94a3b8; font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
     .group-layout {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -609,7 +612,7 @@ interface ClientGroup {
     .group-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
     .group-metrics span {
       display: inline-flex; padding: 5px 8px; border-radius: 999px; background: #f8fafc;
-      color: #475569; border: 1px solid #e2e8f0; font-size: 11px; font-weight: 800;
+      color: #475569; border: 1px solid #e2e8f0; font-size: 13px; font-weight: 800;
     }
     .group-list, .amount-stack { display: grid; gap: 6px; }
     .group-row, .amount-row {
@@ -621,9 +624,9 @@ interface ClientGroup {
       padding: 8px; text-align: left;
     }
     .group-row:hover, .amount-row:hover { background: #f8fafc; border-color: #c7d2fe; }
-    .mini-avatar { width: 30px; height: 30px; border-radius: 4px; color: white; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; }
+    .mini-avatar { width: 30px; height: 30px; border-radius: 4px; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; }
     .group-client-name { color: #0f172a; font-size: 12px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .group-row small { color: #64748b; font-size: 11px; white-space: nowrap; }
+    .group-row small { color: #64748b; font-size: 13px; white-space: nowrap; }
     .more-row { color: #64748b; font-size: 12px; font-weight: 700; text-align: center; padding: 7px; }
     .billing-bars { height: 8px; background: #eef2ff; border-radius: 999px; overflow: hidden; margin-top: 12px; }
     .billing-bars span { display: block; height: 100%; min-width: 8%; border-radius: inherit; background: linear-gradient(90deg, #6366f1, #22c55e); }
@@ -633,7 +636,7 @@ interface ClientGroup {
     }
     .amount-row span { min-width: 0; }
     .amount-row strong { display: block; color: #0f172a; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .amount-row small { display: block; margin-top: 2px; color: #64748b; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .amount-row small { display: block; margin-top: 2px; color: #64748b; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .amount-row em { color: #0f172a; font-size: 12px; font-weight: 900; font-style: normal; white-space: nowrap; }
 
     button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
@@ -706,6 +709,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   allZones = signal<string[]>([]);
   loading = signal(true);
   loadError = signal('');
+  loadedAt = signal<Date | null>(null);
   syncing = signal(false);
   syncMessage = signal('');
   private metricsFilterEffect = effect(() => {
@@ -797,7 +801,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       next: (r) => {
         this.surveyLoading.set(null);
         if (r.alreadySubmitted) {
-          this.toast.info('Este cliente ya lleno la encuesta. No se enviara de nuevo.');
+          this.toast.info('Este cliente ya llenó la encuesta. No se enviará de nuevo.');
         } else if (r.alreadyPending) {
           this.copySurveyLink(r.publicUrl);
           this.toast.info('Ya hay encuesta pendiente. Enlace copiado y recordatorio reactivado.');
@@ -1129,6 +1133,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       const zones = [...new Set(clients.map(c => c.zona?.nombre).filter(Boolean))].sort();
       this.allPlans.set(plans as string[]);
       this.allZones.set(zones as string[]);
+      this.loadedAt.set(new Date());
       this.filterClients();
     } catch (error: any) {
       this.loadError.set(error?.message || 'No fue posible consultar los clientes guardados.');
@@ -1256,11 +1261,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   async syncClients() {
     this.syncing.set(true);
-    this.syncMessage.set('Actualizando SQLite sin eliminar datos locales...');
+    this.syncMessage.set('Actualizando la cartera sin borrar datos locales...');
     try {
       await this.syncService.syncAll();
       await this.loadLocal(true);
-      this.syncMessage.set(`${this.allClients().length} clientes cargados desde SQLite`);
+      this.syncMessage.set(`${this.allClients().length} clientes cargados`);
     } catch (error: any) {
       this.syncMessage.set('Error: ' + (error?.error?.detail || error?.message || 'Sin conexion'));
     } finally {
@@ -1269,9 +1274,18 @@ export class ClientsComponent implements OnInit, OnDestroy {
   }
 
   getInitials(nombre: string): string {
-    if (!nombre) return '?';
-    const parts = nombre.trim().split(/\s+/);
-    return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase();
+    // Solo letras: nombres como "`la de la banca 15" o "algeny 30" no deben producir "`L" o "A3".
+    const words = String(nombre || '').match(/\p{L}+/gu) || [];
+    const initials = ((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase();
+    return initials || '#';
+  }
+
+  planLabel(c: WispHubClient): string {
+    return formatPlanName(c.plan_internet?.nombre);
+  }
+
+  contactLine(c: WispHubClient): string {
+    return [c.telefono, c.email].filter(Boolean).join(' · ');
   }
 
   clientSubline(c: WispHubClient): string {

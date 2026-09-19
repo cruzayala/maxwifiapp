@@ -215,7 +215,7 @@ const CATEGORIES = [
     .month-bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; position: relative; height: 100%; }
     .month-bar-fill { width: 100%; background: linear-gradient(180deg, #6366f1, #818cf8); border-radius: 6px 6px 0 0; min-height: 6px; }
     .month-label { font-size: 11px; color: #64748b; margin-top: 6px; }
-    .month-value { font-size: 10px; color: #94a3b8; }
+    .month-value { font-size: 12px; color: #94a3b8; }
 
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }

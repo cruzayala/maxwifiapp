@@ -42,19 +42,19 @@ import { ConfigService } from '../../services/config.service';
         <div class="conflict-card">
           <div class="conflict-header">
             <span class="conflict-icon">⚠️</span>
-            <h3>Otra sesion de WhatsApp esta usando esta cuenta</h3>
+            <h3>Otra sesión de WhatsApp está usando esta cuenta</h3>
           </div>
-          <p>WhatsApp detecto que hay <strong>otro dispositivo o WhatsApp Web</strong> usando este mismo numero. Por eso te desconecto.</p>
+          <p>WhatsApp detectó que hay <strong>otro dispositivo o WhatsApp Web</strong> usando este mismo número. Por eso te desconectó.</p>
           <ol class="conflict-steps">
-            <li>Abre WhatsApp en tu telefono</li>
-            <li>Toca <strong>⋮ Menu</strong> (Android) o <strong>Configuracion</strong> (iPhone) → <strong>Dispositivos vinculados</strong></li>
+            <li>Abre WhatsApp en tu teléfono</li>
+            <li>Toca <strong>⋮ Menú</strong> (Android) o <strong>Configuración</strong> (iPhone) → <strong>Dispositivos vinculados</strong></li>
             <li>Cierra TODAS las sesiones que aparezcan (incluso si las reconoces)</li>
-            <li>Vuelve aqui y toca <strong>"Limpiar y reconectar"</strong> arriba</li>
-            <li>Escanea el QR nuevo desde el telefono</li>
+            <li>Vuelve aquí y toca <strong>"Limpiar y reconectar"</strong> arriba</li>
+            <li>Escanea el QR nuevo desde el teléfono</li>
           </ol>
           <p class="conflict-tip">
             💡 Tip: Si vas a usar WhatsApp Web en tu navegador, ten en cuenta que esta app se desconectara.
-            Esta app es para envios automaticos del sistema, no compite con WhatsApp Web.
+            Esta app es para envíos automáticos del sistema, no compite con WhatsApp Web.
           </p>
         </div>
       }
@@ -63,9 +63,9 @@ import { ConfigService } from '../../services/config.service';
         <div class="conflict-card">
           <div class="conflict-header">
             <span class="conflict-icon">🚪</span>
-            <h3>Sesion cerrada desde el telefono</h3>
+            <h3>Sesión cerrada desde el teléfono</h3>
           </div>
-          <p>Cerraste la sesion de esta app desde tu WhatsApp. Para volver a conectar:</p>
+          <p>Cerraste la sesión de esta app desde tu WhatsApp. Para volver a conectar:</p>
           <ol class="conflict-steps">
             <li>Toca <strong>"Limpiar y reconectar"</strong> arriba</li>
             <li>Escanea el QR nuevo</li>
@@ -75,7 +75,7 @@ import { ConfigService } from '../../services/config.service';
 
       @if (waStatus() === 'qr') {
         <div class="qr-card">
-          <h3>Escanea el codigo QR con WhatsApp</h3>
+          <h3>Escanea el código QR con WhatsApp</h3>
           <p>Abre WhatsApp > Menu > Dispositivos vinculados > Vincular dispositivo</p>
           <div class="qr-box">
             @if (qrImage()) {
@@ -102,7 +102,7 @@ import { ConfigService } from '../../services/config.service';
               </select>
             </div>
             <div class="form-group">
-              <label>O escribir numero directo</label>
+              <label>O escribir número directo</label>
               <input type="text" [(ngModel)]="customPhone" placeholder="18091234567" class="form-input" />
             </div>
             <div class="form-group">
@@ -123,10 +123,10 @@ import { ConfigService } from '../../services/config.service';
           <!-- SEND BULK TO MOROSOS -->
           <div class="card">
             <h3>Cobro Masivo a Morosos</h3>
-            <p class="card-desc">Enviar mensaje de cobro a todos los clientes con pago pendiente que tengan telefono</p>
+            <p class="card-desc">Enviar mensaje de cobro a todos los clientes con pago pendiente que tengan teléfono</p>
             <div class="morosos-count">
               <span class="big-num">{{ morososWithPhone().length }}</span>
-              <span>clientes morosos con telefono</span>
+              <span>clientes morosos con teléfono</span>
             </div>
             <div class="form-group">
               <label>Mensaje de cobro</label>
@@ -330,7 +330,7 @@ export class WhatsappComponent implements OnInit, OnDestroy {
 
   // Limpia la sesion actual y reconecta (recomendado tras conflict o logout)
   reconnect() {
-    this.toast.info('Limpiando sesion anterior...');
+    this.toast.info('Limpiando sesión anterior...');
     this.http.post<any>('/wa/disconnect', {}).subscribe({
       next: () => {
         setTimeout(() => {
@@ -340,7 +340,7 @@ export class WhatsappComponent implements OnInit, OnDestroy {
           });
         }, 1500);
       },
-      error: () => this.toast.error('Error limpiando sesion previa'),
+      error: () => this.toast.error('Error limpiando sesión previa'),
     });
   }
 
@@ -365,7 +365,7 @@ export class WhatsappComponent implements OnInit, OnDestroy {
 
   sendMessage() {
     const phone = this.customPhone || this.selectedClient;
-    if (!phone) { this.toast.error('Seleccione un cliente o escriba un numero'); return; }
+    if (!phone) { this.toast.error('Seleccione un cliente o escriba un número'); return; }
     if (!this.messageText) { this.toast.error('Escriba un mensaje'); return; }
 
     this.sending.set(true);

@@ -58,7 +58,7 @@ interface InvoiceBreakdown {
     <div class="page">
       <section class="finance-head">
         <div><span>Control financiero</span><h2>Facturación y cobranza</h2><p>Historial completo, pagos, saldos y soportes en una sola vista.</p></div>
-        <div class="history-state" [class.error]="loadError()"><i></i><span><b>{{ loadError() ? 'Historial no disponible' : 'Historial persistente' }}</b><small>{{ allInvoices().length }} facturas conservadas en SQLite</small></span></div>
+        <div class="history-state" [class.error]="loadError()"><i></i><span><b>{{ loadError() ? 'Historial no disponible' : 'Historial completo' }}</b><small>{{ allInvoices().length }} facturas guardadas</small></span></div>
       </section>
 
       <section class="summary-grid" aria-label="Indicadores de facturación">
@@ -128,7 +128,7 @@ interface InvoiceBreakdown {
         <div class="search-filter">
           <div class="search-input">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="search" placeholder="Cliente, usuario, telefono, cedula, direccion, referencia o factura" [(ngModel)]="searchTerm" (input)="filterInvoices()" />
+            <input type="search" placeholder="Cliente, usuario, teléfono, cédula, dirección, referencia o factura" [(ngModel)]="searchTerm" (input)="filterInvoices()" />
           </div>
           <select [(ngModel)]="statusFilter" (change)="filterInvoices()" class="filter-select">
             <option value="">Todos los estados</option>
@@ -141,11 +141,11 @@ interface InvoiceBreakdown {
           <select [(ngModel)]="dateFilter" (change)="filterInvoices()" class="filter-select">
             <option value="">Todas las fechas</option>
             <option value="overdue">Vencidas</option>
-            <option value="due7">Vencen en 7 dias</option>
+            <option value="due7">Vencen en 7 días</option>
             <option value="issued-today">Emitidas hoy</option>
-            <option value="issued-30">Emitidas ultimos 30 dias</option>
+            <option value="issued-30">Emitidas últimos 30 días</option>
             <option value="issued-month">Emitidas este mes</option>
-            <option value="issued-year">Emitidas este ano</option>
+            <option value="issued-year">Emitidas este año</option>
             <option value="paid-month">Pagadas este mes</option>
           </select>
           <select [(ngModel)]="paymentFilter" (change)="filterInvoices()" class="filter-select">
@@ -178,10 +178,10 @@ interface InvoiceBreakdown {
             </label>
             <label><span>Desde</span><input type="date" [(ngModel)]="dateFrom" (change)="filterInvoices()" /></label>
             <label><span>Hasta</span><input type="date" [(ngModel)]="dateTo" (change)="filterInvoices()" /></label>
-            <label><span>Total minimo</span><input type="number" min="0" step="100" placeholder="RD$ 0" [(ngModel)]="minTotal" (input)="filterInvoices()" /></label>
-            <label><span>Total maximo</span><input type="number" min="0" step="100" placeholder="Sin limite" [(ngModel)]="maxTotal" (input)="filterInvoices()" /></label>
-            <label><span>Saldo minimo</span><input type="number" min="0" step="100" placeholder="RD$ 0" [(ngModel)]="minBalance" (input)="filterInvoices()" /></label>
-            <label><span>Saldo maximo</span><input type="number" min="0" step="100" placeholder="Sin limite" [(ngModel)]="maxBalance" (input)="filterInvoices()" /></label>
+            <label><span>Total mínimo</span><input type="number" min="0" step="100" placeholder="RD$ 0" [(ngModel)]="minTotal" (input)="filterInvoices()" /></label>
+            <label><span>Total máximo</span><input type="number" min="0" step="100" placeholder="Sin límite" [(ngModel)]="maxTotal" (input)="filterInvoices()" /></label>
+            <label><span>Saldo mínimo</span><input type="number" min="0" step="100" placeholder="RD$ 0" [(ngModel)]="minBalance" (input)="filterInvoices()" /></label>
+            <label><span>Saldo máximo</span><input type="number" min="0" step="100" placeholder="Sin límite" [(ngModel)]="maxBalance" (input)="filterInvoices()" /></label>
             <label><span>Cajero</span>
               <select [(ngModel)]="cashierFilter" (change)="filterInvoices()">
                 <option value="">Todos</option>
@@ -248,16 +248,16 @@ interface InvoiceBreakdown {
           </div>
           <div class="period-grid">
             <div class="period-block current">
-              <div class="period-title"><strong>Periodo A</strong><div><input type="date" [(ngModel)]="compareFromA" (change)="updateComparison()" /><input type="date" [(ngModel)]="compareToA" (change)="updateComparison()" /></div></div>
+              <div class="period-title"><strong>Período A</strong><div><input type="date" [(ngModel)]="compareFromA" (change)="updateComparison()" /><input type="date" [(ngModel)]="compareToA" (change)="updateComparison()" /></div></div>
               <div class="period-metrics"><span><small>Facturas</small><strong>{{ comparisonA().count }}</strong></span><span><small>Facturado</small><strong>RD$ {{ comparisonA().invoiced | number:'1.2-2' }}</strong></span><span><small>Cobrado</small><strong>RD$ {{ comparisonA().collected | number:'1.2-2' }}</strong></span><span><small>Saldo</small><strong>RD$ {{ comparisonA().balance | number:'1.2-2' }}</strong></span></div>
             </div>
             <div class="period-block previous">
-              <div class="period-title"><strong>Periodo B</strong><div><input type="date" [(ngModel)]="compareFromB" (change)="updateComparison()" /><input type="date" [(ngModel)]="compareToB" (change)="updateComparison()" /></div></div>
+              <div class="period-title"><strong>Período B</strong><div><input type="date" [(ngModel)]="compareFromB" (change)="updateComparison()" /><input type="date" [(ngModel)]="compareToB" (change)="updateComparison()" /></div></div>
               <div class="period-metrics"><span><small>Facturas</small><strong>{{ comparisonB().count }}</strong></span><span><small>Facturado</small><strong>RD$ {{ comparisonB().invoiced | number:'1.2-2' }}</strong></span><span><small>Cobrado</small><strong>RD$ {{ comparisonB().collected | number:'1.2-2' }}</strong></span><span><small>Saldo</small><strong>RD$ {{ comparisonB().balance | number:'1.2-2' }}</strong></span></div>
             </div>
           </div>
           <div class="delta-row">
-            <span>Facturacion A vs B <strong [class.positive]="comparisonDelta('invoiced') >= 0" [class.negative]="comparisonDelta('invoiced') < 0">{{ comparisonDeltaLabel('invoiced') }}</strong></span>
+            <span>Facturación A vs B <strong [class.positive]="comparisonDelta('invoiced') >= 0" [class.negative]="comparisonDelta('invoiced') < 0">{{ comparisonDeltaLabel('invoiced') }}</strong></span>
             <span>Cobranza A vs B <strong [class.positive]="comparisonDelta('collected') >= 0" [class.negative]="comparisonDelta('collected') < 0">{{ comparisonDeltaLabel('collected') }}</strong></span>
             <span>Cantidad A vs B <strong [class.positive]="comparisonDelta('count') >= 0" [class.negative]="comparisonDelta('count') < 0">{{ comparisonDeltaLabel('count') }}</strong></span>
           </div>
@@ -280,7 +280,7 @@ interface InvoiceBreakdown {
             <button type="button" (click)="exportInvoices(true)">Exportar</button>
             <button type="button" (click)="printSelected('invoice')">Reimprimir facturas</button>
             <button type="button" (click)="printSelected('receipt')">Reimprimir recibos</button>
-            <button type="button" class="clear-selection" (click)="clearSelection()">Quitar seleccion</button>
+            <button type="button" class="clear-selection" (click)="clearSelection()">Quitar selección</button>
           </div>
         </div>
       }
@@ -303,7 +303,7 @@ interface InvoiceBreakdown {
       } @else if (filtered().length === 0) {
         <div class="empty-state filtered-empty">
           <h3>No hay coincidencias</h3>
-          <p>Prueba otra busqueda o limpia los filtros activos.</p>
+          <p>Prueba otra búsqueda o limpia los filtros activos.</p>
           <button class="btn btn-outline" type="button" (click)="clearFilters()">Limpiar filtros</button>
         </div>
       } @else {
@@ -312,7 +312,7 @@ interface InvoiceBreakdown {
             <thead>
               <tr>
                 <th class="col-check">
-                  <input type="checkbox" aria-label="Seleccionar pagina" [checked]="isPageSelected()" [indeterminate]="isPagePartiallySelected()" (change)="togglePageSelection()" />
+                  <input type="checkbox" aria-label="Seleccionar página" [checked]="isPageSelected()" [indeterminate]="isPagePartiallySelected()" (change)="togglePageSelection()" />
                 </th>
                 <th class="sortable col-invoice" (click)="sort('id_factura')">Factura {{ sortIcon('id_factura') }}</th>
                 <th class="sortable col-client" (click)="sort('cliente.nombre')">Cliente {{ sortIcon('cliente.nombre') }}</th>
@@ -422,9 +422,9 @@ interface InvoiceBreakdown {
           </table>
         </div>
         @if (totalPages() > 1) {
-          <nav class="pagination" aria-label="Paginas de facturas">
+          <nav class="pagination" aria-label="Páginas de facturas">
             <button type="button" (click)="previousPage()" [disabled]="page() === 1">Anterior</button>
-            <span>Pagina {{ page() }} de {{ totalPages() }} · {{ filtered().length }} facturas</span>
+            <span>Página {{ page() }} de {{ totalPages() }} · {{ filtered().length }} facturas</span>
             <label>Mostrar
               <select [ngModel]="pageSize()" (ngModelChange)="setPageSize($event)">
                 <option [ngValue]="25">25</option>
@@ -470,7 +470,7 @@ interface InvoiceBreakdown {
     .history-state.error > i { background: #dc2626; box-shadow: 0 0 0 4px #fee2e2; }
     .history-state > span { display: grid; gap: 1px; }
     .history-state b { color: #25364a; font-size: 12px; }
-    .history-state small { margin: 0; color: #718096; font-size: 10px; }
+    .history-state small { margin: 0; color: #718096; font-size: 12px; }
 
     .summary-grid {
       display: grid; grid-template-columns: repeat(6, minmax(135px, 1fr));
@@ -490,9 +490,9 @@ interface InvoiceBreakdown {
       background: #eaf2ff; color: #2563eb;
     }
     .summary-card small, .summary-card strong, .summary-card em { display: block; }
-    .summary-card small { margin: 0; color: #66788b; font-size: 10px; font-style: normal; font-weight: 800; text-transform: uppercase; white-space: normal; }
+    .summary-card small { margin: 0; color: #66788b; font-size: 12px; font-style: normal; font-weight: 800; text-transform: uppercase; white-space: normal; }
     .summary-card strong { margin-top: 5px; color: #12233a; font-size: 20px; line-height: 1.1; overflow-wrap: anywhere; }
-    .summary-card em { margin-top: 5px; color: #7b8a99; font-size: 10px; font-style: normal; line-height: 1.25; }
+    .summary-card em { margin-top: 5px; color: #7b8a99; font-size: 12px; font-style: normal; line-height: 1.25; }
     .summary-card.success .kpi-icon, .summary-card.paid .kpi-icon { color: #0f8a50; background: #e6f6ee; }
     .summary-card.warning .kpi-icon { color: #b45309; background: #fff3dd; }
     .summary-card.danger .kpi-icon { color: #c2413a; background: #fdeceb; }
@@ -519,10 +519,10 @@ interface InvoiceBreakdown {
     .analytics-panel { min-width: 0; min-height: 230px; padding: 13px; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; }
     .analytics-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
     .analytics-panel > header > div:first-child { display: grid; gap: 2px; }
-    .analytics-panel header span { color: #778899; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .analytics-panel header span { color: #778899; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .analytics-panel h3 { margin: 0; color: #25364a; font-size: 14px; }
     .analytics-panel header > svg { color: #6b7f92; }
-    .chart-legend { display: flex !important; align-items: center; gap: 6px !important; color: #718096; font-size: 10px; white-space: nowrap; }
+    .chart-legend { display: flex !important; align-items: center; gap: 6px !important; color: #718096; font-size: 12px; white-space: nowrap; }
     .chart-legend i { width: 8px; height: 8px; border-radius: 2px; }
     .chart-legend .invoiced, .bar.invoiced { background: #2563eb; }
     .chart-legend .collected, .bar.collected { background: #15a065; }
@@ -530,15 +530,15 @@ interface InvoiceBreakdown {
     .chart-month { display: grid; grid-template-rows: 128px 18px 15px; min-width: 0; text-align: center; }
     .bar-stage { display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 128px; border-bottom: 1px dashed #dfe7ed; }
     .bar { width: min(16px, 37%); min-height: 0; border-radius: 3px 3px 0 0; transition: height 0.25s ease; }
-    .chart-month > strong { align-self: end; color: #485c70; font-size: 10px; text-transform: capitalize; }
-    .chart-month > small { margin: 0; color: #93a1ae; font-size: 9px; }
+    .chart-month > strong { align-self: end; color: #485c70; font-size: 12px; text-transform: capitalize; }
+    .chart-month > small { margin: 0; color: #93a1ae; font-size: 11px; }
 
     .horizontal-bars { display: grid; gap: 13px; }
     .bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 3px 10px; }
     .bar-row > div { display: grid; min-width: 0; }
     .bar-row strong { color: #31465b; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-row span { color: #8594a3; font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .bar-row > em { align-self: center; color: #4e6275; font-size: 10px; font-style: normal; font-weight: 700; }
+    .bar-row span { color: #8594a3; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bar-row > em { align-self: center; color: #4e6275; font-size: 12px; font-style: normal; font-weight: 700; }
     .bar-row > i { grid-column: 1 / -1; display: block; height: 5px; overflow: hidden; border-radius: 3px; background: #edf1f4; }
     .bar-row > i > b { display: block; height: 100%; border-radius: inherit; background: #2563eb; }
     .chart-empty { color: #8594a3; font-size: 11px; }
@@ -548,12 +548,12 @@ interface InvoiceBreakdown {
     .donut::before { content: ''; grid-area: 1 / 1; width: 70px; height: 70px; border-radius: 50%; background: #fff; }
     .donut > span { z-index: 1; grid-area: 1 / 1; display: grid; text-align: center; }
     .donut b { color: #25364a; font-size: 18px; }
-    .donut small { margin: 0; color: #8594a3; font-size: 9px; }
+    .donut small { margin: 0; color: #8594a3; font-size: 11px; }
     .status-legend { display: grid; gap: 7px; }
     .status-legend > div { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
     .status-legend i { width: 8px; height: 8px; border-radius: 2px; }
-    .status-legend span { color: #607386; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .status-legend b { color: #31465b; font-size: 10px; }
+    .status-legend span { color: #607386; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .status-legend b { color: #31465b; font-size: 12px; }
 
     .toolbar {
       display: grid; grid-template-columns: 1fr;
@@ -626,7 +626,7 @@ interface InvoiceBreakdown {
     .period-title input { border: 1px solid #cbd5e1; border-radius: 7px; padding: 7px 8px; color: #334155; }
     .period-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 12px; }
     .period-metrics span { display: grid; gap: 4px; }
-    .period-metrics small { margin: 0; color: #64748b; font-size: 10px; text-transform: uppercase; }
+    .period-metrics small { margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; }
     .period-metrics strong { color: #0f172a; font-size: 14px; overflow-wrap: anywhere; }
     .delta-row { justify-content: flex-start; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid #e2e8f0; }
     .delta-row span { color: #64748b; font-size: 12px; }
@@ -640,7 +640,7 @@ interface InvoiceBreakdown {
       overflow: hidden; background: #e2e8f0;
     }
     .results-strip > span { display: grid; gap: 3px; min-height: 60px; padding: 10px 13px; background: white; }
-    .results-strip small { margin: 0; color: #64748b; font-size: 10px; text-transform: uppercase; }
+    .results-strip small { margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; }
     .results-strip strong { color: #0f172a; font-size: 15px; }
     .results-strip .balance-value { color: #b91c1c; }
     .results-strip .active-filter-label { display: flex; min-height: 60px; align-items: center; color: #4f46e5; font-size: 12px; font-weight: 700; white-space: nowrap; }
@@ -727,7 +727,7 @@ interface InvoiceBreakdown {
     .badge-default { background: #f1f5f9; color: #64748b; }
     .late-pill {
       display: inline-flex; margin-top: 5px; padding: 2px 7px; border-radius: 999px;
-      background: #fee2e2; color: #dc2626; font-size: 10px; font-weight: 700;
+      background: #fee2e2; color: #dc2626; font-size: 12px; font-weight: 700;
     }
 
     .action-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
@@ -759,19 +759,19 @@ interface InvoiceBreakdown {
     .invoice-detail { padding: 16px 18px 18px; border-top: 1px solid #dce5eb; }
     .invoice-detail > header { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; }
     .invoice-detail > header > div { display: grid; gap: 2px; }
-    .invoice-detail > header > div > span { color: #718096; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .invoice-detail > header > div > span { color: #718096; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .invoice-detail > header strong { color: #20354b; font-size: 14px; }
     .detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
     .detail-grid > section { min-width: 0; padding-right: 12px; border-right: 1px solid #dce5eb; }
     .detail-grid > section:last-child { padding-right: 0; border-right: 0; }
-    .invoice-detail h4 { margin: 0 0 8px; color: #52677b; font-size: 10px; text-transform: uppercase; }
+    .invoice-detail h4 { margin: 0 0 8px; color: #52677b; font-size: 12px; text-transform: uppercase; }
     .invoice-detail dl { display: grid; gap: 6px; margin: 0; }
     .invoice-detail dl > div { display: grid; grid-template-columns: minmax(72px, 0.8fr) minmax(0, 1.2fr); gap: 8px; }
-    .invoice-detail dt { color: #8291a0; font-size: 10px; }
-    .invoice-detail dd { min-width: 0; margin: 0; color: #31465b; font-size: 10px; font-weight: 700; overflow-wrap: anywhere; }
+    .invoice-detail dt { color: #8291a0; font-size: 12px; }
+    .invoice-detail dd { min-width: 0; margin: 0; color: #31465b; font-size: 12px; font-weight: 700; overflow-wrap: anywhere; }
     .article-detail { margin-top: 14px; padding-top: 12px; border-top: 1px solid #dce5eb; }
     .article-detail > div { display: flex; gap: 7px; flex-wrap: wrap; }
-    .article-detail > div > span { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #dce5eb; border-radius: 5px; background: #fff; color: #53687c; font-size: 10px; }
+    .article-detail > div > span { display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; border: 1px solid #dce5eb; border-radius: 5px; background: #fff; color: #53687c; font-size: 12px; }
     .article-detail em { color: #25364a; font-style: normal; font-weight: 800; }
     .article-detail p { margin: 0; color: #8291a0; font-size: 11px; }
 
@@ -1214,7 +1214,7 @@ export class InvoicesComponent implements OnInit {
           const invoices = await this.localDb.getInvoices(true);
           this.setInvoices(invoices);
           await this.localDb.updateSyncLog('invoices');
-          this.toast.success(`${invoices.length} facturas disponibles desde SQLite`);
+          this.toast.success(`${invoices.length} facturas cargadas`);
           return;
         }
       }

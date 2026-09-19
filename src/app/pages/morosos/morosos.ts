@@ -9,6 +9,7 @@ import {
 } from '@lucide/angular';
 import { RouterLink } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
 import { ExportService } from '../../services/export.service';
@@ -30,7 +31,7 @@ interface MorosoInfo {
   selector: 'app-morosos',
   standalone: true,
   imports: [
-    NavbarComponent, DecimalPipe, UpperCasePipe, RouterLink, FormsModule,
+    NavbarComponent, DecimalPipe, UpperCasePipe, RouterLink, FormsModule, PlanLabelPipe,
     LucideAlertTriangle, LucideArrowUpRight, LucideBanknote, LucideCalendarClock,
     LucideCircleCheck, LucideDownload, LucideFileText, LucideMessageCircle,
     LucidePhone, LucidePhoneOff, LucideRotateCcw, LucideSearch,

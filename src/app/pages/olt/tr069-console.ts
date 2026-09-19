@@ -168,7 +168,7 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
     }
     const capability = this.capability(action);
     if (capability && !capability.executable) {
-      this.toast.info('Accion bloqueada hasta certificar este firmware');
+      this.toast.info('Acción bloqueada hasta certificar este firmware');
       return;
     }
     this.saving.set(true);
@@ -217,7 +217,7 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
     this.parameterLoading.set(true);
     this.api.getTr069Parameters(this.onu.serial, this.parameterSearch).subscribe({
       next: (rows) => { this.parameters.set(rows); this.parameterPage.set(1); this.parameterLoading.set(false); },
-      error: () => { this.parameterLoading.set(false); this.toast.error('No se pudo leer el inventario tecnico de la ONU'); },
+      error: () => { this.parameterLoading.set(false); this.toast.error('No se pudo leer el inventario técnico de la ONU'); },
     });
   }
 

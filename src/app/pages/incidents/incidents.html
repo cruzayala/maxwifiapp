@@ -3,9 +3,9 @@
 <main class="noc-page" [class.drawer-open]="selected()">
   <header class="noc-toolbar">
     <div>
-      <span class="eyebrow"><i></i> Operacion de red</span>
+      <span class="eyebrow"><i></i> Operación de red</span>
       <h1>Incidentes</h1>
-      <p>Ultima lectura {{ lastUpdated() ? formatDate(lastUpdated()!.toISOString()) : '-' }}</p>
+      <p>Última lectura {{ lastUpdated() ? formatDate(lastUpdated()!.toISOString()) : '-' }}</p>
     </div>
     <div class="toolbar-actions">
       <span class="evaluator-state" [class.off]="!summary()?.evaluator?.enabled">
@@ -24,9 +24,9 @@
 
   <section class="kpi-row" aria-label="Resumen de incidentes">
     <div class="kpi active"><span><svg lucideAlertTriangle size="19" aria-hidden="true"></svg></span><p>Activos<strong>{{ summary()?.active || 0 }}</strong><small>{{ summary()?.open || 0 }} sin reconocer</small></p></div>
-    <div class="kpi critical"><span><svg lucideShieldCheck size="19" aria-hidden="true"></svg></span><p>Criticos<strong>{{ summary()?.critical || 0 }}</strong><small>Requieren prioridad</small></p></div>
+    <div class="kpi critical"><span><svg lucideShieldCheck size="19" aria-hidden="true"></svg></span><p>Críticos<strong>{{ summary()?.critical || 0 }}</strong><small>Requieren prioridad</small></p></div>
     <div class="kpi affected"><span><svg lucideUsers size="19" aria-hidden="true"></svg></span><p>Clientes afectados<strong>{{ summary()?.affectedClients || 0 }}</strong><small>En incidentes activos</small></p></div>
-    <div class="kpi daily"><span><svg lucideClock3 size="19" aria-hidden="true"></svg></span><p>Ultimas 24 horas<strong>{{ summary()?.last24h || 0 }}</strong><small>Detectados en el periodo</small></p></div>
+    <div class="kpi daily"><span><svg lucideClock3 size="19" aria-hidden="true"></svg></span><p>Últimas 24 horas<strong>{{ summary()?.last24h || 0 }}</strong><small>Detectados en el período</small></p></div>
   </section>
 
   <section class="filter-bar" aria-label="Filtros de incidentes">
@@ -35,7 +35,7 @@
       <option value="active">Activos</option><option value="open">Abiertos</option><option value="acknowledged">Reconocidos</option><option value="resolved">Resueltos</option><option value="all">Todos</option>
     </select>
     <select [ngModel]="severity()" (ngModelChange)="severity.set($event); applyFilters()" aria-label="Severidad">
-      <option value="">Toda severidad</option><option value="critical">Critico</option><option value="high">Alto</option><option value="medium">Medio</option><option value="low">Bajo</option>
+      <option value="">Toda severidad</option><option value="critical">Crítico</option><option value="high">Alto</option><option value="medium">Medio</option><option value="low">Bajo</option>
     </select>
     <button class="filter-apply" type="button" (click)="applyFilters()">Aplicar</button>
     <button class="filter-clear" type="button" (click)="clearFilters()">Limpiar</button>
@@ -66,7 +66,7 @@
           </tbody>
         </table>
       </div>
-      <footer class="pagination"><span>{{ total() }} incidentes</span><div><button type="button" (click)="changePage(-1)" [disabled]="page() === 1" aria-label="Pagina anterior"><svg lucideChevronLeft size="17"></svg></button><strong>{{ page() }} / {{ totalPages() }}</strong><button type="button" (click)="changePage(1)" [disabled]="page() === totalPages()" aria-label="Pagina siguiente"><svg lucideChevronRight size="17"></svg></button></div></footer>
+      <footer class="pagination"><span>{{ total() }} incidentes</span><div><button type="button" (click)="changePage(-1)" [disabled]="page() === 1" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button><strong>{{ page() }} / {{ totalPages() }}</strong><button type="button" (click)="changePage(1)" [disabled]="page() === totalPages()" aria-label="Página siguiente"><svg lucideChevronRight size="17"></svg></button></div></footer>
     }
   </section>
 
@@ -79,7 +79,7 @@
           <section class="detail-grid">
             <div><small>Estado</small><strong>{{ statusLabel(incident.status) }}</strong></div><div><small>Responsable</small><strong>{{ incident.assignedTo || 'Sin asignar' }}</strong></div>
             <div><small>Alcance</small><strong>{{ scopeLabel(incident.scopeType) }} · {{ incident.scopeLabel }}</strong></div><div><small>Afectados</small><strong>{{ incident.affectedClients }} clientes</strong></div>
-            <div><small>Detectado</small><strong>{{ formatDate(incident.detectedAt) }}</strong></div><div><small>Ultima presencia</small><strong>{{ formatDate(incident.lastSeenAt) }}</strong></div>
+            <div><small>Detectado</small><strong>{{ formatDate(incident.detectedAt) }}</strong></div><div><small>Última presencia</small><strong>{{ formatDate(incident.lastSeenAt) }}</strong></div>
           </section>
 
           <section class="drawer-section"><div class="section-title"><h3><svg lucideUsers size="17"></svg>Clientes afectados</h3><span>{{ incident.clients?.length || incident.affectedClients }}</span></div>

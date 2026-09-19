@@ -9,6 +9,7 @@ import {
 } from '@lucide/angular';
 import { firstValueFrom, timeout } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
 import { LocalDbService } from '../../services/local-db.service';
@@ -47,7 +48,7 @@ interface DashboardWanTraffic {
   selector: 'app-dashboard',
   standalone: true,
   imports: [
-    NavbarComponent, RouterLink, DecimalPipe, LucideAlertTriangle, LucideArrowDown,
+    NavbarComponent, RouterLink, DecimalPipe, PlanLabelPipe, LucideAlertTriangle, LucideArrowDown,
     LucideArrowRight, LucideArrowUp, LucideCircleCheck, LucideCircleDollarSign,
     LucideDatabase, LucideFileText, LucideGauge, LucideRadioTower,
     LucideRefreshCw, LucideRouter, LucideTriangleAlert, LucideUserPlus, LucideWifi,

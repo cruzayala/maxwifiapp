@@ -28,7 +28,7 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
     <div class="page">
       <section class="page-heading">
         <div>
-          <span class="eyebrow">Administracion</span>
+          <span class="eyebrow">Administración</span>
           <h2>Usuarios y accesos</h2>
           <p>Controla quienes pueden entrar al sistema y que acciones pueden realizar.</p>
         </div>
@@ -56,12 +56,12 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
           <div class="summary-item">
             <span class="summary-label">Activos</span>
             <strong class="green">{{ activeCount() }}</strong>
-            <span class="summary-note">pueden iniciar sesion</span>
+            <span class="summary-note">pueden iniciar sesión</span>
           </div>
           <div class="summary-item">
             <span class="summary-label">Administradores</span>
             <strong class="indigo">{{ adminCount() }}</strong>
-            <span class="summary-note">acceso de gestion</span>
+            <span class="summary-note">acceso de gestión</span>
           </div>
         </section>
 
@@ -80,7 +80,7 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
           @if (loading()) {
             <div class="state-panel compact"><div class="spinner"></div><p>Cargando usuarios...</p></div>
           } @else if (filteredUsers().length === 0) {
-            <div class="state-panel compact"><div class="state-icon muted-icon">–</div><h3>Sin resultados</h3><p>No hay usuarios que coincidan con la busqueda.</p></div>
+            <div class="state-panel compact"><div class="state-icon muted-icon">–</div><h3>Sin resultados</h3><p>No hay usuarios que coincidan con la búsqueda.</p></div>
           } @else {
             <div class="table-wrap">
               <table>
@@ -89,7 +89,7 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
                     <th>Usuario</th>
                     <th>Rol</th>
                     <th>Estado</th>
-                    <th>Ultimo acceso</th>
+                    <th>Último acceso</th>
                     <th class="actions-heading">Acciones</th>
                   </tr>
                 </thead>
@@ -158,7 +158,7 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
               @if (!isSuperAdmin()) {
                 <label class="form-field"><span>Clave actual</span><input type="password" name="currentPassword" [(ngModel)]="passwordForm.currentPassword" autocomplete="current-password" required /></label>
               }
-              <label class="form-field"><span>Nueva clave</span><input type="password" name="newPassword" [(ngModel)]="passwordForm.newPassword" minlength="6" autocomplete="new-password" required /><small>Minimo 6 caracteres.</small></label>
+              <label class="form-field"><span>Nueva clave</span><input type="password" name="newPassword" [(ngModel)]="passwordForm.newPassword" minlength="6" autocomplete="new-password" required /><small>Mínimo 6 caracteres.</small></label>
               <div class="modal-actions"><button class="btn btn-secondary" type="button" (click)="closeModal()">Cancelar</button><button class="btn btn-primary" type="submit" [disabled]="busy()">{{ busy() ? 'Guardando...' : 'Cambiar clave' }}</button></div>
             </form>
           } @else {
@@ -176,9 +176,9 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
                 <label class="form-field"><span>Correo</span><input type="email" name="email" [(ngModel)]="userForm.email" autocomplete="email" /></label>
               </div>
               <div class="form-row">
-                <label class="form-field"><span>Rol</span><select name="role" [(ngModel)]="userForm.role" [disabled]="!isSuperAdmin()"><option value="admin">Administrador</option><option value="tecnico">Tecnico</option><option value="cobranza">Cobranza</option><option value="viewer">Consulta</option><option value="super_admin">Super administrador</option></select></label>
+                <label class="form-field"><span>Rol</span><select name="role" [(ngModel)]="userForm.role" [disabled]="!isSuperAdmin()"><option value="admin">Administrador</option><option value="tecnico">Técnico</option><option value="cobranza">Cobranza</option><option value="viewer">Consulta</option><option value="super_admin">Super administrador</option></select></label>
                 @if (modalMode() === 'edit') {
-                  <label class="toggle-field"><input type="checkbox" name="isActive" [(ngModel)]="userForm.isActive" /><span><strong>Usuario activo</strong><small>Permitir iniciar sesion</small></span></label>
+                  <label class="toggle-field"><input type="checkbox" name="isActive" [(ngModel)]="userForm.isActive" /><span><strong>Usuario activo</strong><small>Permitir iniciar sesión</small></span></label>
                 }
               </div>
               <div class="modal-actions"><button class="btn btn-secondary" type="button" (click)="closeModal()">Cancelar</button><button class="btn btn-primary" type="submit" [disabled]="busy()">{{ busy() ? 'Guardando...' : (modalMode() === 'create' ? 'Crear usuario' : 'Guardar cambios') }}</button></div>
@@ -297,7 +297,7 @@ export class UsersComponent implements OnInit {
   saveUser() {
     if (this.modalMode() === 'create') {
       if (!this.userForm.username.trim() || this.userForm.password.length < 6) {
-        this.toast.error('Indica usuario y una clave de minimo 6 caracteres');
+        this.toast.error('Indica usuario y una clave de mínimo 6 caracteres');
         return;
       }
       this.busy.set(true);
@@ -322,7 +322,7 @@ export class UsersComponent implements OnInit {
   savePassword() {
     const user = this.selectedUser();
     if (!user || this.passwordForm.newPassword.length < 6) {
-      this.toast.error('La nueva clave debe tener minimo 6 caracteres');
+      this.toast.error('La nueva clave debe tener mínimo 6 caracteres');
       return;
     }
     this.busy.set(true);

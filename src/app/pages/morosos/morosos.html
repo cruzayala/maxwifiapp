@@ -92,7 +92,7 @@
                 <tr>
                   <td data-label="Cliente"><div class="client-cell"><span class="client-avatar">{{ initials(item.client.nombre) }}</span><div><a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a><small>{{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small></div></div></td>
                   <td data-label="Contacto">@if (item.client.telefono) { <span class="contact-ok"><svg lucidePhone size="14"></svg>{{ item.client.telefono }}</span> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
-                  <td data-label="Servicio"><div class="stack"><strong>{{ item.client.plan_internet?.nombre || '-' }}</strong><small>{{ item.client.ip || 'Sin IP' }}</small></div></td>
+                  <td data-label="Servicio"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small>{{ item.client.ip || 'Sin IP' }}</small></div></td>
                   <td data-label="Deuda"><div class="stack debt"><strong>RD$ {{ item.montoTotal | number:'1.2-2' }}</strong><small>{{ item.facturasPendientes }} {{ item.facturasPendientes === 1 ? 'factura' : 'facturas' }}</small></div></td>
                   <td data-label="Mora"><span class="days" [class]="'days-' + item.riesgo">{{ item.diasVencido }} días</span></td>
                   <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ item.riesgo === 'bajo' ? 'RECIENTE' : (item.riesgo | uppercase) }}</span></td>

@@ -23,7 +23,7 @@ import { firstValueFrom } from 'rxjs';
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         <div>
           <strong>Sobre este modulo</strong>
-          <p>El speedtest mide la velocidad real desde este dispositivo (PC/celular/tablet del tecnico). Ejecutalo desde la ubicacion del cliente para medir su velocidad real. El historial queda guardado en SQLite.</p>
+          <p>La prueba mide la velocidad real desde este dispositivo (PC, celular o tableta del técnico). Ejecútala desde la ubicación del cliente para medir su velocidad real. El historial queda guardado.</p>
         </div>
       </div>
 
@@ -321,7 +321,7 @@ export class BandwidthComponent implements OnInit {
         timestamp: record.createdAt || new Date().toISOString(),
       })));
     } catch {
-      this.toast.error('No se pudo cargar el historial de velocidad desde SQLite');
+      this.toast.error('No se pudo cargar el historial de velocidad');
     }
     this.computeCapacity();
   }

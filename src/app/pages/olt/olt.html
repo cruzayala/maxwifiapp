@@ -365,7 +365,7 @@
     </section>
   } @else if (tab() === 'installations') {
     <section class="section-block">
-      <div class="section-heading"><div><h2>Expedientes de instalacion</h2><p>Progreso persistente desde la reserva de IP hasta la entrega del servicio.</p></div></div>
+      <div class="section-heading"><div><h2>Expedientes de instalación</h2><p>Progreso persistente desde la reserva de IP hasta la entrega del servicio.</p></div></div>
       <div class="table-wrap">
         <table>
           <thead><tr><th>Cliente</th><th>IP</th><th>Serial</th><th>Etapa</th><th>Estado</th><th>Actualizado</th><th></th></tr></thead>
@@ -388,7 +388,7 @@
                   </div>
                 </td>
               </tr>
-            } @empty { <tr><td colspan="7"><div class="empty-state">Aun no existen expedientes de instalacion.</div></td></tr> }
+            } @empty { <tr><td colspan="7"><div class="empty-state">Aún no existen expedientes de instalación.</div></td></tr> }
           </tbody>
         </table>
       </div>
@@ -501,7 +501,7 @@
           }
           <div class="wizard-section-title"><h3>Cliente de WispHub</h3><p>La IP del cliente se validara contra el inventario de red antes de escribir.</p></div>
           @if (!pending.relocation?.clientIdServicio) {
-            <label class="wizard-search"><span>Buscar cliente</span><div class="search-control"><svg lucideSearch size="16"></svg><input type="search" [ngModel]="provisioningClientQuery()" (ngModelChange)="provisioningClientSearchChanged($event)" placeholder="Nombre, usuario, telefono o ID" /></div></label>
+            <label class="wizard-search"><span>Buscar cliente</span><div class="search-control"><svg lucideSearch size="16"></svg><input type="search" [ngModel]="provisioningClientQuery()" (ngModelChange)="provisioningClientSearchChanged($event)" placeholder="Nombre, usuario, teléfono o ID" /></div></label>
             @if (provisioningClientSearching()) { <small class="searching-label">Buscando...</small> }
             @if (provisioningClientResults().length) {
               <div class="client-results wizard-client-results">@for (client of provisioningClientResults(); track client.idServicio) { <button type="button" (click)="selectProvisioningClient(client)"><span><strong>{{ client.nombre }}</strong><small>{{ client.usuario || 'Sin usuario' }} · {{ client.planInternetName || 'Sin plan' }}</small></span><b>{{ client.ip || 'Sin IP' }}</b></button> }</div>
@@ -514,7 +514,7 @@
         <footer><span></span><button class="primary-action" type="button" [disabled]="(provisioningServiceMode === 'router' && !provisioningClient()?.ip) || !provisioningCatalog()" (click)="provisioningStep.set(2)">Continuar</button></footer>
       } @else if (provisioningStep() === 2) {
         <div class="wizard-body">
-          <div class="wizard-section-title"><h3>Servicio GPON</h3><p>Valores tomados de la configuracion existente de esta C320.</p></div>
+          <div class="wizard-section-title"><h3>Servicio GPON</h3><p>Valores tomados de la configuración existente de esta C320.</p></div>
           @if (provisioningCatalog()?.modelProfile; as modelProfile) {
             <section class="detected-model-profile">
               <div><span>Perfil de hardware detectado</span><strong>{{ modelProfile.manufacturer }} {{ modelProfile.model }}</strong><small>{{ modelProfile.firmwarePattern }} · serial {{ modelProfile.serialPrefixes.join(', ') }}</small></div>
@@ -553,7 +553,7 @@
         <div class="wizard-body result-body">
           <svg lucideCircleCheck size="42"></svg><h3>ONU autorizada y verificada</h3><p class="mono">{{ result.onuIndex }} · {{ result.config.serial }}</p>
           <section class="result-grid"><div><span>Cliente</span><strong>{{ result.client.nombre }}</strong></div><div><span>Estado</span><strong>{{ result.online ? 'Online' : result.phaseState }}</strong></div><div><span>VLAN</span><strong>{{ result.config.vlan }}</strong></div><div><span>IP</span><strong class="mono">{{ result.config.managementIp }}</strong></div></section>
-          @if (result.modelProfile?.tr069ProfileKey) { <a class="primary-action agent-handoff" routerLink="/onu-provisioner" [queryParams]="{ wanIp: result.localProvisioning.wanIp, vlan: result.localProvisioning.vlan, ssid: result.localProvisioning.ssid }">Continuar con WAN y WiFi</a> } @else { <div class="agent-note">El servicio GPON quedo configurado. Este perfil no tiene administracion TR-069 certificada.</div> }
+          @if (result.modelProfile?.tr069ProfileKey) { <a class="primary-action agent-handoff" routerLink="/onu-provisioner" [queryParams]="{ wanIp: result.localProvisioning.wanIp, vlan: result.localProvisioning.vlan, ssid: result.localProvisioning.ssid }">Continuar con WAN y WiFi</a> } @else { <div class="agent-note">El servicio GPON quedo configurado. Este perfil no tiene administración TR-069 certificada.</div> }
         </div>
         <footer><span></span><button class="primary-action" type="button" (click)="closeProvisioningWizard()">Finalizar</button></footer>
       }
@@ -600,9 +600,9 @@
     <section class="provision-dialog association-dialog" role="dialog" aria-modal="true" aria-labelledby="association-title">
       <header>
         <div>
-          <span>Diagnostico optico</span>
+          <span>Diagnóstico óptico</span>
           <h2 id="association-title">Asociar clientes a las ONUs</h2>
-          <p>Vincula cada ONU con su cliente para mostrarlo dentro del diagnostico optico. Las asociaciones actuales no se modifican.</p>
+          <p>Vincula cada ONU con su cliente para mostrarlo dentro del diagnóstico óptico. Las asociaciones actuales no se modifican.</p>
         </div>
         <button class="icon-action" type="button" (click)="closeAssociationPreview()" [disabled]="associationSaving()" aria-label="Cerrar"><svg lucideX size="19"></svg></button>
       </header>
@@ -630,12 +630,12 @@
             </div>
           </section>
         } @else {
-          <div class="association-empty"><svg lucideCircleCheck size="22" aria-hidden="true"></svg><div><strong>No hay asociaciones seguras pendientes</strong><span>Las ONUs restantes necesitan un serial o una seleccion manual desde su diagnostico optico.</span></div></div>
+          <div class="association-empty"><svg lucideCircleCheck size="22" aria-hidden="true"></svg><div><strong>No hay asociaciones seguras pendientes</strong><span>Las ONUs restantes necesitan un serial o una selección manual desde su diagnóstico óptico.</span></div></div>
         }
 
         @if (preview.conflicts.length) {
           <section class="association-section conflict-section">
-            <header><div><strong>Requieren revision manual</strong><span>No se modificaran en esta operacion.</span></div><b>{{ preview.conflicts.length }}</b></header>
+            <header><div><strong>Requieren revisión manual</strong><span>No se modificarán en esta operación.</span></div><b>{{ preview.conflicts.length }}</b></header>
             <div class="conflict-list">
               @for (conflict of preview.conflicts.slice(0, 12); track conflict.onuIndex) {
                 <div><span class="mono">{{ conflict.onuIndex }}</span><strong>{{ conflict.onuName || conflict.serial || 'ONU sin nombre' }}</strong><small>{{ associationConflictLabel(conflict.reason) }}</small></div>
@@ -655,7 +655,7 @@
   }
 
   @if (cancellationPreview(); as preview) {
-    <button class="provision-backdrop" type="button" aria-label="Cerrar confirmacion" (click)="closeInstallationCancellation()"></button>
+    <button class="provision-backdrop" type="button" aria-label="Cerrar confirmación" (click)="closeInstallationCancellation()"></button>
     <section class="provision-dialog cancellation-dialog" role="dialog" aria-modal="true" aria-labelledby="cancellation-title">
       <header>
         <div>
@@ -674,7 +674,7 @@
           </div>
           <dl class="cancellation-summary">
             <div><dt>WispHub y MikroTik</dt><dd>{{ preview.servicePreserved ? 'Se conservan sin cambios' : 'No hay servicio creado' }}</dd></div>
-            <div><dt>Direccion IP</dt><dd>{{ preview.reservationAction === 'release' ? 'La reserva se liberara' : (preview.reservationAction === 'keep_committed' ? 'Se conserva asignada' : 'Sin reserva activa') }}</dd></div>
+            <div><dt>Dirección IP</dt><dd>{{ preview.reservationAction === 'release' ? 'La reserva se liberará' : (preview.reservationAction === 'keep_committed' ? 'Se conserva asignada' : 'Sin reserva activa') }}</dd></div>
             <div><dt>ONU en la OLT</dt><dd>{{ preview.hasOltChanges ? 'Tiene cambios aplicados' : 'No se modificara' }}</dd></div>
             <div><dt>Historial</dt><dd>Se conserva completo</dd></div>
           </dl>
@@ -723,7 +723,7 @@
         </dl>
         @if (onu.agentInventory; as agent) {
           <section class="service-diagnostic">
-            <div class="drawer-section-title"><div><strong>Inventario ONU Studio</strong><span>Lectura local combinada con la informacion de la C320.</span></div><span class="state-pill" [class.online]="!agent.summary.partial">{{ agent.summary.partial ? 'Parcial' : 'Completa' }}</span></div>
+            <div class="drawer-section-title"><div><strong>Inventario ONU Studio</strong><span>Lectura local combinada con la información de la C320.</span></div><span class="state-pill" [class.online]="!agent.summary.partial">{{ agent.summary.partial ? 'Parcial' : 'Completa' }}</span></div>
             <dl class="detail-list">
               <div><dt>Modelo local</dt><dd>{{ agent.summary.model || '--' }}</dd></div>
               <div><dt>Hardware / firmware</dt><dd>{{ agent.summary.hardwareVersion || '--' }} / {{ agent.summary.softwareVersion || '--' }}</dd></div>
@@ -740,7 +740,7 @@
         <section class="service-diagnostic">
           <div class="drawer-section-title">
             <div><strong>Servicio extremo a extremo</strong><span>OLT, WispHub y MikroTik en una sola prueba.</span></div>
-            <button class="icon-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()" aria-label="Repetir diagnostico"><svg lucideRefreshCw size="16" [class.spinning]="diagnosticLoading()"></svg></button>
+            <button class="icon-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()" aria-label="Repetir diagnóstico"><svg lucideRefreshCw size="16" [class.spinning]="diagnosticLoading()"></svg></button>
           </div>
           @if (diagnosticLoading() && !serviceDiagnostic()) {
             <div class="diagnostic-wait"><svg lucideRefreshCw size="16" class="spinning"></svg> Verificando servicio...</div>

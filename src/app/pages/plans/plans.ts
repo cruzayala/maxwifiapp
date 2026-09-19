@@ -36,7 +36,7 @@ interface PlanWithStats {
         <div class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
           <h3>Sin planes</h3>
-          <p>Carga los planes desde la API de WispHub</p>
+          <p>Carga los planes desde WispHub</p>
         </div>
       } @else {
         <div class="plans-grid">

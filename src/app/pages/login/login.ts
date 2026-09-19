@@ -29,7 +29,7 @@ import { AuthService } from '../../services/auth.service';
               autocomplete="username"
               [(ngModel)]="username"
               name="username"
-              placeholder="maximo"
+              placeholder="máximo"
               class="text-input"
               autofocus />
           </label>

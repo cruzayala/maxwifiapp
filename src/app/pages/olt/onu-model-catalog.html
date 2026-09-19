@@ -3,7 +3,7 @@
     <div>
       <span class="eyebrow">Biblioteca de hardware</span>
       <h2>Tipos de ONU</h2>
-      <p>Cada modelo define como se autoriza en la OLT y que canal administra cada funcion.</p>
+      <p>Cada modelo define cómo se autoriza en la OLT y qué canal administra cada función.</p>
     </div>
     <div class="catalog-actions">
       <button class="secondary-action" type="button" (click)="reconcile()" [disabled]="reconciling()">
@@ -34,7 +34,7 @@
             <div><dt>OLT</dt><dd>{{ profile.oltVendor }} {{ profile.oltModel }}</dd></div>
             <div><dt>Tipo autorizado</dt><dd class="mono">{{ profile.oltOnuType }}</dd></div>
             <div><dt>Serial</dt><dd class="mono">{{ profile.serialPrefixes.join(', ') || 'Sin prefijo' }}</dd></div>
-            <div><dt>Gestion</dt><dd>{{ profile.omciMode === 'baseline' ? 'OMCI base' : profile.omciMode }}{{ profile.tr069ProfileKey ? ' + TR-069' : '' }}</dd></div>
+            <div><dt>Gestión</dt><dd>{{ profile.omciMode === 'baseline' ? 'OMCI base' : profile.omciMode }}{{ profile.tr069ProfileKey ? ' + TR-069' : '' }}</dd></div>
           </dl>
           <div class="capability-meter">
             <span><b>{{ verifiedCapabilities(profile) }}</b>/{{ profile.capabilities.length }} verificadas</span>
@@ -57,13 +57,13 @@
   <button class="catalog-backdrop" type="button" aria-label="Cerrar editor" (click)="closeEditor()"></button>
   <section class="catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="model-editor-title">
     <header>
-      <div><span>{{ editingId() ? 'Versionar perfil' : 'Nuevo perfil' }}</span><h2 id="model-editor-title">Tipo de ONU</h2><p>Hardware, compatibilidad OLT y canales de administracion.</p></div>
+      <div><span>{{ editingId() ? 'Versionar perfil' : 'Nuevo perfil' }}</span><h2 id="model-editor-title">Tipo de ONU</h2><p>Hardware, compatibilidad OLT y canales de administración.</p></div>
       <button class="icon-action" type="button" (click)="closeEditor()" [disabled]="saving()" aria-label="Cerrar"><svg lucideX size="19"></svg></button>
     </header>
     <form (ngSubmit)="save()">
       <div class="editor-scroll">
         <section class="form-section">
-          <div class="section-title"><svg lucideCpu size="16"></svg><div><strong>Identidad del equipo</strong><span>Datos utilizados para seleccionar el perfil automaticamente.</span></div></div>
+          <div class="section-title"><svg lucideCpu size="16"></svg><div><strong>Identidad del equipo</strong><span>Datos utilizados para seleccionar el perfil automáticamente.</span></div></div>
           <div class="form-grid">
             <label><span>Fabricante</span><input required [(ngModel)]="draft.manufacturer" name="manufacturer" placeholder="ZTE" /></label>
             <label><span>Modelo</span><input required class="mono" [(ngModel)]="draft.model" name="model" placeholder="F670L" /></label>
@@ -89,7 +89,7 @@
         </section>
 
         <section class="form-section capability-section">
-          <div class="section-title"><svg lucideCircleCheck size="16"></svg><div><strong>Matriz de capacidades</strong><span>Una funcion bloqueada nunca se ejecutara aunque aparezca en el equipo.</span></div></div>
+          <div class="section-title"><svg lucideCircleCheck size="16"></svg><div><strong>Matriz de capacidades</strong><span>Una función bloqueada nunca se ejecutará aunque aparezca en el equipo.</span></div></div>
           <div class="capability-list">
             @for (capability of draft.capabilities; track capability.action + capability.channel; let index = $index) {
               <div>

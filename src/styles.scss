@@ -253,7 +253,7 @@ button, a, .nav-item, input, select, textarea {
   .cell-client { gap: 8px !important; }
   .avatar-sm { width: 32px !important; height: 32px !important; font-size: 12px !important; }
   .name { font-size: 13px !important; }
-  .sub { font-size: 10px !important; }
+  .sub { font-size: 12px !important; }
 }
 
 /* FAB (floating action button) - util para mobile primary action */
@@ -306,7 +306,7 @@ button, a, .nav-item, input, select, textarea {
 .queue-modal header p { margin: 2px 0 0; color: #7a8799; font-size: 11px; }
 .modal-body { display: grid; gap: 13px; padding: 17px; }
 .modal-body label { display: grid; gap: 6px; }
-.modal-body label > span { color: #536176; font-size: 10px; font-weight: 700; }
+.modal-body label > span { color: #536176; font-size: 12px; font-weight: 700; }
 .modal-body input[type="text"],
 .modal-body input[type="number"],
 .modal-body textarea { width: 100%; box-sizing: border-box; border: 1px solid #d4dbe5; border-radius: 6px; outline: 0; color: #2d3a4f; font-size: 12px; }
@@ -318,12 +318,12 @@ button, a, .nav-item, input, select, textarea {
 .limit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
 .unit-input { position: relative; }
 .unit-input input { padding-right: 48px !important; }
-.unit-input em { position: absolute; right: 10px; top: 11px; color: #7a8798; font-size: 10px; font-style: normal; }
+.unit-input em { position: absolute; right: 10px; top: 11px; color: #7a8798; font-size: 12px; font-style: normal; }
 .switch-row { grid-template-columns: auto 1fr !important; align-items: center; padding: 10px; border: 1px solid #e0e5ec; border-radius: 6px; background: #f8fafb; }
 .switch-row input { width: 16px; height: 16px; accent-color: #2d6172; }
 .switch-row > span { display: flex; flex-direction: column; }
 .switch-row strong { color: #344158; font-size: 11px; }
-.switch-row small { margin-top: 1px; color: #7e899a; font-size: 9px; }
+.switch-row small { margin-top: 1px; color: #7e899a; font-size: 11px; }
 .queue-modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 17px; border-top: 1px solid #e5e9ef; background: #f8fafb; }
 .queue-modal .save-button { color: #fff; border-color: #1f5e68; background: #1f6b72; }
 .queue-modal .save-button:hover { background: #195b61; }
@@ -348,11 +348,11 @@ button, a, .nav-item, input, select, textarea {
 }
 .mt-control-summary { display: flex; align-items: baseline; gap: 6px; min-width: 132px; }
 .mt-control-summary strong { color: #203047; font-size: 20px; }
-.mt-control-summary span { color: #718096; font-size: 10px; }
+.mt-control-summary span { color: #718096; font-size: 12px; }
 .mt-control-bar label,
 .mt-form-band label { display: grid; gap: 5px; }
 .mt-control-bar label > span,
-.mt-form-band label > span { color: #667389; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.mt-form-band label > span { color: #667389; font-size: 11px; font-weight: 750; text-transform: uppercase; }
 .mt-control-bar select,
 .mt-control-bar input,
 .mt-form-band select,
@@ -390,7 +390,7 @@ button, a, .nav-item, input, select, textarea {
 }
 .mt-mini-kpis > div { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 0 15px; border-right: 1px solid #e6eaf0; }
 .mt-mini-kpis > div:last-child { border-right: 0; }
-.mt-mini-kpis span { color: #6b778b; font-size: 10px; }
+.mt-mini-kpis span { color: #6b778b; font-size: 12px; }
 .mt-mini-kpis strong { color: #253247; font-size: 19px; }
 .mt-mini-kpis .danger strong { color: #b43d3d; }
 
@@ -401,11 +401,11 @@ button, a, .nav-item, input, select, textarea {
   margin-bottom: 10px;
 }
 .mt-network-band > div { padding: 11px 12px; border: 1px solid #dce2ea; border-radius: 7px; background: #fff; }
-.mt-network-band header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #526077; font-size: 10px; }
+.mt-network-band header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #526077; font-size: 12px; }
 .mt-network-band header strong { color: #26364c; font-size: 11px; }
 .mt-network-band i { display: block; height: 5px; margin: 9px 0 6px; overflow: hidden; border-radius: 4px; background: #e8edf1; }
 .mt-network-band b { display: block; height: 100%; background: #2d7881; }
-.mt-network-band small { color: #7a8798; font-size: 9px; }
+.mt-network-band small { color: #7a8798; font-size: 11px; }
 
 .mt-form-band {
   display: grid;
@@ -456,7 +456,7 @@ button, a, .nav-item, input, select, textarea {
 .plan-sync-panel > header { min-height: 68px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #f3f7f8; border-bottom: 1px solid #dce4e8; }
 .plan-sync-panel > header > div:first-child { display: grid; gap: 3px; }
 .plan-sync-panel > header strong { color: #263740; font-size: 13px; }
-.plan-sync-panel > header span { color: #6b7983; font-size: 10px; }
+.plan-sync-panel > header span { color: #6b7983; font-size: 12px; }
 .plan-sync-summary { display: flex; gap: 6px; }
 .plan-sync-summary span { min-width: 68px; padding: 7px 9px; display: grid; text-align: center; border: 1px solid #d7dfe3; background: #fff; }
 .plan-sync-summary b { color: #30414b; font-size: 15px; }
@@ -467,7 +467,7 @@ button, a, .nav-item, input, select, textarea {
 .plan-sync-panel .table-wrap { border: 0; border-radius: 0; }
 .plan-sync-confirm { padding: 12px 14px; display: flex; align-items: end; justify-content: flex-end; gap: 10px; border-top: 1px solid #dfe4e8; background: #fafbfc; }
 .plan-sync-confirm label { width: min(310px, 100%); display: grid; gap: 5px; }
-.plan-sync-confirm label span { color: #64737d; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.plan-sync-confirm label span { color: #64737d; font-size: 11px; font-weight: 750; text-transform: uppercase; }
 .plan-sync-confirm input { height: 38px; border: 1px solid #cfd7dd; border-radius: 6px; padding: 0 10px; }
 
 @media (max-width: 760px) {
@@ -479,9 +479,9 @@ button, a, .nav-item, input, select, textarea {
 /* Shared OLT wizard profile state; kept global to stay outside the OLT component budget. */
 .olt-page .detected-model-profile { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .8fr) auto; align-items: center; gap: 12px; margin-bottom: 12px; border: 1px solid #bcdccc; border-radius: 6px; padding: 10px 12px; background: #f2faf6; }
 .olt-page .detected-model-profile div { display: grid; min-width: 0; }
-.olt-page .detected-model-profile span { color: #6d7d76; font-size: 8px; font-weight: 750; text-transform: uppercase; }
+.olt-page .detected-model-profile span { color: #6d7d76; font-size: 11px; font-weight: 750; text-transform: uppercase; }
 .olt-page .detected-model-profile strong { overflow: hidden; margin-top: 2px; color: #1f4437; font-size: 11px; text-overflow: ellipsis; }
-.olt-page .detected-model-profile small { overflow: hidden; margin-top: 2px; color: #71827b; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.olt-page .detected-model-profile > b { border-radius: 3px; padding: 4px 7px; background: #fff0d8; color: #966018; font-size: 8px; }
+.olt-page .detected-model-profile small { overflow: hidden; margin-top: 2px; color: #71827b; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.olt-page .detected-model-profile > b { border-radius: 3px; padding: 4px 7px; background: #fff0d8; color: #966018; font-size: 11px; }
 .olt-page .detected-model-profile > b.verified { background: #dcefe6; color: #176e51; }
-.olt-page .unknown-model-profile { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; border: 1px solid #ead1a9; border-radius: 6px; padding: 9px 11px; background: #fff8ec; color: #805a24; font-size: 9px; }
+.olt-page .unknown-model-profile { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; border: 1px solid #ead1a9; border-radius: 6px; padding: 9px 11px; background: #fff8ec; color: #805a24; font-size: 11px; }

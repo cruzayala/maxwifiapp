@@ -435,7 +435,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
       next: (data) => {
         this.ipam.set(data);
         this.ipamPage.set(1);
-        if (data.stale) this.toast.info('Mostrando el ultimo inventario guardado en SQLite');
+        if (data.stale) this.toast.info('Mostrando el último inventario guardado');
       },
       error: (error) => this.toast.error(error.error?.error || 'No se pudo construir el inventario IP'),
     });
@@ -640,7 +640,7 @@ export class MikrotikComponent implements OnInit, OnDestroy {
     const editor = this.queueEditor();
     if (!editor || this.queueSaving()) return;
     if (!this.queueName.trim() || this.queueUploadMbps < 0.1 || this.queueDownloadMbps < 0.1) {
-      this.toast.error('Completa un nombre y limites validos');
+      this.toast.error('Completa un nombre y límites válidos');
       return;
     }
     this.queueSaving.set(true);

@@ -1,4 +1,5 @@
-import { Component, DestroyRef, OnInit, inject, input, output, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, input, output, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import {
@@ -11,8 +12,16 @@ import {
   LucideUsersRound,
   LucideX,
 } from '@lucide/angular';
-import { filter } from 'rxjs/operators';
+import { of, timer } from 'rxjs';
+import { catchError, filter, switchMap } from 'rxjs/operators';
 import { AuthService } from '../../services/auth.service';
+
+interface HealthStatus {
+  status?: string;
+  database?: string;
+  mikrotik?: string;
+  whatsapp?: string;
+}
 
 type MenuGroupId = 'operations' | 'customers' | 'network' | 'communications' | 'administration' | 'system';
 
@@ -53,7 +62,21 @@ export class SidebarComponent implements OnInit {
   readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly http = inject(HttpClient);
   private readonly storageKey = 'isp-max-sidebar-group';
+
+  // null = aun sin respuesta; 'offline' = el servidor no responde.
+  readonly health = signal<HealthStatus | 'offline' | null>(null);
+  readonly systemState = computed(() => {
+    const h = this.health();
+    if (h === null) return { tone: 'pending', title: 'Verificando sistemas', detail: 'Consultando el servidor…' };
+    if (h === 'offline' || h.database !== 'connected') {
+      return { tone: 'error', title: 'Servidor sin respuesta', detail: 'Los datos pueden estar desactualizados' };
+    }
+    const whatsapp = h.whatsapp === 'connected' ? 'WhatsApp activo' : 'WhatsApp desconectado';
+    if (h.mikrotik !== 'connected') return { tone: 'warning', title: 'MikroTik sin conexión', detail: whatsapp };
+    return { tone: 'ok', title: 'Sistemas conectados', detail: 'MikroTik en línea · ' + whatsapp };
+  });
 
   readonly isOpen = input(false);
   readonly onClose = output<void>();
@@ -63,7 +86,7 @@ export class SidebarComponent implements OnInit {
     {
       id: 'operations',
       label: 'Centro de operaciones',
-      description: 'Supervision diaria',
+      description: 'Supervisión diaria',
       items: [
         { label: 'Dashboard', path: '/dashboard', exact: true },
         { label: 'En vivo', path: '/live', exact: true, live: true },
@@ -73,7 +96,7 @@ export class SidebarComponent implements OnInit {
     {
       id: 'customers',
       label: 'Clientes y cobros',
-      description: 'Servicio y facturacion',
+      description: 'Servicio y facturación',
       items: [
         { label: 'Clientes', path: '/clients' },
         { label: 'Nuevo cliente', path: '/clients/new', exact: true, adminOnly: true },
@@ -91,7 +114,7 @@ export class SidebarComponent implements OnInit {
       items: [
         { label: 'Estado de red', path: '/network', exact: true },
         { label: 'Velocidad', path: '/bandwidth', exact: true },
-        { label: 'Auditoria de red', path: '/auditoria-red', exact: true },
+        { label: 'Auditoría de red', path: '/auditoria-red', exact: true },
         { label: 'MikroTik', path: '/mikrotik', exact: true },
         { label: 'IPs libres', path: '/mikrotik', queryParams: { tab: 'ipam' }, exact: true },
         { label: 'OLT y ONU', path: '/olt', exact: true },
@@ -102,7 +125,7 @@ export class SidebarComponent implements OnInit {
     {
       id: 'communications',
       label: 'Comunicaciones',
-      description: 'Mensajeria y bot',
+      description: 'Mensajería y bot',
       items: [
         { label: 'WhatsApp', path: '/whatsapp', exact: true },
         { label: 'Bot', path: '/whatsapp-bot', exact: true },
@@ -110,27 +133,31 @@ export class SidebarComponent implements OnInit {
     },
     {
       id: 'administration',
-      label: 'Administracion',
+      label: 'Administración',
       description: 'Recursos internos',
       items: [
         { label: 'Inventario', path: '/inventory', exact: true },
         { label: 'Gastos', path: '/expenses', exact: true },
-        { label: 'Nomina', path: '/payroll', exact: true },
+        { label: 'Nómina', path: '/payroll', exact: true },
       ],
     },
     {
       id: 'system',
       label: 'Sistema',
-      description: 'Acceso y configuracion',
+      description: 'Acceso y configuración',
       items: [
         { label: 'Usuarios', path: '/users', exact: true, adminOnly: true },
-        { label: 'Configuracion', path: '/settings', exact: true, adminOnly: true },
+        { label: 'Configuración', path: '/settings', exact: true, adminOnly: true },
       ],
     },
   ];
 
   ngOnInit(): void {
     this.openActiveGroup();
+    timer(0, 60_000).pipe(
+      switchMap(() => this.http.get<HealthStatus>('/health').pipe(catchError(() => of('offline' as const)))),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((status) => this.health.set(status));
     this.router.events.pipe(
       filter((event): event is NavigationEnd => event instanceof NavigationEnd),
       takeUntilDestroyed(this.destroyRef),

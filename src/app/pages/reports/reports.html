@@ -7,7 +7,7 @@
     <section class="state-panel error" role="alert"><svg lucideAlertTriangle size="22"></svg><div><strong>No se pudieron cargar los reportes</strong><p>{{ errorMessage() }}</p></div></section>
   } @else {
     <section class="report-toolbar" aria-label="Controles del reporte">
-      <div class="report-context"><span class="context-icon"><svg lucideChartColumn size="19"></svg></span><div><small>Análisis consolidado</small><strong>{{ periodLabel() }}</strong><p>SQLite · {{ invoiceCount() }} facturas en el período</p></div></div>
+      <div class="report-context"><span class="context-icon"><svg lucideChartColumn size="19"></svg></span><div><small>Análisis consolidado</small><strong>{{ periodLabel() }}</strong><p>{{ invoiceCount() }} facturas en el período</p></div></div>
       <div class="period-controls">
         <label><svg lucideCalendarRange size="16"></svg><select [(ngModel)]="periodPreset" (change)="onPeriodChange()"><option value="3">Últimos 3 meses</option><option value="6">Últimos 6 meses</option><option value="12">Últimos 12 meses</option><option value="all">Todo el historial</option><option value="custom">Rango personalizado</option></select></label>
         @if (periodPreset === 'custom') {

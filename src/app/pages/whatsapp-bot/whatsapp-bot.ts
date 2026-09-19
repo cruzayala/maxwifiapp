@@ -40,7 +40,7 @@ interface BotStatus {
               @if (!status().waConnected) {
                 WhatsApp no conectado - conectalo primero en /whatsapp
               } @else if (status().enabled) {
-                Respondiendo automaticamente a clientes
+                Respondiendo automáticamente a clientes
               } @else {
                 Activa el switch para que el bot empiece a responder
               }
@@ -72,13 +72,13 @@ interface BotStatus {
       <!-- COMMANDS INFO -->
       <div class="card">
         <h3>Comandos disponibles</h3>
-        <p class="help">Los clientes envian estas palabras por WhatsApp y el bot responde automaticamente. Soporta variaciones (ej: "deuda" = "saldo").</p>
+        <p class="help">Los clientes envían estas palabras por WhatsApp y el bot responde automáticamente. Soporta variaciones (ej: "deuda" = "saldo").</p>
         <div class="commands-grid">
           <div class="cmd"><strong>menu</strong> / ayuda / hola<br><span>Lista de comandos</span></div>
           <div class="cmd"><strong>saldo</strong> / deuda / balance<br><span>Saldo y estado</span></div>
           <div class="cmd"><strong>plan</strong> / servicio<br><span>Plan contratado</span></div>
-          <div class="cmd"><strong>factura</strong> / recibo<br><span>Ultima factura</span></div>
-          <div class="cmd"><strong>pagar</strong> / pago<br><span>Metodos de pago</span></div>
+          <div class="cmd"><strong>factura</strong> / recibo<br><span>Última factura</span></div>
+          <div class="cmd"><strong>pagar</strong> / pago<br><span>Métodos de pago</span></div>
           <div class="cmd"><strong>info</strong> / mi cuenta<br><span>Datos del cliente</span></div>
           <div class="cmd"><strong>soporte</strong> / averia<br><span>Reporta problema</span></div>
           <div class="cmd"><strong>velocidad</strong> / test<br><span>Info de velocidad</span></div>
@@ -93,7 +93,7 @@ interface BotStatus {
             <button class="btn-refresh" (click)="loadConversations()">Refrescar</button>
           </div>
           @if (conversations().length === 0) {
-            <p class="empty">No hay conversaciones aun. Cuando un cliente escriba al WhatsApp aparecera aqui.</p>
+            <p class="empty">No hay conversaciones aún. Cuando un cliente escriba al WhatsApp aparecerá aquí.</p>
           }
           @for (c of conversations(); track c.phone) {
             <div class="conv-item" [class.selected]="selectedPhone() === c.phone" (click)="selectConversation(c.phone)">
@@ -215,7 +215,7 @@ interface BotStatus {
     .conv-phone { font-size: 11px; color: #94a3b8; font-family: monospace; }
     .conv-meta { text-align: right; }
     .conv-count { display: block; font-size: 11px; color: #6366f1; font-weight: 600; }
-    .conv-time { font-size: 10px; color: #94a3b8; }
+    .conv-time { font-size: 12px; color: #94a3b8; }
 
     .messages { padding: 16px; max-height: 600px; overflow-y: auto; background: #fafbfc; }
     .msg { margin-bottom: 12px; }
@@ -229,7 +229,7 @@ interface BotStatus {
     .msg.outgoing .msg-bubble {
       background: #dcfce7; border-color: #bbf7d0; color: #14532d;
     }
-    .msg-time { font-size: 10px; color: #94a3b8; margin-top: 2px; padding: 0 4px; }
+    .msg-time { font-size: 12px; color: #94a3b8; margin-top: 2px; padding: 0 4px; }
   `]
 })
 export class WhatsappBotComponent implements OnInit, OnDestroy {

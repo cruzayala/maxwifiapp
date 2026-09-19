@@ -93,7 +93,7 @@
             },
             "development": {
               "buildTarget": "wishub-admin:build:development",
-              "proxyConfig": "proxy.conf.json"
+              "proxyConfig": "proxy.conf.mjs"
             }
           },
           "defaultConfiguration": "development"

@@ -1,6 +1,7 @@
 import { Component, HostListener, OnInit, inject, signal, computed } from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
 import { WispHubClient } from '../../models/client.model';
@@ -25,7 +26,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
   selector: 'app-client-detail',
   standalone: true,
   imports: [
-    NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule,
+    NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, PlanLabelPipe,
     ClientExtrasComponent, ClientMetricsComponent, ClientEquipmentComponent,
     LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideHistory,
     LucideMapPin, LucidePackageSearch, LucidePrinter, LucideReceiptText,
@@ -53,7 +54,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
               <h2>{{ client()!.nombre }}</h2>
               <div class="profile-badges">
                 <span class="badge" [class]="'badge-' + getStatusClass(client()!.estado)">{{ client()!.estado }}</span>
-                <span class="badge badge-plan">{{ client()!.plan_internet?.nombre || 'Sin plan' }}</span>
+                <span class="badge badge-plan" [title]="client()!.plan_internet?.nombre || ''">{{ client()!.plan_internet?.nombre | planLabel }}</span>
                 <span class="id-tag">#{{ client()!.id_servicio }}</span>
               </div>
             </div>
@@ -88,7 +89,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
           <!-- EDITAR DATOS PERSONALES -->
           <div class="card" [class.tab-hidden]="activeTab() !== 'overview'">
             <div class="card-head">
-              <h3>Datos del Cliente</h3>
+              <h3>Datos del cliente</h3>
               @if (!editingProfile()) {
                 <button class="btn-edit" (click)="startEditProfile()">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -104,13 +105,13 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
                     <input type="text" [(ngModel)]="editName" class="form-input" />
                   </div>
                   <div class="form-group">
-                    <label>Telefono</label>
+                    <label>Teléfono</label>
                     <input type="text" [(ngModel)]="editPhone" class="form-input" />
                   </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>Cedula</label>
+                    <label>Cédula</label>
                     <input type="text" [(ngModel)]="editCedula" class="form-input" />
                   </div>
                   <div class="form-group">
@@ -120,7 +121,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>Direccion</label>
+                    <label>Dirección</label>
                     <input type="text" [(ngModel)]="editDireccion" class="form-input" />
                   </div>
                   <div class="form-group">
@@ -138,12 +139,12 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             } @else {
               <div class="info-grid">
                 <div class="info-item"><span class="lbl">Usuario</span><span class="val mono">{{ client()!.usuario }}</span></div>
-                <div class="info-item"><span class="lbl">Telefono</span><span class="val phone">{{ client()!.telefono || '-' }}</span></div>
+                <div class="info-item"><span class="lbl">Teléfono</span><span class="val phone">{{ client()!.telefono || '-' }}</span></div>
                 <div class="info-item"><span class="lbl">Email</span><span class="val">{{ client()!.email || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Cedula</span><span class="val">{{ client()!.cedula || '-' }}</span></div>
-                <div class="info-item full"><span class="lbl">Direccion</span><span class="val">{{ client()!.direccion || '-' }}</span></div>
+                <div class="info-item"><span class="lbl">Cédula</span><span class="val">{{ client()!.cedula || '-' }}</span></div>
+                <div class="info-item full"><span class="lbl">Dirección</span><span class="val">{{ client()!.direccion || '-' }}</span></div>
                 <div class="info-item"><span class="lbl">Ciudad</span><span class="val">{{ client()!.ciudad || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Tecnico</span><span class="val">{{ client()!.tecnico?.nombre || '-' }}</span></div>
+                <div class="info-item"><span class="lbl">Técnico</span><span class="val">{{ client()!.tecnico?.nombre || '-' }}</span></div>
               </div>
             }
           </div>
@@ -213,23 +214,23 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
                 <div class="info-item"><span class="lbl">Zona</span><span class="val">{{ client()!.zona?.nombre || '-' }}</span></div>
                 <div class="info-item"><span class="lbl">Router</span><span class="val">{{ client()!.router?.nombre || '-' }}</span></div>
                 <div class="info-item"><span class="lbl">SSID WiFi</span><span class="val mono">{{ client()!.ssid_router_wifi || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Pass WiFi</span><span class="val mono">{{ client()!.password_ssid_router_wifi || '-' }}</span></div>
+                <div class="info-item"><span class="lbl">Clave WiFi</span><span class="val mono secret-val">@if (!client()!.password_ssid_router_wifi) { - } @else { {{ showWifiPassword() ? client()!.password_ssid_router_wifi : '••••••••' }} <button type="button" class="reveal-btn" (click)="showWifiPassword.set(!showWifiPassword())">{{ showWifiPassword() ? 'Ocultar' : 'Mostrar' }}</button> }</span></div>
               </div>
             }
           </div>
 
           <!-- FACTURACION (solo lectura) -->
           <div class="card" [class.tab-hidden]="activeTab() !== 'overview'">
-            <h3>Facturacion</h3>
+            <h3>Facturación</h3>
             <div class="info-grid">
               <div class="info-item"><span class="lbl">Estado Facturas</span>
                 <span class="val"><span class="badge" [class]="'badge-' + getFacturaClass(client()!.estado_facturas)">{{ client()!.estado_facturas || '-' }}</span></span>
               </div>
-              <div class="info-item"><span class="lbl">Saldo</span><span class="val saldo" [class.red]="+(client()!.saldo || 0) > 0">RD$ {{ client()!.saldo || '0.00' }}</span></div>
-              <div class="info-item"><span class="lbl">Fecha Instalacion</span><span class="val">{{ client()!.fecha_instalacion || '-' }}</span></div>
+              <div class="info-item"><span class="lbl">Saldo</span><span class="val saldo" [class.red]="clientOpenBalance() > 0" [class.unconfirmed]="clientOpenBalance() === 0 && (client()!.estado_facturas || '').toLowerCase().includes('pendiente')" [title]="clientOpenBalance() === 0 && (client()!.estado_facturas || '').toLowerCase().includes('pendiente') ? 'WispHub marca la factura como pendiente, pero el monto aún no está sincronizado' : ''">RD$ {{ clientOpenBalance() | number:'1.2-2' }}</span></div>
+              <div class="info-item"><span class="lbl">Fecha de instalación</span><span class="val">{{ client()!.fecha_instalacion || '-' }}</span></div>
               <div class="info-item"><span class="lbl">Fecha Corte</span><span class="val">{{ client()!.fecha_corte || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">Firewall</span><span class="val">{{ client()!.firewall ? 'Si' : 'No' }}</span></div>
-              <div class="info-item"><span class="lbl">Ultimo Cambio</span><span class="val">{{ client()!.ultimo_cambio || '-' }}</span></div>
+              <div class="info-item"><span class="lbl">Firewall</span><span class="val">{{ client()!.firewall ? 'Sí' : 'No' }}</span></div>
+              <div class="info-item"><span class="lbl">Último cambio</span><span class="val">{{ client()!.ultimo_cambio || '-' }}</span></div>
             </div>
           </div>
 
@@ -249,14 +250,14 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
 
         <!-- GPS DEL CLIENTE -->
         <div class="card gps-section" [class.tab-hidden]="activeTab() !== 'overview'">
-          <h3><svg lucideMapPin size="17"></svg> Ubicacion GPS</h3>
+          <h3><svg lucideMapPin size="17"></svg> Ubicación GPS</h3>
           @if (gpsLat() && gpsLng()) {
             <div class="gps-saved">
               <div class="gps-coords">
                 <span class="gps-label">Latitud</span><span class="gps-val mono">{{ gpsLat() }}</span>
                 <span class="gps-label">Longitud</span><span class="gps-val mono">{{ gpsLng() }}</span>
                 @if (gpsAccuracy()) {
-                  <span class="gps-label">Precision</span><span class="gps-val">±{{ gpsAccuracy() }}m</span>
+                  <span class="gps-label">Precisión</span><span class="gps-val">±{{ gpsAccuracy() }}m</span>
                 }
                 @if (gpsCapturedAt()) {
                   <span class="gps-label">Capturado</span><span class="gps-val">{{ gpsCapturedAt() | date:'dd/MM/yyyy HH:mm' }}{{ gpsCapturedBy() ? ' por ' + gpsCapturedBy() : '' }}</span>
@@ -265,16 +266,16 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
               <div class="gps-actions">
                 <a [href]="googleMapsUrl()" target="_blank" rel="noopener" class="btn btn-outline">🗺 Ver en Google Maps</a>
                 <button class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
-                  @if (capturingGps()) { Capturando... } @else { Actualizar ubicacion }
+                  @if (capturingGps()) { Capturando... } @else { Actualizar ubicación }
                 </button>
               </div>
             </div>
           } @else {
-            <p class="gps-empty">Este cliente no tiene ubicacion GPS guardada.</p>
+            <p class="gps-empty">Este cliente no tiene ubicación GPS guardada.</p>
             <button class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
-              @if (capturingGps()) { Capturando... } @else { 📍 Capturar mi ubicacion actual }
+              @if (capturingGps()) { Capturando... } @else { Capturar mi ubicación actual }
             </button>
-            <p class="gps-hint">El navegador pedira permiso de ubicacion. Para mejor precision, captura desde el sitio del cliente con el celular.</p>
+            <p class="gps-hint">El navegador pedirá permiso de ubicación. Para mayor precisión, captura desde el sitio del cliente con el celular.</p>
           }
         </div>
 
@@ -298,7 +299,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
         <div class="modal-backdrop" role="presentation" (click)="closeInvoicePortfolio()">
           <section class="portfolio-modal" role="dialog" aria-modal="true" aria-labelledby="portfolio-title" (click)="$event.stopPropagation()">
             <header class="portfolio-head">
-              <div class="portfolio-title"><span class="portfolio-icon"><svg lucideWalletCards size="20"></svg></span><div><small>Cartera del cliente</small><h2 id="portfolio-title">{{ client()!.nombre }}</h2><p>{{ clientInvoices().length }} facturas históricas conservadas</p></div></div>
+              <div class="portfolio-title"><span class="portfolio-icon"><svg lucideWalletCards size="20"></svg></span><div><small>Cartera del cliente</small><h2 id="portfolio-title">{{ client()!.nombre }}</h2><p>{{ clientInvoices().length }} facturas en el historial</p></div></div>
               <button type="button" class="modal-close" aria-label="Cerrar cartera" (click)="closeInvoicePortfolio()"><svg lucideX size="19"></svg></button>
             </header>
 
@@ -306,7 +307,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
               <div><span><svg lucideReceiptText size="16"></svg>Total histórico</span><strong>RD$ {{ clientInvoiceTotal() | number:'1.2-2' }}</strong></div>
               <div class="paid"><span><svg lucideCircleDollarSign size="16"></svg>Pagadas</span><strong>{{ clientInvoicePaidCount() }}</strong></div>
               <div class="pending"><span><svg lucideHistory size="16"></svg>Pendientes</span><strong>{{ clientInvoicePendingCount() }}</strong></div>
-              <div><span>Saldo actual</span><strong [class.danger-text]="+(client()!.saldo || 0) > 0">RD$ {{ client()!.saldo || '0.00' }}</strong></div>
+              <div><span>Saldo actual</span><strong [class.danger-text]="clientOpenBalance() > 0">RD$ {{ clientOpenBalance() | number:'1.2-2' }}</strong></div>
             </div>
 
             <div class="portfolio-toolbar">
@@ -365,26 +366,26 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
 
     .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 7px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
     .btn-outline { background: white; border: 1px solid #e2e8f0; color: #475569; }
-    .btn-outline:hover { border-color: #6366f1; color: #6366f1; }
+    .btn-outline:hover { border-color: #1267dd; color: #1267dd; }
     .btn-green { background: #22c55e; color: white; }
     .btn-green:hover { background: #16a34a; }
     .btn-red { background: #ef4444; color: white; }
     .btn-red:hover { background: #dc2626; }
-    .btn-primary { background: #6366f1; color: white; }
-    .btn-primary:hover { background: #4f46e5; }
+    .btn-primary { background: #1267dd; color: white; }
+    .btn-primary:hover { background: #0d58c0; }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .btn-edit {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
-      background: white; font-size: 12px; color: #6366f1; font-weight: 500;
+      background: white; font-size: 12px; color: #1267dd; font-weight: 500;
       cursor: pointer; transition: all 0.2s;
     }
-    .btn-edit:hover { background: #6366f1; color: white; border-color: #6366f1; }
+    .btn-edit:hover { background: #1267dd; color: white; border-color: #1267dd; }
 
     .ping-box { margin-bottom: 20px; padding: 12px 16px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; }
     .ping-box.success { background: #f0fdf4; border-color: #bbf7d0; }
-    .ping-box pre { margin: 0; font-size: 12px; white-space: pre-wrap; font-family: 'Courier New', monospace; }
+    .ping-box pre { margin: 0; font-size: 12px; white-space: pre-wrap; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
 
     .client-tabs {
       position: sticky; top: 64px; z-index: 12; display: flex; align-items: flex-end; gap: 2px;
@@ -401,7 +402,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .client-tabs button.active { position: relative; color: #1d4ed8; border-color: #dce5eb; background: #fff; box-shadow: 0 -2px 6px rgba(30, 51, 73, 0.05); }
     .client-tabs button.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: #fff; }
     .client-tabs .portfolio-tab { margin-left: auto; color: #0f7b4c; }
-    .client-tabs .portfolio-tab b { display: grid; place-items: center; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px; background: #dff5e9; color: #0f7b4c; font-size: 10px; }
+    .client-tabs .portfolio-tab b { display: grid; place-items: center; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px; background: #dff5e9; color: #0f7b4c; font-size: 12px; }
     .tab-hidden { display: none !important; }
     .tab-panel { min-width: 0; animation: panelIn 0.16s ease; }
     @keyframes panelIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
@@ -416,19 +417,23 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .info-item.full { grid-column: 1 / -1; }
     .lbl { display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px; margin-bottom: 2px; }
-    .val { font-size: 14px; color: #0f172a; font-weight: 500; word-break: break-all; }
-    .val.mono { font-family: 'Courier New', monospace; font-size: 13px; }
-    .val.highlight { color: #6366f1; font-weight: 700; }
+    .val { font-size: 14px; color: #0f172a; font-weight: 500; overflow-wrap: anywhere; }
+    .val.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px; }
+    .secret-val { display: inline-flex; align-items: center; gap: 8px; }
+    .reveal-btn { padding: 2px 8px; border: 1px solid #ccd6de; border-radius: 4px; background: #fff; color: #1267dd; font: 600 11px Inter, sans-serif; cursor: pointer; }
+    .reveal-btn:hover { background: #f2f7ff; }
+    .val.highlight { color: #1267dd; font-weight: 700; }
     .val.phone { color: #0f172a; font-size: 16px; font-weight: 700; }
     .val.saldo { font-size: 18px; font-weight: 700; color: #22c55e; }
     .val.saldo.red { color: #ef4444; }
+    .val.saldo.unconfirmed { color: #b36b12; }
 
     .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .badge-active { background: #dcfce7; color: #16a34a; }
     .badge-suspended { background: #fee2e2; color: #dc2626; }
     .badge-free { background: #dbeafe; color: #2563eb; }
     .badge-default { background: #f1f5f9; color: #64748b; }
-    .badge-plan { background: #eef2ff; color: #6366f1; }
+    .badge-plan { background: #eef2ff; color: #1267dd; }
     .badge-paid { background: #dcfce7; color: #16a34a; }
     .badge-pending { background: #fef3c7; color: #d97706; }
 
@@ -439,8 +444,8 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .form-group { margin-bottom: 12px; }
     .form-group label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px; }
     .form-input { width: 100%; padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: #334155; outline: none; box-sizing: border-box; transition: border 0.2s; }
-    .form-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
-    .mono-input { font-family: 'Courier New', monospace; }
+    .form-input:focus { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221,0.1); }
+    .mono-input { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
     textarea.form-input { resize: vertical; }
     .edit-actions { display: flex; gap: 8px; margin-top: 4px; }
 
@@ -460,10 +465,10 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .data-table { width: 100%; border-collapse: collapse; }
     .data-table th { text-align: left; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
     .data-table td { padding: 10px 12px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; }
-    .id-col { font-weight: 600; color: #6366f1; }
+    .id-col { font-weight: 600; color: #1267dd; }
     .money { font-family: 'Courier New', monospace; font-weight: 600; }
     .btn-icon { background: none; border: 1px solid #e2e8f0; border-radius: 8px; padding: 5px 7px; cursor: pointer; color: #64748b; transition: all 0.2s; }
-    .btn-icon:hover { background: #6366f1; color: white; border-color: #6366f1; }
+    .btn-icon:hover { background: #1267dd; color: white; border-color: #1267dd; }
 
     .modal-backdrop {
       position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px;
@@ -480,14 +485,14 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .portfolio-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .portfolio-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 7px; background: #e9f2ff; color: #2563eb; }
     .portfolio-title > div { min-width: 0; }
-    .portfolio-title small { display: block; margin: 0; color: #718396; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .portfolio-title small { display: block; margin: 0; color: #718396; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .portfolio-title h2 { margin: 2px 0 0; color: #172b40; font-size: 18px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .portfolio-title p { margin: 3px 0 0; color: #7d8d9c; font-size: 11px; }
     .modal-close { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; color: #607386; cursor: pointer; }
     .modal-close:hover { color: #b42318; border-color: #f0b4ae; background: #fff5f4; }
     .portfolio-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 12px 12px 0; overflow: hidden; border: 1px solid #dce5eb; border-radius: 6px; background: #dce5eb; }
     .portfolio-kpis > div { min-width: 0; padding: 11px 13px; background: #fff; }
-    .portfolio-kpis span { display: flex; align-items: center; gap: 6px; color: #718396; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .portfolio-kpis span { display: flex; align-items: center; gap: 6px; color: #718396; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .portfolio-kpis strong { display: block; margin-top: 5px; color: #22384d; font-size: 17px; overflow-wrap: anywhere; }
     .portfolio-kpis .paid strong { color: #0f8a50; }
     .portfolio-kpis .pending strong, .danger-text { color: #c2413a !important; }
@@ -495,7 +500,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .portfolio-filters { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; }
     .portfolio-filters button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #617487; font-size: 11px; font-weight: 700; cursor: pointer; }
     .portfolio-filters button.active { color: #1d4ed8; background: #eaf2ff; }
-    .portfolio-filters b { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: #edf1f4; color: inherit; font-size: 9px; }
+    .portfolio-filters b { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: #edf1f4; color: inherit; font-size: 11px; }
     .portfolio-table-wrap { min-height: 0; margin: 0 12px 12px; overflow: auto; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; }
     .portfolio-table { min-width: 760px; }
     .portfolio-table thead { position: sticky; top: 0; z-index: 1; background: #f6f8fa; }
@@ -503,7 +508,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .portfolio-empty { padding: 44px !important; text-align: center; color: #8292a0 !important; }
 
     .loading-state { display: flex; flex-direction: column; align-items: center; padding: 80px; }
-    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     @media (max-width: 900px) {
@@ -557,11 +562,18 @@ export class ClientDetailComponent implements OnInit {
   invoiceStatusFilter = signal<'all' | 'paid' | 'pending'>('all');
   clientInvoiceTotal = computed(() => this.clientInvoices().reduce((sum, invoice) => sum + (invoice.total || 0), 0));
   clientInvoicePaidCount = computed(() => this.clientInvoices().filter((invoice) => this.isClientInvoicePaid(invoice)).length);
-  clientInvoicePendingCount = computed(() => this.clientInvoices().length - this.clientInvoicePaidCount());
+  clientInvoicePendingCount = computed(() => this.clientInvoices().filter((invoice) => this.isClientInvoicePending(invoice)).length);
+  // El saldo del perfil en WispHub puede quedar en 0 aunque haya facturas abiertas: se usa el mayor de ambos.
+  clientOpenBalance = computed(() => {
+    const fromInvoices = this.clientInvoices()
+      .filter((invoice) => this.isClientInvoicePending(invoice))
+      .reduce((sum, invoice) => sum + Math.max(0, invoice.saldo || ((invoice.total || 0) - (invoice.total_cobrado || 0))), 0);
+    return Math.max(Number(this.client()?.saldo) || 0, fromInvoices);
+  });
   visibleClientInvoices = computed(() => {
     const filter = this.invoiceStatusFilter();
     if (filter === 'all') return this.clientInvoices();
-    return this.clientInvoices().filter((invoice) => filter === 'paid' ? this.isClientInvoicePaid(invoice) : !this.isClientInvoicePaid(invoice));
+    return this.clientInvoices().filter((invoice) => filter === 'paid' ? this.isClientInvoicePaid(invoice) : this.isClientInvoicePending(invoice));
   });
 
   // GPS
@@ -571,6 +583,7 @@ export class ClientDetailComponent implements OnInit {
   gpsCapturedAt = signal<string | null>(null);
   gpsCapturedBy = signal<string | null>(null);
   capturingGps = signal(false);
+  showWifiPassword = signal(false);
   googleMapsUrl = computed(() => {
     const lat = this.gpsLat(), lng = this.gpsLng();
     if (lat == null || lng == null) return '';
@@ -612,6 +625,12 @@ export class ClientDetailComponent implements OnInit {
   @HostListener('document:keydown.escape')
   onEscape() {
     if (this.invoiceModalOpen()) this.closeInvoicePortfolio();
+  }
+
+  private isClientInvoicePending(invoice: Invoice): boolean {
+    const status = (invoice.estado || '').toLowerCase();
+    if (status.includes('cancelad') || status.includes('anulad')) return false;
+    return !this.isClientInvoicePaid(invoice);
   }
 
   private isClientInvoicePaid(invoice: Invoice): boolean {
@@ -699,7 +718,7 @@ export class ClientDetailComponent implements OnInit {
               };
               this.client.set(updated);
               this.db.saveClients([updated]).catch(() => {});
-              this.toast.success(`Ubicacion guardada (precision ±${Math.round(accuracy)}m)`);
+              this.toast.success(`Ubicación guardada (precisión ±${Math.round(accuracy)}m)`);
             } else {
               this.toast.error(r?.error || 'No se pudo guardar');
             }
@@ -713,9 +732,9 @@ export class ClientDetailComponent implements OnInit {
       (err) => {
         this.capturingGps.set(false);
         let msg = 'No se pudo obtener GPS';
-        if (err.code === 1) msg = 'Permiso de ubicacion denegado. Habilitalo en el navegador.';
+        if (err.code === 1) msg = 'Permiso de ubicación denegado. Habilítalo en el navegador.';
         else if (err.code === 2) msg = 'GPS no disponible. Verifica que esta activado.';
-        else if (err.code === 3) msg = 'Timeout obteniendo ubicacion';
+        else if (err.code === 3) msg = 'Se agotó el tiempo para obtener la ubicación';
         this.toast.error(msg);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }

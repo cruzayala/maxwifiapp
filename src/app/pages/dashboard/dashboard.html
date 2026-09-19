@@ -140,7 +140,7 @@
         <header class="panel-header"><div><span class="section-kicker">Cartera</span><h2>Distribución de planes</h2></div><span>{{ totalClients() }} clientes</span></header>
         <div class="plan-list">
           @for (plan of topPlans(); track plan.name) {
-            <div class="plan-row"><div><strong>{{ plan.name }}</strong><span>{{ plan.count }}</span></div><div class="plan-track"><i [style.width.%]="plan.pct"></i></div></div>
+            <div class="plan-row"><div><strong [title]="plan.name">{{ plan.name | planLabel }}</strong><span>{{ plan.count }}</span></div><div class="plan-track"><i [style.width.%]="plan.pct"></i></div></div>
           }
         </div>
         <a class="panel-link" routerLink="/plans">Gestionar planes <svg lucideArrowRight size="15"></svg></a>
@@ -157,7 +157,7 @@
             @for (client of pendingClients().slice(0, 7); track client.id_servicio) {
               <a [routerLink]="['/clients', client.id_servicio]">
                 <span class="avatar">{{ client.nombre.slice(0, 2).toUpperCase() }}</span>
-                <div><strong>{{ client.nombre }}</strong><small>{{ client.plan_internet?.nombre || 'Sin plan' }} · Corte {{ client.fecha_corte || '--' }}</small></div>
+                <div><strong>{{ client.nombre }}</strong><small>{{ client.plan_internet?.nombre | planLabel }} · Corte {{ client.fecha_corte || '--' }}</small></div>
                 <em>RD$ {{ clientDebt(client) | number:'1.0-0' }}</em>
                 <svg lucideArrowRight size="15"></svg>
               </a>
@@ -171,7 +171,7 @@
         <a routerLink="/new-client"><svg lucideUserPlus size="19"></svg><span><strong>Nuevo cliente</strong><small>Crear en WispHub y MikroTik</small></span><svg lucideArrowRight size="16"></svg></a>
         <a routerLink="/onu-provisioner"><svg lucideRadioTower size="19"></svg><span><strong>Configurar ONU</strong><small>Reservar IP y aprovisionar</small></span><svg lucideArrowRight size="16"></svg></a>
         <a routerLink="/invoices"><svg lucideFileText size="19"></svg><span><strong>Buscar factura</strong><small>Reimprimir, exportar o comparar</small></span><svg lucideArrowRight size="16"></svg></a>
-        <button type="button" (click)="syncAll()" [disabled]="sync.syncing()"><svg lucideRefreshCw size="19" [class.spinning]="sync.syncing()"></svg><span><strong>{{ sync.syncing() ? 'Sincronizando' : 'Sincronizar ahora' }}</strong><small>{{ sync.syncing() ? sync.syncMessage() : 'WispHub, MikroTik y SQLite' }}</small></span><svg lucideArrowRight size="16"></svg></button>
+        <button type="button" (click)="syncAll()" [disabled]="sync.syncing()"><svg lucideRefreshCw size="19" [class.spinning]="sync.syncing()"></svg><span><strong>{{ sync.syncing() ? 'Sincronizando' : 'Sincronizar ahora' }}</strong><small>{{ sync.syncing() ? sync.syncMessage() : 'Clientes, facturas y red' }}</small></span><svg lucideArrowRight size="16"></svg></button>
       </aside>
     </section>
   }

@@ -25,22 +25,22 @@ import { HttpClient } from '@angular/common/http';
               <input type="text" [(ngModel)]="config.companyName" (ngModelChange)="config.companyName.set($event)" class="form-input" />
             </div>
             <div class="form-group">
-              <label>Slogan / Descripcion</label>
+              <label>Slogan / Descripción</label>
               <input type="text" [(ngModel)]="config.companySlogan" (ngModelChange)="config.companySlogan.set($event)" class="form-input" />
             </div>
           </div>
           <div class="form-row">
             <div class="form-group">
-              <label>Telefono</label>
+              <label>Teléfono</label>
               <input type="text" [(ngModel)]="config.companyPhone" (ngModelChange)="config.companyPhone.set($event)" class="form-input" />
             </div>
             <div class="form-group">
-              <label>RNC / Cedula</label>
+              <label>RNC / Cédula</label>
               <input type="text" [(ngModel)]="config.rnc" (ngModelChange)="config.rnc.set($event)" class="form-input" />
             </div>
           </div>
           <div class="form-group">
-            <label>Direccion</label>
+            <label>Dirección</label>
             <input type="text" [(ngModel)]="config.companyAddress" (ngModelChange)="config.companyAddress.set($event)" class="form-input" />
           </div>
           <div class="form-group">
@@ -65,7 +65,7 @@ import { HttpClient } from '@angular/common/http';
 
         <!-- API -->
         <div class="card">
-          <h3>Conexion WispHub API</h3>
+          <h3>Conexión con WispHub</h3>
           <div class="form-group">
             <label>API URL</label>
             <input type="text" [value]="apiUrl" class="form-input" disabled />
@@ -146,7 +146,7 @@ import { HttpClient } from '@angular/common/http';
 
         <!-- SQLITE PERSISTENTE -->
         <div class="card">
-          <h3>Base de datos SQLite persistente</h3>
+          <h3>Base de datos</h3>
           <p class="help-text">Los datos operativos se conservan en el volumen <code>/data</code>. Sincronizar actualiza registros existentes y agrega los nuevos; no vacia la base.</p>
           <div class="db-info">
             <div class="db-stat">
@@ -166,11 +166,11 @@ import { HttpClient } from '@angular/common/http';
               <span class="db-val">SQLite + Prisma</span>
             </div>
             <div class="db-stat">
-              <span>Ultima sincronizacion</span>
+              <span>Última sincronización</span>
               <span class="db-val">{{ lastSyncAt() || 'Nunca' }}</span>
             </div>
           </div>
-          <button class="btn btn-primary" (click)="downloadDatabaseBackup()" [disabled]="backupBusy()">{{ backupBusy() ? 'Preparando...' : 'Descargar respaldo SQLite' }}</button>
+          <button class="btn btn-primary" (click)="downloadDatabaseBackup()" [disabled]="backupBusy()">{{ backupBusy() ? 'Preparando...' : 'Descargar respaldo' }}</button>
           <button class="btn btn-outline" (click)="downloadAndroid()" [disabled]="androidBusy()">{{ androidBusy() ? 'Descargando APK...' : 'Descargar ISP Max Android (preliminar)' }}</button>
         </div>
 
@@ -178,7 +178,7 @@ import { HttpClient } from '@angular/common/http';
         <div class="card full">
           <h3>Notificaciones Automaticas WhatsApp</h3>
           <p class="help-text">
-            Envia mensajes automaticos a clientes con pago pendiente o proximo al corte.
+            Envía mensajes automáticos a clientes con pago pendiente o próximo al corte.
             Requiere que WhatsApp este conectado.
           </p>
 
@@ -188,7 +188,7 @@ import { HttpClient } from '@angular/common/http';
               <span class="slider"></span>
             </label>
             <div>
-              <strong>Activar envio automatico</strong>
+              <strong>Activar envío automático</strong>
               <div class="sub-text">El sistema revisara cada 30 minutos si debe enviar mensajes</div>
             </div>
           </div>
@@ -199,7 +199,7 @@ import { HttpClient } from '@angular/common/http';
               <input type="number" min="0" max="23" [(ngModel)]="config.autoNotifScheduleHour" (ngModelChange)="config.autoNotifScheduleHour.set(+$event)" class="form-input" />
             </div>
             <div class="form-group">
-              <label>Dias antes del corte para recordar</label>
+              <label>Días antes del corte para recordar</label>
               <input type="number" min="1" max="10" [(ngModel)]="config.autoNotifReminderDays" (ngModelChange)="config.autoNotifReminderDays.set(+$event)" class="form-input" />
             </div>
           </div>
@@ -217,12 +217,12 @@ import { HttpClient } from '@angular/common/http';
             </label>
             <div>
               <strong>Enviar avisos a clientes ya vencidos (morosos)</strong>
-              <div class="sub-text">Repite cada {{ config.autoNotifOverdueInterval() }} dias mientras no pague</div>
+              <div class="sub-text">Repite cada {{ config.autoNotifOverdueInterval() }} días mientras no pague</div>
             </div>
           </div>
 
           <div class="form-group">
-            <label>Cada cuantos dias reenviar a moroso</label>
+            <label>Cada cuántos días reenviar a moroso</label>
             <input type="number" min="1" max="30" [(ngModel)]="config.autoNotifOverdueInterval" (ngModelChange)="config.autoNotifOverdueInterval.set(+$event)" class="form-input" style="max-width:200px" />
           </div>
 
@@ -247,7 +247,7 @@ import { HttpClient } from '@angular/common/http';
         <div class="card full">
           <h3>Aviso HTML de pago</h3>
           <p class="help-text">
-            Marca automaticamente como moroso suave a clientes con factura pendiente o vencida. El cliente vera una pagina HTML con sus datos y la factura al abrir HTTP/captive detection, sin corte total de HTTPS.
+            Marca automáticamente como moroso suave a clientes con factura pendiente o vencida. El cliente verá una página HTML con sus datos y la factura al abrir HTTP/captive detection, sin corte total de HTTPS.
           </p>
 
           <div class="toggle-row">
@@ -256,18 +256,18 @@ import { HttpClient } from '@angular/common/http';
               <span class="slider"></span>
             </label>
             <div>
-              <strong>Activar aviso HTML automatico</strong>
+              <strong>Activar aviso HTML automático</strong>
               <div class="sub-text">Solo funciona cuando este check esta encendido. Modo: aviso suave en <code>morosos-crm</code>, no bloqueo total</div>
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Dias de atraso para mostrar aviso</label>
+              <label>Días de atraso para mostrar aviso</label>
               <input type="number" min="1" max="90" [ngModel]="paymentWarningOverdueDays()" (ngModelChange)="paymentWarningOverdueDays.set(+$event)" class="form-input" />
             </div>
             <div class="form-group">
-              <label>Hora de revision diaria (0-23)</label>
+              <label>Hora de revisión diaria (0-23)</label>
               <input type="number" min="0" max="23" [ngModel]="paymentWarningRunHour()" (ngModelChange)="paymentWarningRunHour.set(+$event)" class="form-input" />
             </div>
           </div>
@@ -290,9 +290,9 @@ import { HttpClient } from '@angular/common/http';
 
           @if (paymentWarningPreview().length) {
             <div class="preview-box">
-              <strong>{{ paymentWarningPreview().length }} cliente(s) cumplen la condicion</strong>
+              <strong>{{ paymentWarningPreview().length }} cliente(s) cumplen la condición</strong>
               <table class="mini-table">
-                <thead><tr><th>Cliente</th><th>IP</th><th>Dias</th><th>Factura</th><th>Accion</th></tr></thead>
+                <thead><tr><th>Cliente</th><th>IP</th><th>Días</th><th>Factura</th><th>Acción</th></tr></thead>
                 <tbody>
                   @for (row of paymentWarningPreview().slice(0, 10); track row.idServicio) {
                     <tr>
@@ -311,15 +311,15 @@ import { HttpClient } from '@angular/common/http';
 
         <!-- DETECTOR IP WAN -->
         <div class="card full">
-          <h3>Diagnostico de Red</h3>
+          <h3>Diagnóstico de Red</h3>
           <p class="help-text">
-            Si abres esta pagina desde una red conectada al MikroTik, la IP publica mostrada es tu IP WAN.
-            Desde otra red (casa, 4G) sera diferente.
+            Si abres esta página desde una red conectada al MikroTik, la IP pública mostrada es tu IP WAN.
+            Desde otra red (casa, 4G) será diferente.
           </p>
           @if (wanIp()) {
             <div class="wan-info">
               <div class="wan-row">
-                <span class="wan-label">IP Publica actual:</span>
+                <span class="wan-label">IP Pública actual:</span>
                 <strong class="wan-value">{{ wanIp() }}</strong>
                 <button class="btn-copy" (click)="copyIp()">Copiar</button>
               </div>
@@ -331,7 +331,7 @@ import { HttpClient } from '@angular/common/http';
               }
               @if (city()) {
                 <div class="wan-row">
-                  <span class="wan-label">Ubicacion:</span>
+                  <span class="wan-label">Ubicación:</span>
                   <span>{{ city() }}, {{ country() }}</span>
                 </div>
               }
@@ -350,9 +350,9 @@ import { HttpClient } from '@angular/common/http';
 
         <!-- INFO -->
         <div class="card full">
-          <h3>Informacion del Sistema</h3>
+          <h3>Información del Sistema</h3>
           <div class="info-grid">
-            <div class="info-item"><span>Version</span><span>1.0.0</span></div>
+            <div class="info-item"><span>Versión</span><span>1.0.0</span></div>
             <div class="info-item"><span>API</span><span>WispHub.io REST API</span></div>
             <div class="info-item"><span>Base de datos</span><span>SQLite persistente (servidor)</span></div>
             <div class="info-item"><span>Framework</span><span>Angular 21</span></div>
@@ -526,12 +526,12 @@ export class SettingsComponent implements OnInit {
     this.config.save().subscribe({
       next: () => {
         this.saved.set(true);
-        this.toast.success('Configuracion guardada en SQLite');
+        this.toast.success('Configuración guardada');
         if (this.config.autoNotifEnabled()) this.scheduler.start();
         else this.scheduler.stop();
         setTimeout(() => this.saved.set(false), 3000);
       },
-      error: () => this.toast.error('No se pudo guardar la configuracion en SQLite'),
+      error: () => this.toast.error('No se pudo guardar la configuración'),
     });
   }
 
@@ -718,11 +718,11 @@ export class SettingsComponent implements OnInit {
         link.download = fileName;
         link.click();
         URL.revokeObjectURL(link.href);
-        this.toast.success('Respaldo SQLite descargado');
+        this.toast.success('Respaldo de la base de datos descargado');
       },
       error: (error) => {
         this.backupBusy.set(false);
-        this.toast.error(error.error?.error || 'No se pudo crear el respaldo SQLite');
+        this.toast.error(error.error?.error || 'No se pudo crear el respaldo');
       },
     });
   }

@@ -393,10 +393,26 @@ export class OltComponent implements OnInit, OnDestroy {
   }
 
   onuStatusLabel(onu: OltOnu) {
-    if (!onu.online) return onu.phaseState || 'Fuera de línea';
+    if (!onu.online) return this.phaseStateLabel(onu.phaseState);
     if (this.isCriticalPower(onu.rxPowerDbm)) return 'Señal crítica';
     if (this.isWeakPower(onu.rxPowerDbm)) return 'Señal débil';
     return 'ONU en línea';
+  }
+
+  // Estados de fase que reporta la ZTE C320, traducidos para el operador.
+  private phaseStateLabel(phase?: string | null) {
+    const labels: Record<string, string> = {
+      'los': 'Sin señal óptica (LOS)',
+      'dyinggasp': 'Sin energía',
+      'offline': 'Fuera de línea',
+      'not-seen': 'Nunca vista',
+      'syncmib': 'Sincronizando',
+      'logging': 'Registrándose',
+      'authfailed': 'Autenticación fallida',
+      'working': 'Operativa',
+    };
+    const key = String(phase || '').trim().toLowerCase();
+    return labels[key] || phase || 'Fuera de línea';
   }
 
   loadPlanSyncPreview() {
@@ -613,7 +629,7 @@ export class OltComponent implements OnInit, OnDestroy {
 
   openIpPicker() {
     if (!this.provisioningClient() || !this.provisioningOnu()) {
-      this.toast.error('Seleccione primero el cliente de la instalacion');
+      this.toast.error('Seleccione primero el cliente de la instalación');
       return;
     }
     this.ipPickerOpen.set(true);
@@ -697,7 +713,7 @@ export class OltComponent implements OnInit, OnDestroy {
     const onu = this.provisioningOnu();
     const payload = this.provisioningPayload();
     if (!onu || !payload) {
-      this.toast.error('Seleccione el cliente y complete la configuracion');
+      this.toast.error('Seleccione el cliente y complete la configuración');
       return;
     }
     this.provisioningLoading.set(true);

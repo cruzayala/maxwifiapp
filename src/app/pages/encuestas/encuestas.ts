@@ -115,7 +115,7 @@ interface ReminderConfig {
             </div>
             <p class="modal-help">
               Variables disponibles: <code>{{ '{nombre}' }}</code> <code>{{ '{negocio}' }}</code> <code>{{ '{url}' }}</code> <code>{{ '{telefono}' }}</code> <code>{{ '{ip}' }}</code> <code>{{ '{plan}' }}</code><br>
-              <strong>{{ '{url}' }}</strong> es obligatorio. Sera el enlace corto camuflado del estilo <code>/s/abc12d</code>.
+              <strong>{{ '{url}' }}</strong> es obligatorio. Será el enlace corto camuflado del estilo <code>/s/abc12d</code>.
             </p>
             <textarea class="template-input" [(ngModel)]="templateDraft" rows="10"></textarea>
             <div class="modal-actions">
@@ -133,7 +133,7 @@ interface ReminderConfig {
       } @else if (filteredRows().length === 0) {
         <div class="empty">
           <h3>Sin encuestas{{ statusFilter() ? ' en este estado' : '' }}</h3>
-          <p>Activa encuestas desde la pagina de Clientes haciendo clic en el boton "Encuesta" junto a cada cliente.</p>
+          <p>Activa encuestas desde la página de Clientes haciendo clic en el botón "Encuesta" junto a cada cliente.</p>
         </div>
       } @else {
         <div class="table-wrap">
@@ -144,10 +144,10 @@ interface ReminderConfig {
                 <th>Cliente</th>
                 <th>IP</th>
                 <th>Nombre respondido</th>
-                <th>Telefono respondido</th>
+                <th>Teléfono respondido</th>
                 <th>Enviada</th>
                 <th>Respondida</th>
-                <th>Proximo aviso</th>
+                <th>Próximo aviso</th>
                 <th>Activo por</th>
                 <th>Enlace</th>
                 <th>Acciones</th>
