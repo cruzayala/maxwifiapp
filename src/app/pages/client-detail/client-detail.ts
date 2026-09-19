@@ -1,9 +1,13 @@
 import { Component, DestroyRef, HostListener, OnInit, inject, signal, computed } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { formatDrPhone, telLink, whatsappLink } from '../../pipes/phone';
+import { formatDrPhone, internationalDrPhone, telLink, whatsappLink } from '../../pipes/phone';
 import { ClientListStateService } from '../../services/client-list-state.service';
 import { ConfigService } from '../../services/config.service';
+import { AuthService } from '../../services/auth.service';
+import { PaymentModalComponent } from '../../components/payment-modal/payment-modal';
+import { ClientBlockActionsComponent } from '../../components/client-block-actions/client-block-actions';
+import { ClientActionsService } from '../../services/client-actions.service';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { WisphubService } from '../../services/wisphub.service';
@@ -30,7 +34,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
   selector: 'app-client-detail',
   standalone: true,
   imports: [
-    NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, PlanLabelPipe,
+    NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, PlanLabelPipe, PaymentModalComponent, ClientBlockActionsComponent,
     ClientExtrasComponent, ClientMetricsComponent, ClientEquipmentComponent,
     LucideActivity, LucideCalendarClock, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign, LucideCopy,
     LucideExternalLink, LucideGauge, LucideHistory, LucideMapPin, LucideMessageCircle, LucidePackageSearch, LucidePencil,
@@ -97,11 +101,16 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             <span class="qs-label"><svg lucideCircleDollarSign size="15"></svg>Saldo pendiente</span>
             <strong>RD$ {{ clientOpenBalance() | number:'1.0-2' }}</strong>
             <small>@if (clientOpenBalance() > 0) { {{ clientInvoicePendingCount() }} {{ clientInvoicePendingCount() === 1 ? 'factura abierta' : 'facturas abiertas' }} } @else if (hasPendingStatus()) { WispHub la marca pendiente } @else { Al día }</small>
-            @if (paymentReminderUrl(); as reminder) {
-              @if (clientOpenBalance() > 0 || hasPendingStatus()) {
-                <a class="qs-action" [href]="reminder" target="_blank" rel="noopener" title="Abre WhatsApp con el recordatorio ya escrito; usted lo revisa y lo envía"><svg lucideMessageCircle size="14"></svg>Recordar pago</a>
+            <div class="qs-actions">
+              @if (canCollect() && oldestPendingInvoice(); as inv) {
+                <button type="button" class="qs-action pay" (click)="openPayment(inv)" [title]="'Registrar el pago de la factura #' + inv.id_factura"><svg lucideCircleDollarSign size="14"></svg>Cobrar</button>
               }
-            }
+              @if (paymentReminderUrl(); as reminder) {
+                @if (clientOpenBalance() > 0 || hasPendingStatus()) {
+                  <a class="qs-action" [href]="reminder" target="_blank" rel="noopener" title="Abre WhatsApp con el recordatorio ya escrito; usted lo revisa y lo envía"><svg lucideMessageCircle size="14"></svg>Recordar pago</a>
+                }
+              }
+            </div>
           </div>
           <div class="qs-item" [class.danger]="(cutInfo()?.days ?? 1) < 0 && hasPendingStatus()" [class.warn]="(cutInfo()?.days ?? 99) >= 0 && (cutInfo()?.days ?? 99) <= 5">
             <span class="qs-label"><svg lucideCalendarClock size="15"></svg>Fecha de corte</span>
@@ -164,7 +173,8 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
                   </div>
                   <div class="form-group">
                     <label for="cd-tel">Teléfono</label>
-                    <input id="cd-tel" type="tel" [(ngModel)]="editPhone" class="form-input" placeholder="809-000-0000" />
+                    <input id="cd-tel" type="tel" inputmode="tel" [(ngModel)]="editPhone" class="form-input" placeholder="809-000-0000" />
+                    @if (editPhone.trim() && !validPhone(editPhone)) { <span class="field-warn">Revise el número: 10 dígitos que empiecen por 809, 829 u 849.</span> }
                   </div>
                 </div>
                 <div class="form-row">
@@ -293,6 +303,34 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             </div>
           </div>
 
+          <!-- ESTADO DE COBRO: aviso de pago / corte aplicados desde este sistema -->
+          <div class="card crm-card" [class.tab-hidden]="activeTab() !== 'overview'">
+            <h3>Estado de cobro</h3>
+            @if (crmState(); as state) {
+              <div class="crm-current" [class.warn]="state.crmAction === 'moroso'" [class.danger]="state.crmAction === 'block'">
+                <strong>{{ state.crmAction === 'block' ? 'Internet cortado' : state.crmAction === 'moroso' ? 'Con aviso de pago' : 'Sin restricciones' }}</strong>
+                <small>
+                  @if (state.crmAction) { {{ state.crmActionReason || 'Sin motivo' }}@if (state.crmActionAt) { · desde {{ state.crmActionAt | date:'d MMM y, h:mm a' }} } }
+                  @else { El cliente navega normalmente. }
+                </small>
+              </div>
+              <app-client-block-actions [idServicio]="client()!.id_servicio" [clientName]="client()!.nombre" [crmAction]="state.crmAction" [paymentPilotEnabled]="state.paymentPilotEnabled" (changed)="onCrmChanged()" />
+              @if (!state.paymentPilotEnabled && state.crmAction !== 'block') {
+                <p class="crm-note">El corte con portal de pago no está habilitado para este cliente.</p>
+              }
+            } @else {
+              <p class="crm-note">Consultando el estado de cobro…</p>
+            }
+            <div class="crm-history">
+              <span class="lbl">Historial</span>
+              @for (ev of crmEvents(); track ev.id) {
+                <div class="crm-event"><b>{{ crmEventLabel(ev.action) }}</b><span>{{ ev.createdAt | date:'d MMM y, h:mm a' }}{{ ev.createdBy ? ' · ' + ev.createdBy : '' }}</span>@if (ev.reason) { <small>{{ ev.reason }}</small> }</div>
+              } @empty {
+                <p class="crm-note">{{ crmEventsError() ? 'No se pudo cargar el historial.' : 'Sin avisos ni cortes registrados.' }}</p>
+              }
+            </div>
+          </div>
+
           <!-- CONFIG WiFi (solo lectura) -->
           <div class="card" [class.tab-hidden]="activeTab() !== 'service'">
             <h3>Router y equipo del cliente</h3>
@@ -388,7 +426,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
 
             <div class="portfolio-table-wrap">
               <table class="data-table portfolio-table">
-                <thead><tr><th>Factura</th><th>Emisión</th><th>Vencimiento</th><th>Total</th><th>Estado</th><th>Forma de pago</th><th>Recibo</th></tr></thead>
+                <thead><tr><th>Factura</th><th>Emisión</th><th>Vencimiento</th><th>Total</th><th>Estado</th><th>Forma de pago</th><th>Acciones</th></tr></thead>
                 <tbody>
                   @for (inv of visibleClientInvoices(); track inv.id_factura) {
                     <tr>
@@ -398,7 +436,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
                       <td data-label="Total" class="money">RD$ {{ inv.total | number:'1.2-2' }}</td>
                       <td data-label="Estado"><span class="badge" [class]="'badge-' + getInvStatusClass(inv.estado)">{{ inv.estado || '-' }}</span></td>
                       <td data-label="Pago">{{ inv.forma_pago?.nombre || '—' }}</td>
-                      <td data-label="Recibo"><button class="btn-icon" type="button" (click)="printReceipt(inv)" [attr.aria-label]="'Imprimir recibo de factura ' + inv.id_factura" title="Imprimir recibo"><svg lucidePrinter size="16"></svg></button></td>
+                      <td data-label="Acciones" class="inv-actions">@if (canCollect() && isInvoicePending(inv)) { <button class="btn-pay" type="button" (click)="openPayment(inv)" [attr.aria-label]="'Registrar pago de la factura ' + inv.id_factura" title="Registrar pago de esta factura"><svg lucideCircleDollarSign size="15"></svg>Pagar</button> }<button class="btn-icon" type="button" (click)="printReceipt(inv)" [attr.aria-label]="'Imprimir recibo de factura ' + inv.id_factura" title="Imprimir recibo"><svg lucidePrinter size="16"></svg></button></td>
                     </tr>
                   } @empty {
                     <tr><td colspan="7" class="portfolio-empty">{{ clientInvoices().length ? 'No hay facturas en este estado.' : 'Este cliente no tiene facturas guardadas. Sincronice las facturas desde el módulo de Facturación.' }}</td></tr>
@@ -409,6 +447,12 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
           </section>
         </div>
       }
+
+      <app-payment-modal
+        [visible]="showPayment()"
+        [invoice]="payingInvoice()"
+        (onClose)="showPayment.set(false)"
+        (onSuccess)="onPaymentSuccess()" />
     </div>
   `,
   styles: [`
@@ -629,6 +673,30 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .qs-item.warn small, .qs-item.danger small { color: #7a4a10; }
     .qs-action { justify-self: start; margin-top: 6px; height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid #b6e3cb; border-radius: 6px; background: #f1faf5; color: #13875a; font-size: 12px; font-weight: 700; text-decoration: none; }
     .qs-action:hover { border-color: #13875a; }
+    .field-warn { display: block; margin-top: 4px; color: #9a5b0f; font-size: 12px; }
+    .crm-current { margin-bottom: 12px; padding: 10px 12px; border: 1px solid #cfe8dc; border-left: 4px solid #13875a; border-radius: 6px; background: #f4fbf7; display: grid; gap: 3px; }
+    .crm-current strong { color: #13875a; font-size: 14px; }
+    .crm-current small { color: #526b80; font-size: 12px; }
+    .crm-current.warn { border-color: #efcf97; border-left-color: #b36b12; background: #fff8ec; }
+    .crm-current.warn strong { color: #9a5b0f; }
+    .crm-current.danger { border-color: #f0b4ae; border-left-color: #b42318; background: #fff5f4; }
+    .crm-current.danger strong { color: #b42318; }
+    .crm-note { margin: 10px 0 0; color: #667582; font-size: 12px; }
+    .crm-history { margin-top: 14px; padding-top: 12px; border-top: 1px solid #edf0f2; }
+    .crm-history .lbl { display: block; margin-bottom: 6px; color: #667582; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .crm-event { padding: 6px 0; display: grid; gap: 1px; border-bottom: 1px dashed #edf0f2; font-size: 12px; }
+    .crm-event:last-child { border-bottom: 0; }
+    .crm-event b { color: #172535; font-size: 13px; }
+    .crm-event span { color: #667582; }
+    .crm-event small { color: #526b80; font-style: italic; }
+    .qs-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .qs-actions:empty { display: none; }
+    button.qs-action { cursor: pointer; font-family: inherit; }
+    .qs-action.pay { border-color: #1267dd; background: #1267dd; color: #fff; }
+    .qs-action.pay:hover { background: #0d58c0; }
+    .inv-actions { white-space: nowrap; }
+    .btn-pay { height: 30px; margin-right: 6px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; border: 0; border-radius: 6px; background: #13875a; color: #fff; font-size: 12px; font-weight: 700; cursor: pointer; vertical-align: middle; }
+    .btn-pay:hover { background: #0f704b; }
 
     @media (max-width: 1100px) {
       .quick-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -686,6 +754,23 @@ export class ClientDetailComponent implements OnInit {
   private destroyRef = inject(DestroyRef);
   private listState = inject(ClientListStateService);
   private config = inject(ConfigService);
+  private auth = inject(AuthService);
+  private clientActions = inject(ClientActionsService);
+
+  // Marca de cobro aplicada desde este sistema (aviso de pago o corte) y su historial.
+  crmState = signal<{ crmAction: string | null; crmActionReason: string | null; crmActionAt: string | null; paymentPilotEnabled: boolean } | null>(null);
+  crmEvents = signal<{ id: number; action: string; reason: string | null; createdAt: string; createdBy: string | null }[]>([]);
+  crmEventsError = signal(false);
+
+  // Cobro desde el expediente (mismo formulario y reglas que en Facturas).
+  canCollect = computed(() => this.auth.hasRole(['cobranza']));
+  payingInvoice = signal<Invoice | null>(null);
+  showPayment = signal(false);
+  /** Factura abierta más antigua: la que se cobra primero. */
+  oldestPendingInvoice = computed(() => {
+    const pending = this.clientInvoices().filter((invoice) => this.isClientInvoicePending(invoice));
+    return pending.sort((a, b) => String(a.fecha_emision || '').localeCompare(String(b.fecha_emision || '')))[0] ?? null;
+  });
 
   /** Posición del cliente dentro de la última lista filtrada (Anterior/Siguiente). */
   navigation = signal<{ prev: number | null; next: number | null; index: number; total: number; label: string } | null>(null);
@@ -772,19 +857,22 @@ export class ClientDetailComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape() {
+    // Si el formulario de pago está abierto, Esc solo cierra ese formulario (lo maneja él mismo).
+    if (this.showPayment()) return;
     if (this.invoiceModalOpen()) this.closeInvoicePortfolio();
   }
 
   private isClientInvoicePending(invoice: Invoice): boolean {
     const status = (invoice.estado || '').toLowerCase();
-    if (status.includes('cancelad') || status.includes('anulad')) return false;
+    // "Se Transfirió": el saldo pasó a otra factura; no se cobra ni suma deuda aquí.
+    if (status.includes('cancelad') || status.includes('anulad') || status.includes('transfir')) return false;
     return !this.isClientInvoicePaid(invoice);
   }
 
   private isClientInvoicePaid(invoice: Invoice): boolean {
     const status = (invoice.estado || '').toLowerCase();
     const total = invoice.total || 0;
-    if (status.includes('pendiente') || status.includes('cancelad') || status.includes('anulad') || status.includes('transfer')) return false;
+    if (status.includes('pendiente') || status.includes('cancelad') || status.includes('anulad') || status.includes('transfer') || status.includes('transfir')) return false;
     if (status.includes('pagad') || status.includes('cobro completo')) return true;
     return Boolean(invoice.fecha_pago) && total > 0 && (invoice.total_cobrado || 0) >= total - 0.01;
   }
@@ -821,8 +909,67 @@ export class ClientDetailComponent implements OnInit {
       ));
       // Cargar GPS guardado (del server, no del cache local)
       this.loadGps(id);
+      this.loadCrm(id);
     }
     this.loading.set(false);
+  }
+
+  private loadCrm(id: number) {
+    this.crmState.set(null);
+    this.crmEvents.set([]);
+    this.crmEventsError.set(false);
+    this.clientActions.states().subscribe({
+      next: (rows) => {
+        const row = rows.find((r) => r.idServicio === id);
+        this.crmState.set(row
+          ? { crmAction: row.crmAction, crmActionReason: row.crmActionReason, crmActionAt: row.crmActionAt, paymentPilotEnabled: row.paymentPilotEnabled }
+          : { crmAction: null, crmActionReason: null, crmActionAt: null, paymentPilotEnabled: false });
+      },
+      error: () => this.crmState.set({ crmAction: null, crmActionReason: null, crmActionAt: null, paymentPilotEnabled: false }),
+    });
+    this.clientActions.events(id).subscribe({
+      next: (events) => this.crmEvents.set((events as any[]).slice(0, 8)),
+      error: () => this.crmEventsError.set(true),
+    });
+  }
+
+  onCrmChanged() {
+    const id = this.client()?.id_servicio;
+    if (id) this.loadCrm(id);
+  }
+
+  crmEventLabel(action: string): string {
+    if (action === 'moroso') return 'Aviso de pago activado';
+    if (action === 'block') return 'Servicio cortado';
+    if (action === 'unblock' || action === 'clear') return 'Reactivado';
+    return action;
+  }
+
+  openPayment(invoice: Invoice | null) {
+    if (!invoice) return;
+    this.payingInvoice.set(invoice);
+    this.showPayment.set(true);
+  }
+
+  async onPaymentSuccess() {
+    this.showPayment.set(false);
+    // Recarga facturas y cliente para que saldo, estado y cartera reflejen el cobro.
+    const id = this.client()?.id_servicio;
+    if (!id) return;
+    const [c, allInv] = await Promise.all([this.db.getClient(id), this.db.getInvoices(true)]);
+    if (c) this.client.set(c);
+    this.clientInvoices.set(allInv.filter(i =>
+      i.articulos?.some(a => a.servicio?.id_servicio === id) ||
+      i.cliente?.nombre?.toLowerCase() === (c || this.client())?.nombre?.toLowerCase()
+    ));
+  }
+
+  validPhone(phone: string): boolean {
+    return !!internationalDrPhone(phone);
+  }
+
+  isInvoicePending(invoice: Invoice): boolean {
+    return this.isClientInvoicePending(invoice);
   }
 
   goToClient(id: number | null) {

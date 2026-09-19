@@ -1645,7 +1645,8 @@ export class InvoicesComponent implements OnInit {
 
   private isClosedWithoutPayment(inv: Invoice): boolean {
     const status = this.normalize(inv.estado);
-    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer');
+    // WispHub usa "Se Transfirio": 'transfer' solo no coincidía y esas facturas se contaban como pagadas.
+    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer') || status.includes('transfir');
   }
 
   isOverdue(inv: Invoice): boolean {

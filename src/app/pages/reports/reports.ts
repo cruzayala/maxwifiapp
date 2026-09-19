@@ -445,7 +445,8 @@ export class ReportsComponent implements OnInit {
 
   private isClosedWithoutPayment(invoice: Invoice): boolean {
     const status = (invoice.estado || '').toLowerCase();
-    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer');
+    // WispHub usa "Se Transfirio"/"Se Transfirió": 'transfer' solo no coincidía.
+    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer') || status.includes('transfir');
   }
 
   private isPaid(invoice: Invoice): boolean {

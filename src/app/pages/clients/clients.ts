@@ -111,7 +111,7 @@ interface ClientGroup {
         </div>
         @if (filtersExpanded) {
           <div class="advanced-filters">
-            <label><span>Estado</span><select [(ngModel)]="statusFilter" (change)="filterClients()"><option value="">Todos</option><option value="activo">Activo</option><option value="suspendido">Suspendido</option><option value="cortado">Cortado</option><option value="gratis">Gratis</option><option value="retirado">Retirado</option></select></label>
+            <label><span>Estado</span><select [(ngModel)]="statusFilter" (change)="filterClients()"><option value="">Todos</option><option value="activo">Activo</option><option value="suspendido">Suspendido</option><option value="cortado">Cortado</option><option value="gratis">Gratis</option><option value="retirado">Retirado</option><option value="crm_moroso">Con aviso de pago (moroso)</option><option value="crm_block">Cortado desde el sistema</option></select></label>
             <label><span>Facturación</span><select [(ngModel)]="invoiceFilter" (change)="filterClients()"><option value="">Todas</option><option value="pending">Pendientes</option><option value="paid">Pagadas</option></select></label>
             <label><span>Zona</span><select [(ngModel)]="zoneFilter" (change)="filterClients()"><option value="">Todas</option>@for (zone of allZones(); track zone) { <option [value]="zone">{{ zone }}</option> }</select></label>
             <label><span>Plan</span><select [(ngModel)]="planFilter" (change)="filterClients()"><option value="">Todos</option>@for (plan of allPlans(); track plan) { <option [value]="plan">{{ planOptionLabel(plan) }}</option> }</select></label>
@@ -944,8 +944,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   crmActionLabel(id: number): { text: string; color: string } | null {
     const a = this.crmActionFor(id);
-    if (a === 'block') return { text: 'Bloqueado', color: 'danger' };
-    if (a === 'moroso') return { text: 'Moroso', color: 'warn' };
+    if (a === 'block') return { text: 'Cortado', color: 'danger' };
+    if (a === 'moroso') return { text: 'Aviso de pago', color: 'warn' };
     return null;
   }
 
@@ -1443,7 +1443,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
       result = result.filter(c => this.monthlyAmount(c) >= 1500);
     }
 
-    if (this.statusFilter) {
+    if (this.statusFilter === 'crm_moroso' || this.statusFilter === 'crm_block') {
+      // Marcas aplicadas desde este sistema (aviso de pago o corte), no el estado de WispHub.
+      const wanted = this.statusFilter === 'crm_moroso' ? 'moroso' : 'block';
+      result = result.filter(c => this.crmActionFor(c.id_servicio) === wanted);
+    } else if (this.statusFilter) {
       result = result.filter(c => c.estado?.toLowerCase() === this.statusFilter);
     }
 

@@ -1,22 +1,26 @@
 import { Component, inject, input, output, signal } from '@angular/core';
 import { ClientAction, ClientActionsService } from '../../services/client-actions.service';
 import { ToastService } from '../../services/toast.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-client-block-actions',
   standalone: true,
   template: `
+    @if (!canMark) {
+      <p class="no-permission">Su usuario no puede cambiar el estado de cobro de este cliente.</p>
+    } @else {
     <div class="actions" (click)="$event.stopPropagation()">
       <button
         type="button"
         class="btn-ac btn-warn"
-        [disabled]="busy() !== null || crmAction() === 'block'"
-        [title]="crmAction() === 'block' ? 'El servicio ya está desactivado; reactívelo primero' : 'Marcar al cliente como moroso por falta de pago'"
+        [disabled]="busy() !== null || crmAction() === 'block' || crmAction() === 'moroso'"
+        [title]="crmAction() === 'block' ? 'El servicio ya está desactivado; reactívelo primero' : crmAction() === 'moroso' ? 'Ya está marcado como moroso' : 'Mostrarle un aviso de pago al navegar (no corta el internet)'"
         (click)="run('moroso')"
       >
         {{ busy() === 'moroso' ? 'Aplicando…' : 'Marcar moroso' }}
       </button>
-      @if (paymentPilotEnabled()) {
+      @if (paymentPilotEnabled() && canCut) {
         <button
           type="button"
           class="btn-ac btn-danger"
@@ -39,6 +43,7 @@ import { ToastService } from '../../services/toast.service';
         </button>
       }
     </div>
+    }
   `,
   styles: [`
     .actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
@@ -55,11 +60,16 @@ import { ToastService } from '../../services/toast.service';
     .btn-ok { background: #13875a; color: white; }
     .btn-ok:not(:disabled):hover { background: #0f704b; }
     .btn-ac:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
+    .no-permission { margin: 0; color: #667582; font-size: 12px; }
   `],
 })
 export class ClientBlockActionsComponent {
   private svc = inject(ClientActionsService);
   private toast = inject(ToastService);
+  private auth = inject(AuthService);
+  // Mismos permisos que el servidor: aviso de pago/reactivar = cobranza; cortar = administrador.
+  readonly canMark = this.auth.hasRole(['cobranza']);
+  readonly canCut = this.auth.hasRole(['admin']);
 
   idServicio = input.required<number>();
   clientName = input.required<string>();
@@ -74,9 +84,12 @@ export class ClientBlockActionsComponent {
     const verb = action === 'moroso' ? 'Marcar como moroso' : action === 'block' ? 'Desactivar servicio' : 'Reactivar';
     const done = action === 'moroso' ? 'Marcado como moroso' : action === 'block' ? 'Servicio desactivado' : 'Servicio reactivado';
     const def = action === 'moroso' ? 'Falta de pago' : action === 'block' ? 'Desactivado manualmente' : 'Reactivado';
+    // Efecto real en el MikroTik (ver applyClientAction en server.js).
     const effect = action === 'block'
-      ? 'Esto afecta el servicio de internet del cliente.'
-      : action === 'clear' ? 'Se quitará la marca actual del cliente.' : 'El cliente quedará marcado por falta de pago.';
+      ? 'Se CORTARÁ su internet: solo podrá abrir la página de pago hasta que lo reactive.'
+      : action === 'clear'
+        ? 'Se quita la marca y el aviso: su internet vuelve a la normalidad.'
+        : 'Al navegar verá un aviso de pago. Su internet sigue funcionando, pero sus conexiones actuales se reiniciarán.';
     const reason = window.prompt(`${verb}: ${this.clientName()}\n${effect}\n\nEscriba el motivo (queda en el historial) y pulse Aceptar para confirmar:`, def);
     if (reason === null) return;
 
