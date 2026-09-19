@@ -179,7 +179,7 @@ interface ClientGroup {
             </thead>
             <tbody>
               @for (c of pagedClients(); track c.id_servicio) {
-                <tr (click)="openClient(c.id_servicio)" class="clickable-row" [class.selected-row]="isSelected(c.id_servicio)">
+                <tr (click)="openClient(c.id_servicio, $event)" class="clickable-row" [class.selected-row]="isSelected(c.id_servicio)">
                   <td class="col-check" data-label="Seleccionar" (click)="$event.stopPropagation()"><input type="checkbox" [checked]="isSelected(c.id_servicio)" (change)="toggleSelect(c.id_servicio)" [attr.aria-label]="'Seleccionar a ' + c.nombre" /></td>
                   <td data-label="Cliente">
                     <div class="cell-client">
@@ -236,7 +236,7 @@ interface ClientGroup {
                     <details class="row-actions">
                       <summary title="Acciones del cliente" aria-label="Acciones para {{ c.nombre }}"><svg lucideMoreHorizontal size="18"></svg></summary>
                       <div class="row-menu">
-                        <button type="button" (click)="openClient(c.id_servicio)"><svg lucideEye size="15"></svg><span><b>Ver expediente</b><small>Datos, facturas y equipos</small></span></button>
+                        <button type="button" (click)="openClient(c.id_servicio, $event)"><svg lucideEye size="15"></svg><span><b>Ver expediente</b><small>Datos, facturas y equipos</small></span></button>
                         @if (whatsappFor(c); as wa) {
                           <a class="menu-link" [href]="wa" target="_blank" rel="noopener"><svg lucideMessageCircle size="15"></svg><span><b>Escribir por WhatsApp</b><small>{{ phoneLabel(c) }}</small></span></a>
                         }
@@ -257,7 +257,7 @@ interface ClientGroup {
         } @else if (viewMode === 'cards') {
           <div class="cards-grid">
             @for (c of pagedClients(); track c.id_servicio) {
-              <article class="client-card" (click)="openClient(c.id_servicio)">
+              <article class="client-card" (click)="openClient(c.id_servicio, $event)">
                 <div class="client-card-head">
                   <div class="avatar-card" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</div>
                   <div class="client-card-title">
@@ -290,7 +290,7 @@ interface ClientGroup {
         } @else if (viewMode === 'circles') {
           <div class="circle-grid">
             @for (c of pagedClients(); track c.id_servicio) {
-              <button class="circle-client" type="button" (click)="openClient(c.id_servicio)">
+              <button class="circle-client" type="button" (click)="openClient(c.id_servicio, $event)">
                 <span class="circle-avatar" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</span>
                 <strong>{{ c.nombre }}</strong>
                 <span>{{ planLabel(c) }}</span>
@@ -317,7 +317,7 @@ interface ClientGroup {
                 </div>
                 <div class="group-list">
                   @for (c of previewClients(group); track c.id_servicio) {
-                    <button type="button" class="group-row" (click)="openClient(c.id_servicio)">
+                    <button type="button" class="group-row" (click)="openClient(c.id_servicio, $event)">
                       <span class="mini-avatar" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</span>
                       <span class="group-client-name">{{ c.nombre }}</span>
                       <small>{{ c.plan_internet?.nombre ? planLabel(c) : (c.servicio || '—') }}</small>
@@ -351,7 +351,7 @@ interface ClientGroup {
                 </div>
                 <div class="group-list">
                   @for (c of previewClients(group); track c.id_servicio) {
-                    <button type="button" class="group-row" (click)="openClient(c.id_servicio)">
+                    <button type="button" class="group-row" (click)="openClient(c.id_servicio, $event)">
                       <span class="mini-avatar" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</span>
                       <span class="group-client-name">{{ c.nombre }}</span>
                       <small>{{ cutDateLabel(c.fecha_corte) }}</small>
@@ -382,7 +382,7 @@ interface ClientGroup {
                 </div>
                 <div class="amount-stack">
                   @for (c of previewClients(group); track c.id_servicio) {
-                    <button type="button" class="amount-row" (click)="openClient(c.id_servicio)">
+                    <button type="button" class="amount-row" (click)="openClient(c.id_servicio, $event)">
                       <span>
                         <strong>{{ c.nombre }}</strong>
                         <small>{{ planLabel(c) }} · {{ c.zona?.nombre || 'Sin zona' }}</small>
@@ -1517,7 +1517,12 @@ export class ClientsComponent implements OnInit, OnDestroy {
     return this.sortDir === 'asc' ? '\u25B2' : '\u25BC';
   }
 
-  openClient(idServicio: number | string) {
+  openClient(idServicio: number | string, event?: MouseEvent) {
+    // Ctrl/Cmd + clic abre el expediente en otra pestaña, como un enlace normal.
+    if (event && (event.ctrlKey || event.metaKey)) {
+      window.open(`/clients/${idServicio}`, '_blank', 'noopener');
+      return;
+    }
     // Guarda la vista (incluida la posición) y el orden actual para Anterior/Siguiente en el expediente.
     this.persistView(window.scrollY);
     this.listState.saveNavigation(this.filteredClients().map((c) => c.id_servicio), this.navigationLabel());

@@ -9,6 +9,9 @@ import { PlanResponse, InternetPlan, Zone, ZoneResponse } from '../../models/pla
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { firstValueFrom } from 'rxjs';
 import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningIpReservation } from '../../services/olt.service';
+import { LocalDbService } from '../../services/local-db.service';
+import { WispHubClient } from '../../models/client.model';
+import { internationalDrPhone } from '../../pipes/phone';
 
 @Component({
   selector: 'app-new-client',
@@ -103,11 +106,13 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
           <div class="form-row">
             <div class="form-group">
               <label for="nc-tel">Teléfono</label>
-              <input id="nc-tel" type="tel" [(ngModel)]="telefono" class="form-input" placeholder="809-123-4567" />
+              <input id="nc-tel" type="tel" inputmode="tel" [(ngModel)]="telefono" class="form-input" [class.warn-input]="phoneWarning()" placeholder="809-123-4567" />
+              @if (phoneWarning(); as warning) { <span class="hint warn-hint">{{ warning }}</span> }
             </div>
             <div class="form-group">
               <label for="nc-cedula">Cédula</label>
-              <input id="nc-cedula" type="text" [(ngModel)]="cedula" class="form-input" placeholder="001-0000000-0" />
+              <input id="nc-cedula" type="text" inputmode="numeric" [(ngModel)]="cedula" class="form-input" [class.warn-input]="cedulaWarning()" placeholder="001-0000000-0" />
+              @if (cedulaWarning(); as warning) { <span class="hint warn-hint">{{ warning }}</span> }
             </div>
           </div>
 
@@ -143,6 +148,21 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
               <span [class.ok]="creation.mikrotik.ok">MikroTik <b>{{ creation.mikrotik.ok ? 'Listo' : 'Pendiente' }}</b></span>
               <span [class.ok]="creation.sqlite?.ok">Sistema local <b>{{ creation.sqlite?.ok ? 'Listo' : 'Pendiente' }}</b></span>
               @if (onuSerial.trim()) { <span [class.ok]="installationWaitingOptical()">OLT <b>{{ installationWaitingOptical() ? 'Esperando ONU' : 'Pendiente' }}</b></span> }
+            </div>
+          </section>
+        }
+
+        @if (possibleDuplicates().length && !result()) {
+          <section class="dup-warning" role="status" aria-live="polite">
+            <svg lucideTriangleAlert size="18"></svg>
+            <div>
+              <strong>Este cliente podría existir ya</strong>
+              <p>Revise antes de crearlo de nuevo para no duplicar el servicio ni la facturación:</p>
+              <ul>
+                @for (dup of possibleDuplicates(); track dup.id) {
+                  <li><a [routerLink]="['/clients', dup.id]" target="_blank" rel="noopener">{{ dup.nombre }} <span>#{{ dup.id }}</span></a> — {{ dup.reason }}</li>
+                }
+              </ul>
             </div>
           </section>
         }
@@ -301,6 +321,17 @@ import { OltService, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningI
     .missing-fields svg { flex: 0 0 auto; }
     h3 .optional { margin-left: 6px; color: #8391a0; font-size: 12px; font-weight: 500; }
     @media (max-width: 640px) { .missing-fields { width: 100%; margin: 0 0 8px; } }
+    .warn-input { border-color: #e0b36a !important; }
+    .warn-hint { color: #9a5b0f !important; }
+    .dup-warning { display: flex; gap: 10px; margin: 0 0 14px; padding: 12px 14px; border: 1px solid #efcf97; border-left: 4px solid #b36b12; border-radius: 8px; background: #fff8ec; color: #6b4410; }
+    .dup-warning > svg { flex: 0 0 auto; margin-top: 2px; color: #b36b12; }
+    .dup-warning strong { display: block; color: #5c3a0c; font-size: 14px; }
+    .dup-warning p { margin: 3px 0 6px; font-size: 13px; }
+    .dup-warning ul { margin: 0; padding-left: 18px; font-size: 13px; }
+    .dup-warning li + li { margin-top: 3px; }
+    .dup-warning a { color: #1267dd; font-weight: 700; text-decoration: none; }
+    .dup-warning a:hover { text-decoration: underline; }
+    .dup-warning a span { color: #667582; font-weight: 500; }
   `]
 })
 export class NewClientComponent implements OnInit {
@@ -308,6 +339,10 @@ export class NewClientComponent implements OnInit {
   private olt = inject(OltService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private db = inject(LocalDbService);
+  // Cartera guardada, solo para avisar de posibles clientes repetidos antes de crear.
+  private existingClients: WispHubClient[] = [];
+  private duplicateCache = { key: '', result: [] as { id: number; nombre: string; reason: string }[] };
 
   plans = signal<InternetPlan[]>([]);
   zones = signal<Zone[]>([]);
@@ -364,6 +399,43 @@ export class NewClientComponent implements OnInit {
       error: catalogFailed,
     });
     this.loadAvailableIps(this.ipPickerNetwork, true);
+    this.db.getClients().then((clients) => { this.existingClients = clients || []; }).catch(() => {});
+  }
+
+  private normalizeText(value: unknown): string {
+    return String(value ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  }
+
+  /** Clientes guardados que coinciden por teléfono, cédula o nombre. No bloquea el alta: solo avisa. */
+  possibleDuplicates(): { id: number; nombre: string; reason: string }[] {
+    const phoneDigits = this.telefono.replace(/\D/g, '').slice(-10);
+    const idDigits = this.cedula.replace(/\D/g, '');
+    const name = this.normalizeText(this.usuarioRb);
+    const key = `${phoneDigits}|${idDigits}|${name}|${this.existingClients.length}`;
+    if (key === this.duplicateCache.key) return this.duplicateCache.result;
+    const result: { id: number; nombre: string; reason: string }[] = [];
+    for (const c of this.existingClients) {
+      const reasons: string[] = [];
+      if (phoneDigits.length === 10 && String(c.telefono || '').replace(/\D/g, '').slice(-10) === phoneDigits) reasons.push('mismo teléfono');
+      if (idDigits.length >= 9 && String(c.cedula || '').replace(/\D/g, '') === idDigits) reasons.push('misma cédula');
+      const userName = this.normalizeText(String(c.usuario || '').split('@')[0]);
+      if (name.length >= 4 && (this.normalizeText(c.nombre) === name || userName === name)) reasons.push('mismo nombre');
+      if (reasons.length) result.push({ id: c.id_servicio, nombre: c.nombre, reason: reasons.join(' y ') });
+      if (result.length >= 5) break;
+    }
+    this.duplicateCache = { key, result };
+    return result;
+  }
+
+  phoneWarning(): string {
+    if (!this.telefono.trim()) return '';
+    return internationalDrPhone(this.telefono) ? '' : 'Revise el número: debe tener 10 dígitos y empezar por 809, 829 u 849.';
+  }
+
+  cedulaWarning(): string {
+    const digits = this.cedula.replace(/\D/g, '');
+    if (!digits) return '';
+    return digits.length === 11 ? '' : `La cédula dominicana tiene 11 dígitos (escribió ${digits.length}).`;
   }
 
   canSubmit(): boolean {
