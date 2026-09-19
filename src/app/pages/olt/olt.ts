@@ -13,6 +13,9 @@ import {
   LucideExternalLink,
   LucideEye,
   LucideGauge,
+  LucideGrid3x3,
+  LucideLayoutGrid,
+  LucideTable2,
   LucideHeartPulse,
   LucideLink2,
   LucideMoreHorizontal,
@@ -44,6 +47,7 @@ import { CopyValueComponent } from './copy-value';
 import { OltNetworkHealthComponent } from './olt-network-health';
 import { OnuGlobalSearchComponent } from './onu-global-search';
 import { OpticalTrendComponent } from './optical-trend';
+import { OnuViewMode, OnuViewsComponent } from './onu-views';
 import { QuickChip, QuickChipsComponent } from './quick-chips';
 import {
   ONU_CSV_COLUMNS, alarmLevelLabel as alarmLevelText, formatDateTime, isCriticalPower as criticalPower,
@@ -60,6 +64,8 @@ type InstallationFilter = 'all' | 'active' | 'error' | 'complete';
 type AlarmFilter = 'all' | 'critical' | 'signal' | 'chassis';
 
 const TAB_STORAGE_KEY = 'ispmax.olt.tab';
+const VIEW_STORAGE_KEY = 'ispmax.olt.onuView';
+const ONU_VIEWS: OnuViewMode[] = ['list', 'cards', 'grid', 'pon', 'signal'];
 const REMEMBERED_TABS: OltTab[] = ['overview', 'health', 'onus', 'installations'];
 
 type PonPortState = 'online' | 'warning' | 'critical' | 'offline' | 'empty' | 'damaged';
@@ -104,9 +110,10 @@ const EMPTY_RECONCILIATION: OltReconciliation = {
     NavbarComponent, FormsModule, RouterLink, LucideActivity, LucideAlertTriangle, LucideBan, LucideBox,
     LucideChevronLeft, LucideChevronRight, LucideCircleCheck, LucideGauge, LucideLink2, LucideRefreshCw,
     LucideEye, LucideMoreHorizontal, LucideNetwork, LucidePlus, LucidePower, LucideSearch, LucideServer,
-    LucideTrash2, LucideX, LucideDownload, LucideExternalLink, LucideHeartPulse, Tr069ConsoleComponent,
+    LucideTrash2, LucideX, LucideDownload, LucideExternalLink, LucideHeartPulse, LucideTable2,
+    LucideLayoutGrid, LucideGrid3x3, Tr069ConsoleComponent,
     OnuModelCatalogComponent, PlanLabelPipe, CopyValueComponent, OltNetworkHealthComponent, OnuGlobalSearchComponent,
-    OpticalTrendComponent, QuickChipsComponent,
+    OpticalTrendComponent, QuickChipsComponent, OnuViewsComponent,
   ],
   templateUrl: './olt.html',
   styleUrl: './olt.scss',
@@ -165,6 +172,8 @@ export class OltComponent implements OnInit, OnDestroy {
   readonly openOnuTabs = signal<OltOnu[]>([]);
   readonly activeWorkspace = signal<string>('map');
   readonly ponSearch = signal('');
+  /** Forma de ver el inventario de ONUs; se recuerda entre visitas. */
+  readonly onuView = signal<OnuViewMode>('list');
   readonly opticalHistory = signal<OltOpticalReading[]>([]);
   readonly serviceDiagnostic = signal<OltServiceDiagnostic | null>(null);
   readonly diagnosticLoading = signal(false);
@@ -339,6 +348,7 @@ export class OltComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.restoreRememberedTab();
+    this.restoreOnuView();
     this.loadAll();
     this.refreshTimer = setInterval(() => this.loadAll(true), 60000);
   }
@@ -623,6 +633,43 @@ export class OltComponent implements OnInit, OnDestroy {
     if (pon.critical) parts.push(`${pon.critical} señal crítica`);
     if (pon.avgRxPowerDbm != null) parts.push(`RX promedio ${pon.avgRxPowerDbm} dBm`);
     return parts.join(' · ');
+  }
+
+  /** Título de la cabecera según la sección abierta (antes siempre decía "Mapa PON"). */
+  pageTitle(): string {
+    switch (this.tab()) {
+      case 'overview':
+        return this.activeWorkspace() === 'map'
+          ? 'Mapa PON'
+          : (this.selectedOnu()?.client?.nombre || this.selectedOnu()?.name || 'Detalle de ONU');
+      case 'health': return 'Salud de la red óptica';
+      case 'onus': return 'Inventario de ONUs';
+      case 'installations': return 'Instalaciones';
+      case 'discovered': return 'ONUs por autorizar';
+      case 'topology': return 'NAP y splitters';
+      case 'profiles': return 'Perfiles de servicio';
+      case 'alarms': return 'Alarmas y alertas';
+      case 'activity': return 'Bitácora';
+      default: return 'OLT ZTE C320';
+    }
+  }
+
+  setOnuView(view: OnuViewMode) {
+    this.onuView.set(view);
+    try { localStorage.setItem(VIEW_STORAGE_KEY, view); } catch { /* almacenamiento no disponible */ }
+  }
+
+  private restoreOnuView() {
+    try {
+      const saved = localStorage.getItem(VIEW_STORAGE_KEY) as OnuViewMode | null;
+      if (saved && ONU_VIEWS.includes(saved)) this.onuView.set(saved);
+    } catch { /* almacenamiento no disponible */ }
+  }
+
+  inventoryEmptyText(): string {
+    const filter = this.localSignalFilter();
+    if (filter) return `Ninguna ONU en línea tiene señal ${filter === 'critical' ? 'crítica' : 'débil'} con estos filtros. Buena noticia.`;
+    return 'No hay ONUs para estos filtros. Cambie la búsqueda o elija «Todas».';
   }
 
   private rememberTab(tab: OltTab) {

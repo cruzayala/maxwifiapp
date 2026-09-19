@@ -4,7 +4,7 @@
   <header class="olt-command-bar">
     <div>
       <span class="page-eyebrow">Infraestructura óptica</span>
-      <h1>{{ activeWorkspace() === 'map' ? 'Mapa PON' : (selectedOnu()?.client?.nombre || selectedOnu()?.name || 'Detalle de ONU') }}</h1>
+      <h1>{{ pageTitle() }}</h1>
     </div>
     <div class="command-actions">
       <app-onu-global-search [onus]="mapOnus()" [query]="search()" (queryChange)="searchChanged($event)" (openOnu)="inspectOnu($event)" (showAll)="showSearchInInventory()" />
@@ -279,6 +279,22 @@
       @if (localSignalFilter()) {
         <p class="inventory-note">Mostrando ONUs en línea con señal {{ localSignalFilter() === 'critical' ? 'crítica (-30 dBm o menos)' : 'débil (entre -27 y -30 dBm)' }}, de peor a mejor, calculadas con las {{ mapOnus().length }} ONUs de la última lectura.</p>
       }
+
+      <div class="view-switch" role="group" aria-label="Forma de ver las ONUs">
+        <span class="view-switch-label">Ver como</span>
+        <button type="button" [class.active]="onuView() === 'list'" (click)="setOnuView('list')" title="Tabla con todos los datos"><svg lucideTable2 size="15"></svg>Lista</button>
+        <button type="button" [class.active]="onuView() === 'cards'" (click)="setOnuView('cards')" title="Una tarjeta por cliente con su señal"><svg lucideLayoutGrid size="15"></svg>Tarjetas</button>
+        <button type="button" [class.active]="onuView() === 'grid'" (click)="setOnuView('grid')" title="Mosaico compacto para ver muchas de un vistazo"><svg lucideGrid3x3 size="15"></svg>Mosaico</button>
+        <button type="button" [class.active]="onuView() === 'pon'" (click)="setOnuView('pon')" title="Agrupadas por puerto PON"><svg lucideNetwork size="15"></svg>Por PON</button>
+        <button type="button" [class.active]="onuView() === 'signal'" (click)="setOnuView('signal')" title="Agrupadas por calidad de señal, lo peor primero"><svg lucideActivity size="15"></svg>Por señal</button>
+      </div>
+
+      @if (onuView() !== 'list') {
+        @if (!localSignalFilter() && onuPage().pages > 1) {
+          <p class="inventory-note">Se muestran las {{ inventoryRows().length }} ONUs de esta página ({{ onuPage().page }} de {{ onuPage().pages }}). Use los filtros o la búsqueda para ver otras.</p>
+        }
+        <app-onu-views [rows]="inventoryRows()" [view]="onuView()" [emptyText]="inventoryEmptyText()" (inspect)="inspectOnu($event)" />
+      } @else {
       <div class="table-wrap onu-table">
         <table>
           <thead><tr><th>Estado</th><th>ONU</th><th>Nombre / cliente</th><th>Modelo</th><th>Serial</th><th>Señal óptica</th><th>Última lectura</th><th></th></tr></thead>
@@ -298,11 +314,12 @@
                 <td><button class="secondary-action compact-action" type="button" title="Abrir diagnóstico de la ONU" (click)="inspectOnu(onu)"><svg lucideEye size="15" aria-hidden="true"></svg>Abrir</button></td>
               </tr>
             } @empty {
-              <tr><td colspan="8"><div class="empty-state">{{ localSignalFilter() ? 'Ninguna ONU en línea tiene señal ' + (localSignalFilter() === 'critical' ? 'crítica' : 'débil') + ' con estos filtros. Buena noticia.' : 'No hay ONUs para estos filtros. Cambie la búsqueda o elija «Todas».' }}</div></td></tr>
+              <tr><td colspan="8"><div class="empty-state">{{ inventoryEmptyText() }}</div></td></tr>
             }
           </tbody>
         </table>
       </div>
+      }
       <footer class="pagination">
         <span>{{ localSignalFilter() ? inventoryRows().length : onuPage().total }} ONUs encontradas</span>
         @if (!localSignalFilter()) { <div>

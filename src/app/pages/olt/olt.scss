@@ -463,3 +463,12 @@ button:disabled { cursor: not-allowed; opacity: .5; }
 a.secondary-action, .client-link { text-decoration: none; }.client-link { color: #1267dd; }.client-link:hover { text-decoration: underline; }.client-file-link { grid-column: 1 / -1; }
 .view-tabs .issue-count { background: #fff0ef; color: #b42318; font-weight: 750; }.inventory-chips, .section-chips { margin-bottom: 12px; }.inventory-note { margin: -4px 0 12px; padding: 8px 11px; border-radius: 6px; background: #edf4ff; color: #0d58c0; font-size: 12px; }
 .alarm-onu-link { padding: 0; border: 0; background: transparent; color: #1267dd; font-size: 12px; font-weight: 700; }.alarm-onu-link:hover { text-decoration: underline; }.onu-title-block p app-copy-value { font-size: 11px; }
+
+/* Selector de forma de ver las ONUs */
+.view-switch { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 10px; padding: 5px; border: 1px solid #dce4e8; border-radius: 8px; background: #f7fafb; }
+.view-switch-label { margin: 0 6px 0 4px; color: #66787f; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+.view-switch button { display: inline-flex; align-items: center; gap: 5px; min-height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #4a5c66; font-size: 12px; font-weight: 650; cursor: pointer; }
+.view-switch button:hover { background: #fff; }
+.view-switch button.active { border-color: #cbdce2; background: #fff; color: #1f6b72; box-shadow: 0 1px 3px rgba(20, 33, 45, .08); }
+.view-switch button:focus-visible { outline: 2px solid #1267dd; outline-offset: 1px; }
+@media (max-width: 640px) { .view-switch-label { display: none; } .view-switch button { flex: 1 1 auto; justify-content: center; } }
