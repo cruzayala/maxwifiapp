@@ -1,41 +1,47 @@
-import { Component, inject } from '@angular/core';
+import { Component, HostListener, computed, inject } from '@angular/core';
 import { ReceiptService, PaperSize } from '../../services/receipt.service';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
+import { LucidePrinter, LucideX } from '@lucide/angular';
 
 @Component({
   selector: 'app-receipt-preview',
   standalone: true,
-  imports: [FormsModule],
+  imports: [FormsModule, LucidePrinter, LucideX],
   template: `
     @if (receipt.previewVisible()) {
       <div class="overlay" (click)="receipt.closePreview()"></div>
-      <div class="preview-panel" [class.invoice-mode]="receipt.isInvoiceMode()">
+      <div class="preview-panel" [class.invoice-mode]="receipt.isInvoiceMode()" role="dialog" aria-modal="true" aria-labelledby="receipt-preview-title">
         <div class="preview-header">
-          <h3>{{ receipt.isInvoiceMode() ? 'Vista previa de Factura' : 'Vista previa de Recibo' }}</h3>
-          <button class="close-btn" (click)="receipt.closePreview()" aria-label="Cerrar vista previa">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          <div>
+            <h3 id="receipt-preview-title">{{ receipt.isInvoiceMode() ? 'Vista previa de factura' : 'Vista previa de recibo' }}</h3>
+            @if (receipt.currentInvoice(); as inv) {
+              <p>Factura #{{ inv.id_factura }}@if (inv.cliente?.nombre) { · {{ inv.cliente?.nombre }} }</p>
+            }
+          </div>
+          <button type="button" class="close-btn" (click)="receipt.closePreview()" aria-label="Cerrar vista previa" title="Cerrar (Esc)">
+            <svg lucideX size="20"></svg>
           </button>
         </div>
 
         <div class="preview-controls">
           <div class="control-group">
-            <label>{{ receipt.isInvoiceMode() ? 'Formato:' : 'Tamano de papel:' }}</label>
+            <span class="control-label">{{ receipt.isInvoiceMode() ? 'Formato' : 'Tamaño de papel' }}</span>
             @if (receipt.isInvoiceMode()) {
               <div class="format-pill">Carta / A4</div>
             } @else {
-              <div class="paper-toggle">
-                <button [class.active]="receipt.paperSize() === '58mm'" (click)="setPaper('58mm')">58mm</button>
-                <button [class.active]="receipt.paperSize() === '80mm'" (click)="setPaper('80mm')">80mm</button>
+              <div class="paper-toggle" role="group" aria-label="Tamaño de papel">
+                <button type="button" [class.active]="receipt.paperSize() === '58mm'" [attr.aria-pressed]="receipt.paperSize() === '58mm'" (click)="setPaper('58mm')" title="Impresora térmica pequeña">58 mm</button>
+                <button type="button" [class.active]="receipt.paperSize() === '80mm'" [attr.aria-pressed]="receipt.paperSize() === '80mm'" (click)="setPaper('80mm')" title="Impresora térmica estándar">80 mm</button>
               </div>
             }
           </div>
           <div class="control-actions">
-            <button class="btn btn-primary" (click)="receipt.printCurrent()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            <button type="button" class="btn btn-outline" (click)="receipt.closePreview()">Cerrar</button>
+            <button type="button" class="btn btn-primary" (click)="receipt.printCurrent()" [disabled]="!receipt.currentInvoice()">
+              <svg lucidePrinter size="16"></svg>
               Imprimir
             </button>
-            <button class="btn btn-outline" (click)="receipt.closePreview()">Cerrar</button>
           </div>
         </div>
 
@@ -45,15 +51,14 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
             [class.paper-invoice]="receipt.isInvoiceMode()"
             [class.paper-58mm]="!receipt.isInvoiceMode() && receipt.paperSize() === '58mm'"
             [class.paper-80mm]="!receipt.isInvoiceMode() && receipt.paperSize() === '80mm'">
-            <iframe class="preview-frame" [srcdoc]="safePreviewHTML()" title="Vista previa de impresion"></iframe>
+            <iframe class="preview-frame" [srcdoc]="safePreviewHTML()" title="Vista previa de impresión"></iframe>
           </div>
         </div>
 
         <div class="preview-footer">
           <span class="paper-info">
-            {{ receipt.isInvoiceMode() ? 'Factura Carta/A4' : 'Recibo ' + receipt.paperSize() }} |
-            Factura #{{ receipt.currentInvoice()?.id_factura }} |
-            {{ receipt.currentInvoice()?.cliente?.nombre }}
+            {{ receipt.isInvoiceMode() ? 'Factura tamaño carta / A4' : 'Recibo de ' + receipt.paperSize().replace('mm', ' mm') }}
+            · Se abrirá una ventana nueva para imprimir.
           </span>
         </div>
       </div>
@@ -63,8 +68,8 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     .overlay {
       position: fixed;
       inset: 0;
-      background: rgba(0, 0, 0, 0.5);
       z-index: 1000;
+      background: rgba(17, 26, 36, 0.5);
       backdrop-filter: blur(2px);
     }
 
@@ -72,22 +77,24 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       position: fixed;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%);
-      width: 480px;
-      max-width: 95vw;
-      max-height: 92vh;
-      background: #1e293b;
-      border-radius: 20px;
       z-index: 1001;
       display: flex;
       flex-direction: column;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
-      animation: slideUp 0.25s ease;
+      width: 480px;
+      max-width: 95vw;
+      max-height: 92vh;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid #dfe5ea;
+      border-radius: 8px;
+      box-shadow: 0 24px 60px rgba(17, 26, 36, 0.28);
+      transform: translate(-50%, -50%);
+      animation: slideUp 0.2s ease;
     }
     .preview-panel.invoice-mode { width: min(980px, 96vw); }
 
     @keyframes slideUp {
-      from { transform: translate(-50%, -45%); opacity: 0; }
+      from { transform: translate(-50%, -47%); opacity: 0; }
       to { transform: translate(-50%, -50%); opacity: 1; }
     }
 
@@ -95,62 +102,70 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 18px 24px;
-      border-bottom: 1px solid #334155;
+      gap: 12px;
+      padding: 14px 18px;
+      border-bottom: 1px solid #dfe5ea;
     }
-    .preview-header h3 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: #f8fafc;
-    }
+    .preview-header > div { min-width: 0; }
+    .preview-header h3 { margin: 0; color: #172535; font-size: 16px; font-weight: 700; }
+    .preview-header p { margin: 2px 0 0; overflow: hidden; color: #667582; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
     .close-btn {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border: 1px solid transparent;
+      border-radius: 6px;
       background: none;
-      border: none;
-      color: #94a3b8;
+      color: #667582;
       cursor: pointer;
-      padding: 4px;
-      border-radius: 8px;
-      transition: all 0.2s;
+      transition: background 0.15s, color 0.15s;
     }
-    .close-btn:hover { color: white; background: #334155; }
+    .close-btn:hover { background: #f1f4f6; color: #172535; }
 
     .preview-controls {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 12px 24px;
-      border-bottom: 1px solid #334155;
-      gap: 12px;
       flex-wrap: wrap;
+      gap: 12px;
+      padding: 10px 18px;
+      border-bottom: 1px solid #dfe5ea;
+      background: #f8fafc;
     }
     .control-group { display: flex; align-items: center; gap: 10px; }
-    .control-group label { font-size: 13px; color: #94a3b8; font-weight: 500; }
+    .control-label { color: #667582; font-size: 12px; font-weight: 600; }
 
     .paper-toggle {
       display: flex;
-      background: #0f172a;
-      border-radius: 8px;
       overflow: hidden;
+      border: 1px solid #ccd6de;
+      border-radius: 6px;
+      background: #fff;
     }
     .paper-toggle button {
-      padding: 6px 16px;
+      padding: 6px 14px;
       border: none;
       background: none;
-      color: #94a3b8;
+      color: #334250;
+      font: inherit;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: background 0.15s, color 0.15s;
     }
-    .paper-toggle button.active { background: #6366f1; color: white; }
+    .paper-toggle button + button { border-left: 1px solid #ccd6de; }
+    .paper-toggle button:hover:not(.active) { background: #f2f7ff; }
+    .paper-toggle button.active { background: #1267dd; color: #fff; }
     .format-pill {
       display: inline-flex;
       align-items: center;
-      padding: 6px 14px;
-      border-radius: 999px;
-      background: #0f172a;
-      color: #e2e8f0;
+      padding: 5px 12px;
+      border-radius: 6px;
+      background: #edf4ff;
+      color: #1267dd;
       font-size: 13px;
       font-weight: 700;
     }
@@ -159,41 +174,45 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     .btn {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
-      padding: 8px 18px;
-      border-radius: 8px;
+      min-height: 36px;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      font: inherit;
       font-size: 13px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
-      border: none;
-      transition: all 0.2s;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
-    .btn-primary { background: #6366f1; color: white; }
-    .btn-primary:hover { background: #4f46e5; }
-    .btn-outline { background: transparent; border: 1px solid #475569; color: #94a3b8; }
-    .btn-outline:hover { border-color: #94a3b8; color: white; }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .btn-primary { background: #1267dd; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #0d58c0; }
+    .btn-outline { background: #fff; border-color: #ccd6de; color: #334250; }
+    .btn-outline:hover { border-color: #667582; color: #172535; }
 
     .preview-body {
-      flex: 1;
-      overflow: auto;
-      padding: 24px;
       display: flex;
+      flex: 1;
       justify-content: center;
-      background: #0f172a;
+      overflow: auto;
+      padding: 20px;
+      background: #e9eef2;
     }
     .preview-body.invoice-body { align-items: flex-start; }
     .paper-simulation {
-      background: white;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      min-height: 400px;
       padding: 4px;
       border-radius: 2px;
-      min-height: 400px;
+      background: #fff;
+      box-shadow: 0 4px 18px rgba(17, 26, 36, 0.14);
     }
     .preview-frame {
       display: block;
       width: 100%;
       border: 0;
-      background: white;
+      background: #fff;
     }
     .paper-58mm { width: 220px; }
     .paper-58mm .preview-frame { height: 720px; }
@@ -208,25 +227,35 @@ import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
     .paper-invoice .preview-frame { height: 1123px; }
 
     .preview-footer {
-      padding: 10px 24px;
-      border-top: 1px solid #334155;
+      padding: 9px 18px;
+      border-top: 1px solid #dfe5ea;
     }
-    .paper-info { font-size: 11px; color: #64748b; }
+    .paper-info { color: #667582; font-size: 11px; }
 
     @media (max-width: 860px) {
       .paper-invoice { transform: scale(0.72); margin-bottom: -300px; }
       .preview-body.invoice-body { justify-content: flex-start; }
     }
     @media (max-width: 640px) {
+      .preview-header, .preview-controls, .preview-footer { padding-inline: 14px; }
       .preview-controls, .control-actions { width: 100%; }
-      .control-actions .btn { flex: 1; justify-content: center; }
+      .control-actions .btn { flex: 1; }
       .paper-invoice { transform: scale(0.52); margin-bottom: -520px; }
     }
+    @media (prefers-reduced-motion: reduce) { .preview-panel { animation: none; } }
   `]
 })
 export class ReceiptPreviewComponent {
   receipt = inject(ReceiptService);
   private sanitizer = inject(DomSanitizer);
+
+  /** Se memoriza para no recargar el iframe en cada ciclo de detección de cambios. */
+  private safePreview = computed<SafeHtml>(() => this.sanitizer.bypassSecurityTrustHtml(this.receipt.previewHTML()));
+
+  @HostListener('document:keydown.escape')
+  onEscape() {
+    if (this.receipt.previewVisible()) this.receipt.closePreview();
+  }
 
   setPaper(size: PaperSize) {
     this.receipt.paperSize.set(size);
@@ -234,6 +263,6 @@ export class ReceiptPreviewComponent {
   }
 
   safePreviewHTML(): SafeHtml {
-    return this.sanitizer.bypassSecurityTrustHtml(this.receipt.previewHTML());
+    return this.safePreview();
   }
 }

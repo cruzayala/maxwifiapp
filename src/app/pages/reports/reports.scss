@@ -15,9 +15,11 @@
 .period-controls input { padding: 0 8px; }
 .period-controls :focus-visible { border-color: #3d79b4; box-shadow: 0 0 0 2px rgba(61,121,180,.13); }
 .apply-button, .export-button, .icon-text-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 37px; padding: 0 12px; border: 1px solid transparent; border-radius: 6px; font-size: 11px; font-weight: 800; cursor: pointer; }
-.apply-button { color: #fff; background: #286da7; }
-.apply-button:disabled { opacity: .45; cursor: not-allowed; }
-.export-button { color: #fff; background: #168b59; }
+.apply-button { color: #fff; background: #1267dd; }
+.apply-button:hover:not(:disabled), .export-button:hover { background: #0d58c0; }
+.apply-button:disabled, .icon-text-button:disabled { opacity: .45; cursor: not-allowed; }
+.export-button { color: #fff; background: #1267dd; }
+.range-hint { flex-basis: 100%; color: #b42318; font-size: 12px; font-weight: 600; text-align: right; }
 
 .kpi-strip { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; overflow: hidden; margin-bottom: 12px; border: 1px solid #dbe4eb; border-radius: 8px; background: #dbe4eb; }
 .kpi { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 15px 13px; background: #fff; }
@@ -26,9 +28,9 @@
 .kpi small { display: block; color: #768798; font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .kpi strong { display: block; margin-top: 4px; color: #183149; font-size: 18px; line-height: 1.15; overflow-wrap: anywhere; }
 .kpi p { display: flex; align-items: center; gap: 3px; margin: 5px 0 0; color: #82919f; font-size: 11px; }
-.kpi.billed .kpi-icon { color: #286da7; background: #eaf3fb; }
+.kpi.billed .kpi-icon { color: #1267dd; background: #edf4ff; }
 .kpi.collected .kpi-icon { color: #12845a; background: #e8f7f0; }
-.kpi.rate .kpi-icon { color: #7760b5; background: #f2effb; }
+.kpi.rate .kpi-icon { color: #1267dd; background: #f2f7ff; }
 .kpi.mrr .kpi-icon { color: #b26a18; background: #fff4e3; }
 .kpi.outstanding .kpi-icon { color: #c23b48; background: #fdecef; }
 .positive { color: #14835a !important; }
@@ -38,7 +40,7 @@
 .report-tabs { position: sticky; top: 64px; z-index: 9; display: flex; align-items: flex-end; gap: 2px; min-width: 0; margin-bottom: 12px; padding: 7px 7px 0; overflow-x: auto; overflow-y: hidden; border: 1px solid #dbe4eb; border-radius: 8px 8px 0 0; background: #eef3f6; }
 .report-tabs button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-width: max-content; height: 40px; padding: 0 15px; border: 1px solid transparent; border-bottom: 0; border-radius: 7px 7px 0 0; color: #63778a; background: transparent; font-size: 11px; font-weight: 800; cursor: pointer; }
 .report-tabs button:hover { color: #294158; background: rgba(255,255,255,.6); }
-.report-tabs button.active { position: relative; color: #2468a3; border-color: #dbe4eb; background: #fff; }
+.report-tabs button.active { position: relative; color: #1267dd; border-color: #dbe4eb; background: #fff; }
 .report-tabs button.active::after { content: ''; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: #fff; }
 .report-tabs b { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; color: #b43d49; background: #fdebee; font-size: 11px; }
 
@@ -79,7 +81,7 @@
 .signal-icon.neutral { color: #697c8e; background: #eff3f6; }
 .executive-list div { min-width: 0; }
 .executive-list small { display: block; color: #8493a0; font-size: 11px; font-weight: 800; text-transform: uppercase; }
-.executive-list strong { display: block; margin-top: 2px; overflow: hidden; color: #294359; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.executive-list strong { display: block; margin-top: 2px; overflow: hidden; color: #294359; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .executive-list p { margin: 2px 0 0; color: #7e8e9c; font-size: 11px; }
 
 .status-panel, .payments-panel { align-self: start; }
@@ -107,7 +109,8 @@
 .revenue-view, .clients-view, .portfolio-view { display: grid; gap: 12px; }
 .full-trend { width: 100%; }
 .two-column { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr); gap: 12px; }
-.icon-text-button { height: 31px; padding: 0 9px; border-color: #d5dfe7; color: #3972a1; background: #fff; }
+.icon-text-button { height: 31px; padding: 0 9px; border-color: #d5dfe7; color: #1267dd; background: #fff; }
+.icon-text-button:hover:not(:disabled) { background: #f2f7ff; border-color: #b9d2f5; }
 .table-scroll { overflow-x: auto; }
 .report-table { width: 100%; min-width: 600px; border-collapse: collapse; }
 .report-table th { padding: 10px 13px; text-align: left; color: #718396; background: #f8fafb; border-bottom: 1px solid #dfe7ed; font-size: 11px; font-weight: 800; text-transform: uppercase; }
@@ -117,6 +120,11 @@
 .report-table td strong { display: block; color: #203b52; font-size: 12px; }
 .report-table td small { display: block; margin-top: 2px; color: #8a98a5; font-size: 11px; }
 .money, .mono { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+.muted { color: #8a98a5; }
+.phone-link { color: inherit; text-decoration: none; white-space: nowrap; }
+.phone-link:hover { color: #1267dd; text-decoration: underline; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .money { color: #1c6c4b !important; font-weight: 800; }
 .payments-panel.detailed .payment-list { max-height: 400px; overflow-y: auto; }
 
@@ -139,8 +147,9 @@
 .pending-count.has-pending { color: #b23b47; background: #fdecef; }
 
 .portfolio-summary { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
-.portfolio-summary > a { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 18px; color: #fff; background: #286da7; font-size: 12px; font-weight: 800; text-decoration: none; }
-.portfolio-table a { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #d6e0e7; border-radius: 6px; color: #456b8c; }
+.portfolio-summary > a { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 0 18px; color: #fff; background: #1267dd; font-size: 12px; font-weight: 800; text-decoration: none; }
+.portfolio-table .row-link { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid #d6e0e7; border-radius: 6px; color: #456b8c; }
+.portfolio-table .row-link:hover { color: #1267dd; border-color: #b9d2f5; background: #f2f7ff; }
 .large-empty { display: flex; flex-direction: column; align-items: center; padding: 54px 20px; text-align: center; }
 .large-empty > span { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 8px; color: #14835a; background: #e8f7f0; }
 .large-empty h3 { margin: 11px 0 3px; color: #233d54; font-size: 15px; }
@@ -148,8 +157,8 @@
 
 .state-panel { display: flex; align-items: center; justify-content: center; gap: 13px; min-height: 190px; padding: 28px; border: 1px solid #dbe4eb; border-radius: 8px; color: #62778a; background: #fff; }
 .state-panel strong { color: #213b52; }
-.state-panel p { margin: 3px 0 0; font-size: 11px; }
-.state-panel.error { color: #bf3d49; }
+.state-panel p { margin: 3px 0 0; font-size: 12px; }
+.state-panel.error { color: #b42318; flex-wrap: wrap; }
 .loader { width: 28px; height: 28px; border: 3px solid #dce5ec; border-top-color: #2c6fa8; border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -172,7 +181,8 @@
   .reports-page { padding: 12px; }
   .report-toolbar { padding: 11px; }
   .period-controls { display: grid; grid-template-columns: 1fr 1fr; }
-  .period-controls label, .period-controls .export-button { grid-column: 1 / -1; }
+  .period-controls label, .period-controls .export-button, .period-controls .range-hint { grid-column: 1 / -1; }
+  .range-hint { text-align: left; }
   .period-controls input { width: 100%; }
   .kpi-strip { grid-template-columns: 1fr 1fr; }
   .kpi { padding: 12px 10px; }

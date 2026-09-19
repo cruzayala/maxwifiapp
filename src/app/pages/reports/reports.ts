@@ -5,11 +5,12 @@ import {
   LucideAlertTriangle, LucideArrowDownRight, LucideArrowUpRight, LucideBanknote,
   LucideCalendarRange, LucideChartColumn, LucideCircleCheck, LucideCircleDollarSign,
   LucideDownload, LucideFileSpreadsheet, LucideGauge, LucideLayers3,
-  LucideMapPin, LucideReceiptText, LucideTrendingUp, LucideUserMinus,
+  LucideMapPin, LucideReceiptText, LucideRefreshCw, LucideTrendingUp, LucideUserMinus,
   LucideUserPlus, LucideUsers, LucideWalletCards,
 } from '@lucide/angular';
 import { RouterLink } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
+import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
 import { ExportService } from '../../services/export.service';
@@ -53,11 +54,11 @@ interface ZoneReportRow {
   selector: 'app-reports',
   standalone: true,
   imports: [
-    NavbarComponent, DecimalPipe, FormsModule, RouterLink,
+    NavbarComponent, DecimalPipe, FormsModule, RouterLink, PlanLabelPipe,
     LucideAlertTriangle, LucideArrowDownRight, LucideArrowUpRight, LucideBanknote,
     LucideCalendarRange, LucideChartColumn, LucideCircleCheck, LucideCircleDollarSign,
     LucideDownload, LucideFileSpreadsheet, LucideGauge, LucideLayers3,
-    LucideMapPin, LucideReceiptText, LucideTrendingUp, LucideUserMinus,
+    LucideMapPin, LucideReceiptText, LucideRefreshCw, LucideTrendingUp, LucideUserMinus,
     LucideUserPlus, LucideUsers, LucideWalletCards,
   ],
   templateUrl: './reports.html',
@@ -116,11 +117,15 @@ export class ReportsComponent implements OnInit {
       this.clients = clients;
       this.invoices = invoices;
       this.recompute();
-    } catch (error) {
-      this.errorMessage.set(error instanceof Error ? error.message : 'No fue posible preparar los reportes.');
+    } catch {
+      this.errorMessage.set('No fue posible preparar los reportes. Revisa la conexión con el servidor y vuelve a intentarlo.');
     } finally {
       this.loading.set(false);
     }
+  }
+
+  reload() {
+    void this.ngOnInit();
   }
 
   setView(view: ReportView) {
@@ -141,8 +146,36 @@ export class ReportsComponent implements OnInit {
 
   periodLabel(): string {
     if (this.periodPreset === 'all') return 'Todo el historial';
-    if (this.periodPreset === 'custom') return this.dateFrom && this.dateTo ? `${this.dateFrom} a ${this.dateTo}` : 'Rango personalizado';
+    if (this.periodPreset === 'custom') return this.dateFrom && this.dateTo ? `${this.readableDate(this.dateFrom)} al ${this.readableDate(this.dateTo)}` : 'Rango personalizado';
     return `Últimos ${this.periodPreset} meses`;
+  }
+
+  /** Rango personalizado con la fecha inicial posterior a la final. */
+  customRangeInvalid(): boolean {
+    return Boolean(this.dateFrom && this.dateTo && this.dateFrom > this.dateTo);
+  }
+
+  /** Solo hay período anterior para comparar cuando el período tiene inicio. */
+  hasComparison(): boolean {
+    return this.periodPreset !== 'all';
+  }
+
+  trendTitle(point: TrendPoint): string {
+    return `${point.label}: facturado ${this.moneyText(point.billed)} · cobrado ${this.moneyText(point.collected)} · ${point.invoices} facturas`;
+  }
+
+  /** Precio del plan (texto de WispHub) formateado para mostrar. */
+  priceText(value: string | number | null | undefined): string {
+    return this.moneyText(this.moneyValue(value));
+  }
+
+  private moneyText(value: number): string {
+    return `RD$ ${Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  private readableDate(value: string): string {
+    const date = this.parseDate(value);
+    return date ? date.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' }).replace('.', '') : value;
   }
 
   recompute() {
@@ -217,12 +250,12 @@ export class ReportsComponent implements OnInit {
 
   exportExecutiveSummary() {
     this.exportSvc.exportCSV([
-      { metric: 'Periodo', value: this.periodLabel() },
+      { metric: 'Período', value: this.periodLabel() },
       { metric: 'Facturado', value: this.billed() },
       { metric: 'Cobrado', value: this.collected() },
       { metric: 'Tasa de cobro', value: this.collectionRate() },
       { metric: 'Cartera pendiente actual', value: this.outstanding() },
-      { metric: 'MRR estimado activo', value: this.monthlyRevenue() },
+      { metric: 'Ingreso mensual estimado (clientes activos)', value: this.monthlyRevenue() },
       { metric: 'Clientes activos', value: this.activeClientCount() },
       { metric: 'Clientes morosos', value: this.morosos().length },
     ], 'reporte_ejecutivo', [
@@ -254,10 +287,10 @@ export class ReportsComponent implements OnInit {
   exportMorosos() {
     this.exportSvc.exportCSV(this.morosos(), 'morosos', [
       { key: 'nombre', label: 'Nombre' },
-      { key: 'telefono', label: 'Telefono' },
+      { key: 'telefono', label: 'Teléfono' },
       { key: 'plan_internet.nombre', label: 'Plan' },
       { key: 'precio_plan', label: 'Precio' },
-      { key: 'fecha_corte', label: 'Fecha Corte' },
+      { key: 'fecha_corte', label: 'Fecha de corte' },
       { key: 'ip', label: 'IP' },
     ]);
   }

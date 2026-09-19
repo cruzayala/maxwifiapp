@@ -4,7 +4,7 @@
   @if (loading()) {
     <section class="state-panel" aria-live="polite"><span class="loader"></span><div><strong>Construyendo reportes</strong><p>Analizando clientes, facturas y cartera histórica.</p></div></section>
   } @else if (errorMessage()) {
-    <section class="state-panel error" role="alert"><svg lucideAlertTriangle size="22"></svg><div><strong>No se pudieron cargar los reportes</strong><p>{{ errorMessage() }}</p></div></section>
+    <section class="state-panel error" role="alert"><svg lucideAlertTriangle size="22"></svg><div><strong>No se pudieron cargar los reportes</strong><p>{{ errorMessage() }}</p></div><button type="button" class="apply-button" (click)="reload()"><svg lucideRefreshCw size="15"></svg>Reintentar</button></section>
   } @else {
     <section class="report-toolbar" aria-label="Controles del reporte">
       <div class="report-context"><span class="context-icon"><svg lucideChartColumn size="19"></svg></span><div><small>Análisis consolidado</small><strong>{{ periodLabel() }}</strong><p>{{ invoiceCount() }} facturas en el período</p></div></div>
@@ -13,15 +13,16 @@
         @if (periodPreset === 'custom') {
           <input type="date" aria-label="Fecha inicial" [(ngModel)]="dateFrom" />
           <input type="date" aria-label="Fecha final" [(ngModel)]="dateTo" />
-          <button type="button" class="apply-button" [disabled]="!dateFrom || !dateTo" (click)="applyCustomPeriod()">Aplicar</button>
+          <button type="button" class="apply-button" [disabled]="!dateFrom || !dateTo || customRangeInvalid()" [title]="!dateFrom || !dateTo ? 'Elige la fecha inicial y la final' : customRangeInvalid() ? 'La fecha inicial debe ser anterior a la final' : 'Aplicar el rango'" (click)="applyCustomPeriod()">Aplicar</button>
+          @if (customRangeInvalid()) { <span class="range-hint" role="alert">La fecha inicial debe ser anterior a la final.</span> }
         }
         <button type="button" class="export-button" (click)="exportExecutiveSummary()"><svg lucideDownload size="16"></svg><span>Exportar resumen</span></button>
       </div>
     </section>
 
     <section class="kpi-strip" aria-label="Indicadores principales">
-      <article class="kpi billed"><span class="kpi-icon"><svg lucideReceiptText size="18"></svg></span><div><small>Facturado</small><strong>RD$ {{ billed() | number:'1.2-2' }}</strong><p [class]="deltaClass(billedDelta())">@if (billedDelta() >= 0) { <svg lucideArrowUpRight size="12"></svg> } @else { <svg lucideArrowDownRight size="12"></svg> } {{ billedDelta() | number:'1.1-1' }}% vs. período anterior</p></div></article>
-      <article class="kpi collected"><span class="kpi-icon"><svg lucideCircleDollarSign size="18"></svg></span><div><small>Cobrado</small><strong>RD$ {{ collected() | number:'1.2-2' }}</strong><p [class]="deltaClass(collectedDelta())">@if (collectedDelta() >= 0) { <svg lucideArrowUpRight size="12"></svg> } @else { <svg lucideArrowDownRight size="12"></svg> } {{ collectedDelta() | number:'1.1-1' }}% vs. período anterior</p></div></article>
+      <article class="kpi billed"><span class="kpi-icon"><svg lucideReceiptText size="18"></svg></span><div><small>Facturado</small><strong>RD$ {{ billed() | number:'1.2-2' }}</strong>@if (hasComparison()) { <p [class]="deltaClass(billedDelta())">@if (billedDelta() >= 0) { <svg lucideArrowUpRight size="12"></svg> } @else { <svg lucideArrowDownRight size="12"></svg> } {{ billedDelta() | number:'1.1-1' }}% vs. período anterior</p> } @else { <p>{{ invoiceCount() }} facturas emitidas</p> }</div></article>
+      <article class="kpi collected"><span class="kpi-icon"><svg lucideCircleDollarSign size="18"></svg></span><div><small>Cobrado</small><strong>RD$ {{ collected() | number:'1.2-2' }}</strong>@if (hasComparison()) { <p [class]="deltaClass(collectedDelta())">@if (collectedDelta() >= 0) { <svg lucideArrowUpRight size="12"></svg> } @else { <svg lucideArrowDownRight size="12"></svg> } {{ collectedDelta() | number:'1.1-1' }}% vs. período anterior</p> } @else { <p>{{ paidInvoiceCount() }} facturas pagadas</p> }</div></article>
       <article class="kpi rate"><span class="kpi-icon"><svg lucideGauge size="18"></svg></span><div><small>Efectividad de cobro</small><strong>{{ collectionRate() | number:'1.1-1' }}%</strong><p>{{ paidInvoiceCount() }} facturas pagadas</p></div></article>
       <article class="kpi mrr"><span class="kpi-icon"><svg lucideTrendingUp size="18"></svg></span><div><small>Ingreso mensual activo</small><strong>RD$ {{ monthlyRevenue() | number:'1.2-2' }}</strong><p>{{ activeClientCount() }} servicios activos</p></div></article>
       <article class="kpi outstanding"><span class="kpi-icon"><svg lucideWalletCards size="18"></svg></span><div><small>Cartera pendiente actual</small><strong>RD$ {{ outstanding() | number:'1.2-2' }}</strong><p>{{ morosos().length }} clientes requieren gestión</p></div></article>
@@ -41,20 +42,20 @@
           <div class="trend-scroll">
             <div class="trend-chart" [style.--columns]="trend().length">
               @for (point of trend(); track point.key) {
-                <div class="trend-column" [title]="point.label + ': Facturado RD$ ' + point.billed + ', Cobrado RD$ ' + point.collected">
+                <div class="trend-column" [title]="trendTitle(point)">
                   <div class="bar-area"><i class="bar billed-bar" [style.height.%]="trendHeight(point.billed)"></i><i class="bar collected-bar" [style.height.%]="trendHeight(point.collected)"></i></div>
                   <span>{{ point.label }}</span>
                 </div>
               }
             </div>
           </div>
-          <footer class="trend-footer"><span>{{ invoiceCount() }} facturas emitidas</span><span>Ticket cobrado promedio <strong>RD$ {{ avgTicket() | number:'1.2-2' }}</strong></span></footer>
+          <footer class="trend-footer"><span>{{ invoiceCount() }} facturas emitidas</span><span>Promedio cobrado por factura <strong>RD$ {{ avgTicket() | number:'1.2-2' }}</strong></span></footer>
         </section>
 
         <section class="panel executive-panel">
           <header class="panel-head"><div><span>Lectura ejecutiva</span><h2>Señales principales</h2></div></header>
           <div class="executive-list">
-            <article><span class="signal-icon good"><svg lucideCircleCheck size="17"></svg></span><div><small>Plan con mayor aporte</small><strong>{{ topPlan()?.plan || 'Sin datos' }}</strong><p>RD$ {{ (topPlan()?.revenue || 0) | number:'1.2-2' }} mensuales</p></div></article>
+            <article><span class="signal-icon good"><svg lucideCircleCheck size="17"></svg></span><div><small>Plan con mayor aporte</small><strong [title]="topPlan()?.plan || ''">{{ topPlan()?.plan | planLabel:'Sin datos' }}</strong><p>RD$ {{ (topPlan()?.revenue || 0) | number:'1.2-2' }} mensuales</p></div></article>
             <article><span class="signal-icon info"><svg lucideMapPin size="17"></svg></span><div><small>Zona con mayor ingreso</small><strong>{{ topZone()?.zone || 'Sin datos' }}</strong><p>{{ topZone()?.active || 0 }} activos · RD$ {{ (topZone()?.revenue || 0) | number:'1.2-2' }}</p></div></article>
             <article><span class="signal-icon warning"><svg lucideAlertTriangle size="17"></svg></span><div><small>Atención de cartera</small><strong>{{ morosos().length }} clientes morosos</strong><p>RD$ {{ outstanding() | number:'1.2-2' }} pendientes actualmente</p></div></article>
             <article><span class="signal-icon neutral"><svg lucideFileSpreadsheet size="17"></svg></span><div><small>Calidad de contacto</small><strong>{{ dataQuality().missingPhone }} sin teléfono</strong><p>{{ dataQuality().missingIp }} sin IP · {{ dataQuality().missingPlan }} sin plan</p></div></article>
@@ -82,12 +83,12 @@
       <div class="revenue-view view-panel" role="tabpanel">
         <section class="panel full-trend">
           <header class="panel-head"><div><span>Serie histórica</span><h2>Ingreso por mes</h2></div><div class="chart-legend"><span><i class="billed-dot"></i>Facturado</span><span><i class="collected-dot"></i>Cobrado</span></div></header>
-          <div class="trend-scroll"><div class="trend-chart large" [style.--columns]="trend().length">@for (point of trend(); track point.key) { <div class="trend-column"><div class="bar-area"><i class="bar billed-bar" [style.height.%]="trendHeight(point.billed)"></i><i class="bar collected-bar" [style.height.%]="trendHeight(point.collected)"></i></div><span>{{ point.label }}</span></div> }</div></div>
+          <div class="trend-scroll"><div class="trend-chart large" [style.--columns]="trend().length">@for (point of trend(); track point.key) { <div class="trend-column" [title]="trendTitle(point)"><div class="bar-area"><i class="bar billed-bar" [style.height.%]="trendHeight(point.billed)"></i><i class="bar collected-bar" [style.height.%]="trendHeight(point.collected)"></i></div><span>{{ point.label }}</span></div> }</div></div>
         </section>
         <div class="two-column">
           <section class="panel table-panel">
-            <header class="panel-head"><div><span>Ingreso recurrente</span><h2>Rendimiento por plan</h2></div><button class="icon-text-button" type="button" (click)="exportPlansReport()"><svg lucideDownload size="15"></svg>CSV</button></header>
-            <div class="table-scroll"><table class="report-table"><thead><tr><th>Plan</th><th>Activos</th><th>Ticket</th><th>Ingreso mensual</th></tr></thead><tbody>@for (item of planReport(); track item.plan) { <tr><td><strong>{{ item.plan }}</strong><small>{{ item.pct | number:'1.1-1' }}% de activos</small></td><td>{{ item.count }}</td><td>RD$ {{ item.avgPrice | number:'1.2-2' }}</td><td class="money">RD$ {{ item.revenue | number:'1.2-2' }}</td></tr> }</tbody></table></div>
+            <header class="panel-head"><div><span>Ingreso recurrente</span><h2>Rendimiento por plan</h2></div><button class="icon-text-button" type="button" (click)="exportPlansReport()" title="Descargar en CSV"><svg lucideDownload size="15"></svg>Exportar</button></header>
+            <div class="table-scroll"><table class="report-table"><thead><tr><th>Plan</th><th>Activos</th><th>Precio promedio</th><th>Ingreso mensual</th></tr></thead><tbody>@for (item of planReport(); track item.plan) { <tr><td><strong [title]="item.plan">{{ item.plan | planLabel }}</strong><small>{{ item.pct | number:'1.1-1' }}% de activos</small></td><td>{{ item.count }}</td><td>RD$ {{ item.avgPrice | number:'1.2-2' }}</td><td class="money">RD$ {{ item.revenue | number:'1.2-2' }}</td></tr> }</tbody></table></div>
           </section>
           <section class="panel payments-panel detailed">
             <header class="panel-head"><div><span>Recaudación</span><h2>Formas de pago</h2></div><strong class="panel-total">RD$ {{ collected() | number:'1.2-2' }}</strong></header>
@@ -109,15 +110,15 @@
           <section class="panel status-panel detailed"><header class="panel-head"><div><span>Composición</span><h2>Clientes por estado</h2></div></header><div class="status-bar">@for (item of clientsByStatus(); track item.status) { <i [style.width.%]="statusWidth(item.pct)" [style.background]="item.color"></i> }</div><div class="status-list">@for (item of clientsByStatus(); track item.status) { <article><i [style.background]="item.color"></i><div><strong>{{ item.status || 'Sin estado' }}</strong><small>{{ item.pct | number:'1.1-1' }}% del total</small></div><b>{{ item.count }}</b></article> }</div></section>
           <section class="panel quality-panel"><header class="panel-head"><div><span>Integridad operativa</span><h2>Datos que requieren completar</h2></div></header><div class="quality-list"><article><span>Clientes sin teléfono</span><strong>{{ dataQuality().missingPhone }}</strong></article><article><span>Clientes sin IP</span><strong>{{ dataQuality().missingIp }}</strong></article><article><span>Clientes sin plan</span><strong>{{ dataQuality().missingPlan }}</strong></article><article><span>Clientes sin zona</span><strong>{{ dataQuality().missingZone }}</strong></article></div></section>
         </div>
-        <section class="panel table-panel zones-panel"><header class="panel-head"><div><span>Distribución territorial</span><h2>Rendimiento por zona</h2></div><button class="icon-text-button" type="button" (click)="exportZonesReport()"><svg lucideDownload size="15"></svg>CSV</button></header><div class="table-scroll"><table class="report-table"><thead><tr><th>Zona</th><th>Clientes</th><th>Activos</th><th>Morosos</th><th>Ingreso mensual activo</th></tr></thead><tbody>@for (item of zoneReport(); track item.zone) { <tr><td><strong>{{ item.zone }}</strong></td><td>{{ item.clients }}</td><td>{{ item.active }}</td><td><span class="pending-count" [class.has-pending]="item.pending > 0">{{ item.pending }}</span></td><td class="money">RD$ {{ item.revenue | number:'1.2-2' }}</td></tr> }</tbody></table></div></section>
+        <section class="panel table-panel zones-panel"><header class="panel-head"><div><span>Distribución territorial</span><h2>Rendimiento por zona</h2></div><button class="icon-text-button" type="button" (click)="exportZonesReport()" title="Descargar en CSV"><svg lucideDownload size="15"></svg>Exportar</button></header><div class="table-scroll"><table class="report-table"><thead><tr><th>Zona</th><th>Clientes</th><th>Activos</th><th>Morosos</th><th>Ingreso mensual activo</th></tr></thead><tbody>@for (item of zoneReport(); track item.zone) { <tr><td><strong>{{ item.zone }}</strong></td><td>{{ item.clients }}</td><td>{{ item.active }}</td><td><span class="pending-count" [class.has-pending]="item.pending > 0">{{ item.pending }}</span></td><td class="money">RD$ {{ item.revenue | number:'1.2-2' }}</td></tr> }</tbody></table></div></section>
       </div>
     }
 
     @if (activeView() === 'portfolio') {
       <div class="portfolio-view view-panel" role="tabpanel">
         <section class="portfolio-summary"><article><span><svg lucideWalletCards size="18"></svg></span><div><small>Cartera pendiente</small><strong>RD$ {{ outstanding() | number:'1.2-2' }}</strong></div></article><article><span><svg lucideUsers size="18"></svg></span><div><small>Clientes morosos</small><strong>{{ morosos().length }}</strong></div></article><article><span><svg lucideLayers3 size="18"></svg></span><div><small>Servicios gratis</small><strong>{{ gratisClients().length }}</strong></div></article><a routerLink="/morosos">Abrir centro de cobranza <svg lucideArrowUpRight size="16"></svg></a></section>
-        <section class="panel table-panel"><header class="panel-head"><div><span>Seguimiento</span><h2>Clientes con pago pendiente</h2></div><button class="icon-text-button" type="button" (click)="exportMorosos()"><svg lucideDownload size="15"></svg>CSV</button></header>
-          @if (morosos().length) { <div class="table-scroll"><table class="report-table portfolio-table"><thead><tr><th>Cliente</th><th>Contacto</th><th>Plan</th><th>Precio</th><th>Corte</th><th>IP</th><th></th></tr></thead><tbody>@for (client of morosos(); track client.id_servicio) { <tr><td><strong>{{ client.nombre }}</strong><small>{{ client.usuario }}</small></td><td>{{ client.telefono || 'Sin teléfono' }}</td><td>{{ client.plan_internet?.nombre || 'Sin plan' }}</td><td class="money">RD$ {{ client.precio_plan || '0.00' }}</td><td>{{ client.fecha_corte || '-' }}</td><td class="mono">{{ client.ip || 'Sin IP' }}</td><td><a [routerLink]="['/clients', client.id_servicio]" [attr.aria-label]="'Abrir ' + client.nombre"><svg lucideArrowUpRight size="16"></svg></a></td></tr> }</tbody></table></div> } @else { <div class="large-empty"><span><svg lucideCircleCheck size="25"></svg></span><h3>Cartera al día</h3><p>No hay clientes activos marcados con pago pendiente.</p></div> }
+        <section class="panel table-panel"><header class="panel-head"><div><span>Seguimiento</span><h2>Clientes con pago pendiente</h2></div><button class="icon-text-button" type="button" (click)="exportMorosos()" [disabled]="!morosos().length" title="Descargar en CSV"><svg lucideDownload size="15"></svg>Exportar</button></header>
+          @if (morosos().length) { <div class="table-scroll"><table class="report-table portfolio-table"><thead><tr><th>Cliente</th><th>Contacto</th><th>Plan</th><th>Precio</th><th>Corte</th><th>IP</th><th><span class="sr-only">Abrir</span></th></tr></thead><tbody>@for (client of morosos(); track client.id_servicio) { <tr><td><strong>{{ client.nombre }}</strong><small>{{ client.usuario }}</small></td><td>@if (client.telefono) { <a class="phone-link" [href]="'tel:' + client.telefono">{{ client.telefono }}</a> } @else { <span class="muted">Sin teléfono</span> }</td><td [title]="client.plan_internet?.nombre || ''">{{ client.plan_internet?.nombre | planLabel:'—' }}</td><td class="money">{{ priceText(client.precio_plan) }}</td><td>{{ client.fecha_corte || '—' }}</td><td class="mono">{{ client.ip || '—' }}</td><td><a class="row-link" [routerLink]="['/clients', client.id_servicio]" [attr.aria-label]="'Abrir ' + client.nombre" [title]="'Abrir ficha de ' + client.nombre"><svg lucideArrowUpRight size="16"></svg></a></td></tr> }</tbody></table></div> } @else { <div class="large-empty"><span><svg lucideCircleCheck size="25"></svg></span><h3>Cartera al día</h3><p>No hay clientes activos marcados con pago pendiente.</p></div> }
         </section>
       </div>
     }

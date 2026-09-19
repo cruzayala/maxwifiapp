@@ -10,6 +10,7 @@
     <section class="state-panel error" role="alert">
       <svg lucideAlertTriangle size="22"></svg>
       <div><strong>No se pudo cargar la cobranza</strong><p>{{ errorMessage() }}</p></div>
+      <button type="button" class="action-button secondary" (click)="reload()"><svg lucideRefreshCw size="16"></svg><span>Reintentar</span></button>
     </section>
   } @else {
     <section class="kpi-strip" aria-label="Resumen de cobranza">
@@ -62,8 +63,8 @@
       <header class="workspace-header">
         <div><span>Seguimiento operativo</span><h2 id="queue-title">Cola de cobranza</h2></div>
         <div class="workspace-actions">
-          <button type="button" class="action-button secondary" (click)="exportMorosos()"><svg lucideDownload size="16"></svg><span>Exportar</span></button>
-          <a routerLink="/whatsapp" class="action-button primary"><svg lucideMessageCircle size="16"></svg><span>Gestionar cobros</span></a>
+          <button type="button" class="action-button secondary" aria-label="Exportar" (click)="exportMorosos()" [disabled]="!filtered().length" [title]="filtered().length ? 'Descargar la lista visible en CSV' : 'No hay clientes para exportar'"><svg lucideDownload size="16"></svg><span>Exportar</span></button>
+          <a routerLink="/whatsapp" class="action-button primary" aria-label="Enviar recordatorios" title="Enviar recordatorios de pago por WhatsApp"><svg lucideMessageCircle size="16"></svg><span>Enviar recordatorios</span></a>
         </div>
       </header>
 
@@ -91,12 +92,12 @@
               @for (item of filtered(); track item.client.id_servicio) {
                 <tr>
                   <td data-label="Cliente"><div class="client-cell"><span class="client-avatar">{{ initials(item.client.nombre) }}</span><div><a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a><small>{{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small></div></div></td>
-                  <td data-label="Contacto">@if (item.client.telefono) { <span class="contact-ok"><svg lucidePhone size="14"></svg>{{ item.client.telefono }}</span> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
-                  <td data-label="Servicio"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small>{{ item.client.ip || 'Sin IP' }}</small></div></td>
+                  <td data-label="Contacto">@if (item.client.telefono) { <a class="contact-ok" [href]="'tel:' + item.client.telefono" [title]="'Llamar a ' + item.client.nombre"><svg lucidePhone size="14"></svg>{{ item.client.telefono }}</a> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
+                  <td data-label="Servicio"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small class="mono">{{ item.client.ip || '—' }}</small></div></td>
                   <td data-label="Deuda"><div class="stack debt"><strong>RD$ {{ item.montoTotal | number:'1.2-2' }}</strong><small>{{ item.facturasPendientes }} {{ item.facturasPendientes === 1 ? 'factura' : 'facturas' }}</small></div></td>
                   <td data-label="Mora"><span class="days" [class]="'days-' + item.riesgo">{{ item.diasVencido }} días</span></td>
-                  <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ item.riesgo === 'bajo' ? 'RECIENTE' : (item.riesgo | uppercase) }}</span></td>
-                  <td data-label="Corte">{{ item.client.fecha_corte || '-' }}</td>
+                  <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ riskLabel(item.riesgo) }}</span></td>
+                  <td data-label="Corte">{{ item.client.fecha_corte || '—' }}</td>
                   <td data-label="Detalle"><a [routerLink]="['/clients', item.client.id_servicio]" class="row-action" [attr.aria-label]="'Abrir ' + item.client.nombre"><svg lucideArrowUpRight size="17"></svg></a></td>
                 </tr>
               }

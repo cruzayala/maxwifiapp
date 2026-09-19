@@ -13,7 +13,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   LucideBanknote, LucideCalendarClock, LucideChartColumn, LucideChevronDown,
   LucideCircleDollarSign, LucideFileCheck2, LucideFileQuestion, LucideGauge,
-  LucideLandmark, LucideReceiptText, LucideTrendingUp, LucideWalletCards,
+  LucideFileText, LucideLandmark, LucideReceiptText, LucideTrendingUp, LucideWalletCards,
 } from '@lucide/angular';
 
 type InvoiceQuickFilter = 'all' | 'collected' | 'open' | 'paid' | 'pending' | 'overdue' | 'missing_evidence';
@@ -50,7 +50,7 @@ interface InvoiceBreakdown {
     NavbarComponent, DecimalPipe, FormsModule, PaymentModalComponent,
     LucideBanknote, LucideCalendarClock, LucideChartColumn, LucideChevronDown,
     LucideCircleDollarSign, LucideFileCheck2, LucideFileQuestion, LucideGauge,
-    LucideLandmark, LucideReceiptText, LucideTrendingUp, LucideWalletCards,
+    LucideFileText, LucideLandmark, LucideReceiptText, LucideTrendingUp, LucideWalletCards,
   ],
   template: `
     <app-navbar pageTitle="Facturas" />
@@ -83,7 +83,7 @@ interface InvoiceBreakdown {
       </section>
 
       <section class="finance-insights" aria-label="Resumen financiero complementario">
-        <div><svg lucideGauge size="16"></svg><span>Ticket promedio <b>RD$ {{ averageTicket() | number:'1.0-0' }}</b></span></div>
+        <div><svg lucideGauge size="16"></svg><span>Promedio por factura <b>RD$ {{ averageTicket() | number:'1.0-0' }}</b></span></div>
         <div><svg lucideTrendingUp size="16"></svg><span>Este mes <b>RD$ {{ currentMonthMetrics().invoiced | number:'1.0-0' }}</b> · {{ currentMonthMetrics().count }} facturas</span></div>
         <div><svg lucideWalletCards size="16"></svg><span>Descuentos <b>RD$ {{ totalDiscounts() | number:'1.0-0' }}</b></span></div>
         <div><svg lucideLandmark size="16"></svg><span>Cobros parciales <b>{{ countPartialPayments() }}</b></span></div>
@@ -95,7 +95,7 @@ interface InvoiceBreakdown {
             <header><div><span>Tendencia de facturación</span><h3>Últimos 6 meses</h3></div><div class="chart-legend"><i class="invoiced"></i>Facturado <i class="collected"></i>Cobrado</div></header>
             <div class="column-chart">
               @for (point of monthlyTrend(); track point.key) {
-                <div class="chart-month" [title]="point.label + ': facturado RD$ ' + point.invoiced + ', cobrado RD$ ' + point.collected">
+                <div class="chart-month" [title]="trendTitle(point)">
                   <div class="bar-stage"><i class="bar invoiced" [style.height.%]="trendHeight(point.invoiced)"></i><i class="bar collected" [style.height.%]="trendHeight(point.collected)"></i></div>
                   <strong>{{ point.label }}</strong><small>{{ point.count }} fact.</small>
                 </div>
@@ -160,9 +160,9 @@ interface InvoiceBreakdown {
               <option [value]="zone">{{ zone }}</option>
             }
           </select>
-          <button class="btn btn-ghost" type="button" (click)="showAdvanced = !showAdvanced" [class.active]="showAdvanced">
+          <button class="btn btn-ghost" type="button" (click)="showAdvanced = !showAdvanced" [class.active]="showAdvanced" [attr.aria-expanded]="showAdvanced">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16M7 12h10M10 19h4"/></svg>
-            Mas filtros
+            Más filtros
             @if (activeAdvancedFilterCount() > 0) { <span class="filter-count">{{ activeAdvancedFilterCount() }}</span> }
           </button>
         </div>
@@ -171,7 +171,7 @@ interface InvoiceBreakdown {
           <div class="advanced-filters">
             <label><span>Fecha a evaluar</span>
               <select [(ngModel)]="dateField" (change)="filterInvoices()">
-                <option value="fecha_emision">Emision</option>
+                <option value="fecha_emision">Emisión</option>
                 <option value="fecha_vencimiento">Vencimiento</option>
                 <option value="fecha_pago">Pago</option>
               </select>
@@ -210,16 +210,17 @@ interface InvoiceBreakdown {
               </select>
             </label>
             <button class="btn btn-ghost clear-advanced" type="button" (click)="clearFilters()">Limpiar filtros</button>
+            @if (rangeWarning()) { <p class="range-warning" role="alert">{{ rangeWarning() }}</p> }
           </div>
         }
 
         <div class="toolbar-actions">
           <div class="export-control">
-            <select [(ngModel)]="exportFormat" aria-label="Formato de exportacion">
+            <select [(ngModel)]="exportFormat" aria-label="Formato de exportación">
               <option value="excel">Excel</option>
               <option value="csv">CSV</option>
             </select>
-            <button class="btn btn-outline" (click)="exportInvoices()" [disabled]="filtered().length === 0">
+            <button class="btn btn-outline" type="button" (click)="exportInvoices()" [disabled]="filtered().length === 0" [title]="filtered().length ? 'Descargar las facturas visibles' : 'No hay facturas para exportar'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               Exportar
             </button>
@@ -228,31 +229,31 @@ interface InvoiceBreakdown {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
             Comparar
           </button>
-          <button class="btn btn-outline" type="button" (click)="printFilteredReport()" [disabled]="filtered().length === 0" title="Imprimir el listado filtrado">
+          <button class="btn btn-outline" type="button" (click)="printFilteredReport()" [disabled]="filtered().length === 0" [title]="filtered().length ? 'Imprimir el listado de facturas visibles' : 'No hay facturas para imprimir'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-            Listado
+            Imprimir listado
           </button>
-          <button class="btn btn-primary" (click)="syncInvoices()" [disabled]="syncing()">
+          <button class="btn btn-primary" type="button" (click)="syncInvoices()" [disabled]="syncing()" [title]="syncing() ? 'Sincronización en curso' : 'Traer el historial de facturas desde WispHub'">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-            {{ syncing() ? 'Sincronizando...' : 'Sincronizar' }}
+            {{ syncing() ? 'Sincronizando…' : 'Sincronizar' }}
           </button>
-          <span class="inv-count">{{ filtered().length }} de {{ allInvoices().length }}</span>
+          <span class="inv-count">{{ filtered().length }} de {{ allInvoices().length }} facturas</span>
         </div>
       </div>
 
       @if (showComparison) {
         <section class="comparison-panel">
           <div class="comparison-head">
-            <div><strong>Comparacion de periodos</strong><span>Basada en la fecha de emision</span></div>
+            <div><strong>Comparación de períodos</strong><span>Basada en la fecha de emisión</span></div>
             <button class="btn btn-ghost" type="button" (click)="setDefaultComparison()">Este mes vs anterior</button>
           </div>
           <div class="period-grid">
             <div class="period-block current">
-              <div class="period-title"><strong>Período A</strong><div><input type="date" [(ngModel)]="compareFromA" (change)="updateComparison()" /><input type="date" [(ngModel)]="compareToA" (change)="updateComparison()" /></div></div>
+              <div class="period-title"><strong>Período A</strong><div><input type="date" aria-label="Período A desde" [(ngModel)]="compareFromA" (change)="updateComparison()" /><input type="date" aria-label="Período A hasta" [(ngModel)]="compareToA" (change)="updateComparison()" /></div></div>
               <div class="period-metrics"><span><small>Facturas</small><strong>{{ comparisonA().count }}</strong></span><span><small>Facturado</small><strong>RD$ {{ comparisonA().invoiced | number:'1.2-2' }}</strong></span><span><small>Cobrado</small><strong>RD$ {{ comparisonA().collected | number:'1.2-2' }}</strong></span><span><small>Saldo</small><strong>RD$ {{ comparisonA().balance | number:'1.2-2' }}</strong></span></div>
             </div>
             <div class="period-block previous">
-              <div class="period-title"><strong>Período B</strong><div><input type="date" [(ngModel)]="compareFromB" (change)="updateComparison()" /><input type="date" [(ngModel)]="compareToB" (change)="updateComparison()" /></div></div>
+              <div class="period-title"><strong>Período B</strong><div><input type="date" aria-label="Período B desde" [(ngModel)]="compareFromB" (change)="updateComparison()" /><input type="date" aria-label="Período B hasta" [(ngModel)]="compareToB" (change)="updateComparison()" /></div></div>
               <div class="period-metrics"><span><small>Facturas</small><strong>{{ comparisonB().count }}</strong></span><span><small>Facturado</small><strong>RD$ {{ comparisonB().invoiced | number:'1.2-2' }}</strong></span><span><small>Cobrado</small><strong>RD$ {{ comparisonB().collected | number:'1.2-2' }}</strong></span><span><small>Saldo</small><strong>RD$ {{ comparisonB().balance | number:'1.2-2' }}</strong></span></div>
             </div>
           </div>
@@ -269,7 +270,7 @@ interface InvoiceBreakdown {
         <span><small>Facturado visible</small><strong>RD$ {{ visibleStats().invoiced | number:'1.2-2' }}</strong></span>
         <span><small>Cobrado visible</small><strong>RD$ {{ visibleStats().collected | number:'1.2-2' }}</strong></span>
         <span><small>Saldo visible</small><strong class="balance-value">RD$ {{ visibleStats().balance | number:'1.2-2' }}</strong></span>
-        @if (activeFilterCount() > 0) { <span class="active-filter-label">{{ activeFilterCount() }} filtros activos</span> }
+        @if (activeFilterCount() > 0) { <button type="button" class="active-filter-label" (click)="clearFilters()" title="Quitar todos los filtros">{{ activeFilterCount() }} {{ activeFilterCount() === 1 ? 'filtro activo' : 'filtros activos' }} · Limpiar</button> }
       </div>
 
       @if (selectedInvoices().length > 0) {
@@ -277,7 +278,7 @@ interface InvoiceBreakdown {
           <div><strong>{{ selectedInvoices().length }} seleccionadas</strong><span>RD$ {{ selectedTotal() | number:'1.2-2' }} · saldo RD$ {{ selectedBalance() | number:'1.2-2' }}</span></div>
           <div class="selection-actions">
             @if (selectedInvoices().length < filtered().length) { <button type="button" (click)="selectAllFiltered()">Seleccionar resultados</button> }
-            <button type="button" (click)="exportInvoices(true)">Exportar</button>
+            <button type="button" (click)="exportInvoices(true)">Exportar selección</button>
             <button type="button" (click)="printSelected('invoice')">Reimprimir facturas</button>
             <button type="button" (click)="printSelected('receipt')">Reimprimir recibos</button>
             <button type="button" class="clear-selection" (click)="clearSelection()">Quitar selección</button>
@@ -297,8 +298,9 @@ interface InvoiceBreakdown {
       } @else if (filtered().length === 0 && allInvoices().length === 0) {
         <div class="empty-state">
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          <h3>Sin facturas</h3>
-          <p>Presiona "Sincronizar" para cargar facturas desde WispHub</p>
+          <h3>Aún no hay facturas guardadas</h3>
+          <p>Sincroniza para traer el historial de facturas desde WispHub. Puede tardar unos minutos.</p>
+          <button class="btn btn-primary" type="button" (click)="syncInvoices()" [disabled]="syncing()">{{ syncing() ? 'Sincronizando…' : 'Sincronizar ahora' }}</button>
         </div>
       } @else if (filtered().length === 0) {
         <div class="empty-state filtered-empty">
@@ -344,8 +346,8 @@ interface InvoiceBreakdown {
                   </td>
                   <td data-label="Fechas">
                     <div class="date-cell">
-                      <span>Emision {{ inv.fecha_emision || '-' }}</span>
-                      <small [class.overdue-text]="isOverdue(inv)">Vence {{ inv.fecha_vencimiento || '-' }}</small>
+                      <span>Emisión {{ inv.fecha_emision || '—' }}</span>
+                      <small [class.overdue-text]="isOverdue(inv)">Vence {{ inv.fecha_vencimiento || '—' }}</small>
                       @if (inv.fecha_pago) {
                         <small>Pago {{ inv.fecha_pago }}</small>
                       }
@@ -353,14 +355,14 @@ interface InvoiceBreakdown {
                   </td>
                   <td data-label="Pago">
                     <div class="payment-cell">
-                      <span>{{ inv.forma_pago?.nombre || 'Sin forma' }}</span>
-                      <small>{{ inv.cajero?.nombre || inv.zona?.nombre || '-' }}</small>
+                      <span [class.muted]="!inv.forma_pago?.nombre">{{ inv.forma_pago?.nombre || '—' }}</span>
+                      <small>{{ inv.cajero?.nombre || inv.zona?.nombre || '—' }}</small>
                     </div>
                   </td>
                   <td data-label="Total">
                     <div class="amount-cell">
                       <span>RD$ {{ inv.total | number:'1.2-2' }}</span>
-                      <small>Sub RD$ {{ inv.sub_total | number:'1.2-2' }}</small>
+                      <small>Subtotal RD$ {{ inv.sub_total | number:'1.2-2' }}</small>
                       @if (inv.descuento > 0) {
                         <small class="discount">Desc. -RD$ {{ inv.descuento | number:'1.2-2' }}</small>
                       }
@@ -383,19 +385,20 @@ interface InvoiceBreakdown {
                   <td data-label="Acciones">
                     <div class="action-btns">
                       @if (isPending(inv)) {
-                        <button class="btn-pay" (click)="openPayment(inv)" title="Registrar pago">
+                        <button class="btn-pay" type="button" (click)="openPayment(inv)" title="Registrar pago de esta factura">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
                           Pagar
                         </button>
                       }
-                      <button class="btn-print btn-invoice" (click)="printInvoice(inv)" title="Imprimir factura Carta/A4">
+                      <button class="btn-print btn-invoice" type="button" (click)="printInvoice(inv)" title="Ver e imprimir la factura en tamaño carta / A4">
+                        <svg lucideFileText size="14"></svg>
                         Factura
                       </button>
-                      <button class="btn-print btn-receipt" (click)="printReceipt(inv)" title="Imprimir recibo pequeno">
+                      <button class="btn-print btn-receipt" type="button" (click)="printReceipt(inv)" title="Ver e imprimir el recibo para impresora térmica">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                         Recibo
                       </button>
-                      <button class="btn-print btn-details" type="button" (click)="toggleDetails(inv.id_factura)" [class.active]="expandedInvoiceId() === inv.id_factura" title="Ver todos los datos de la factura">
+                      <button class="btn-print btn-details" type="button" (click)="toggleDetails(inv.id_factura)" [class.active]="expandedInvoiceId() === inv.id_factura" [attr.aria-expanded]="expandedInvoiceId() === inv.id_factura" title="Ver todos los datos de la factura">
                         Detalle <svg lucideChevronDown size="14" [class.rotated]="expandedInvoiceId() === inv.id_factura"></svg>
                       </button>
                     </div>
@@ -409,10 +412,10 @@ interface InvoiceBreakdown {
                         <div class="detail-grid">
                           <section><h4>Identificación</h4><dl><div><dt>Folio</dt><dd>{{ inv.folio || '-' }}</dd></div><div><dt>Referencia</dt><dd>{{ inv.referencia || '-' }}</dd></div><div><dt>Comprobante</dt><dd>{{ inv.comprobante_pago || '-' }}</dd></div><div><dt>Tipo</dt><dd>{{ inv.tipo || '-' }}</dd></div></dl></section>
                           <section><h4>Cliente</h4><dl><div><dt>Usuario</dt><dd>{{ inv.cliente?.usuario || '-' }}</dd></div><div><dt>Teléfono</dt><dd>{{ inv.cliente?.telefono || '-' }}</dd></div><div><dt>Correo</dt><dd>{{ inv.cliente?.email || '-' }}</dd></div><div><dt>Dirección</dt><dd>{{ inv.cliente?.direccion || inv.cliente?.localidad || '-' }}</dd></div></dl></section>
-                          <section><h4>Cobro</h4><dl><div><dt>Forma</dt><dd>{{ inv.forma_pago?.nombre || 'Sin forma' }}</dd></div><div><dt>Cajero</dt><dd>{{ inv.cajero?.nombre || '-' }}</dd></div><div><dt>Zona</dt><dd>{{ inv.zona?.nombre || '-' }}</dd></div><div><dt>Fecha de pago</dt><dd>{{ inv.fecha_pago || '-' }}</dd></div></dl></section>
+                          <section><h4>Cobro</h4><dl><div><dt>Forma</dt><dd>{{ inv.forma_pago?.nombre || '-' }}</dd></div><div><dt>Cajero</dt><dd>{{ inv.cajero?.nombre || '-' }}</dd></div><div><dt>Zona</dt><dd>{{ inv.zona?.nombre || '-' }}</dd></div><div><dt>Fecha de pago</dt><dd>{{ inv.fecha_pago || '-' }}</dd></div></dl></section>
                           <section><h4>Desglose</h4><dl><div><dt>Subtotal</dt><dd>RD$ {{ inv.sub_total | number:'1.2-2' }}</dd></div><div><dt>Descuento</dt><dd>RD$ {{ inv.descuento | number:'1.2-2' }}</dd></div><div><dt>Impuestos / retención</dt><dd>RD$ {{ (inv.impuestos_total || 0) + (inv.retenciones_total || 0) | number:'1.2-2' }}</dd></div><div><dt>Total / cobrado / saldo</dt><dd>RD$ {{ inv.total | number:'1.2-2' }} · RD$ {{ inv.total_cobrado | number:'1.2-2' }} · RD$ {{ balanceAmount(inv) | number:'1.2-2' }}</dd></div></dl></section>
                         </div>
-                        <section class="article-detail"><h4>Conceptos facturados</h4><div>@for (article of inv.articulos || []; track article.id) { <span><b>{{ article.cantidad || 1 }}×</b> {{ article.descripcion || 'Servicio' }} <em>RD$ {{ article.precio }}</em></span> } @empty { <p>Sin artículos detallados.</p> }</div></section>
+                        <section class="article-detail"><h4>Conceptos facturados</h4><div>@for (article of inv.articulos || []; track article.id) { <span><b>{{ article.cantidad || 1 }}×</b> {{ article.descripcion || 'Servicio' }} <em>{{ articlePrice(article.precio) }}</em></span> } @empty { <p>Sin artículos detallados.</p> }</div></section>
                       </div>
                     </td>
                   </tr>
@@ -453,13 +456,13 @@ interface InvoiceBreakdown {
   styles: [`
     .page { padding: 18px 20px 28px; color: #25364a; }
     button, input, select { font: inherit; }
-    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(37, 99, 235, 0.2); outline-offset: 1px; }
+    button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(18, 103, 221, 0.2); outline-offset: 1px; }
 
     .finance-head {
       display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 14px;
     }
     .finance-head > div:first-child { display: grid; gap: 3px; }
-    .finance-head > div:first-child > span { color: #2563eb; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .finance-head > div:first-child > span { color: #1267dd; font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .finance-head h2 { margin: 0; color: #132238; font-size: 20px; line-height: 1.2; }
     .finance-head p { margin: 0; color: #718096; font-size: 13px; }
     .history-state {
@@ -483,11 +486,11 @@ interface InvoiceBreakdown {
       transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
     }
     .summary-card:hover { border-color: #a9b9c8; box-shadow: 0 4px 14px rgba(26, 47, 71, 0.08); }
-    .summary-card.active { border-color: #2563eb; background: #f6f9ff; box-shadow: inset 0 -2px #2563eb; }
+    .summary-card.active { border-color: #1267dd; background: #f6f9ff; box-shadow: inset 0 -2px #1267dd; }
     .summary-card > span:not(.kpi-icon) { display: block; min-width: 0; }
     .summary-card .kpi-icon {
       display: grid; place-items: center; width: 34px; height: 34px; border-radius: 6px;
-      background: #eaf2ff; color: #2563eb;
+      background: #eaf2ff; color: #1267dd;
     }
     .summary-card small, .summary-card strong, .summary-card em { display: block; }
     .summary-card small { margin: 0; color: #66788b; font-size: 12px; font-style: normal; font-weight: 800; text-transform: uppercase; white-space: normal; }
@@ -524,7 +527,7 @@ interface InvoiceBreakdown {
     .analytics-panel header > svg { color: #6b7f92; }
     .chart-legend { display: flex !important; align-items: center; gap: 6px !important; color: #718096; font-size: 12px; white-space: nowrap; }
     .chart-legend i { width: 8px; height: 8px; border-radius: 2px; }
-    .chart-legend .invoiced, .bar.invoiced { background: #2563eb; }
+    .chart-legend .invoiced, .bar.invoiced { background: #1267dd; }
     .chart-legend .collected, .bar.collected { background: #15a065; }
     .column-chart { display: grid; grid-template-columns: repeat(6, minmax(42px, 1fr)); gap: 9px; height: 175px; padding-top: 4px; border-bottom: 1px solid #dfe7ed; }
     .chart-month { display: grid; grid-template-rows: 128px 18px 15px; min-width: 0; text-align: center; }
@@ -540,7 +543,7 @@ interface InvoiceBreakdown {
     .bar-row span { color: #8594a3; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .bar-row > em { align-self: center; color: #4e6275; font-size: 12px; font-style: normal; font-weight: 700; }
     .bar-row > i { grid-column: 1 / -1; display: block; height: 5px; overflow: hidden; border-radius: 3px; background: #edf1f4; }
-    .bar-row > i > b { display: block; height: 100%; border-radius: inherit; background: #2563eb; }
+    .bar-row > i > b { display: block; height: 100%; border-radius: inherit; background: #1267dd; }
     .chart-empty { color: #8594a3; font-size: 11px; }
 
     .status-chart { display: grid; grid-template-columns: 104px minmax(0, 1fr); align-items: center; gap: 14px; min-height: 160px; }
@@ -585,9 +588,11 @@ interface InvoiceBreakdown {
       border-radius: 8px; background: white; color: #334155; font-size: 13px;
     }
     .clear-advanced { align-self: end; height: 38px; }
+    .range-warning { grid-column: 1 / -1; margin: 0; padding: 8px 10px; border: 1px solid #f1d19a; border-radius: 6px; background: #fff6e8; color: #b36b12; font-size: 12px; font-weight: 600; }
+    .muted { color: #8a98a5 !important; font-weight: 500 !important; }
     .filter-count {
       display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px;
-      border-radius: 999px; background: #4f46e5; color: white; font-size: 11px;
+      border-radius: 999px; background: #1267dd; color: white; font-size: 11px;
     }
     .toolbar-actions { display: flex; align-items: center; justify-content: flex-start; gap: 8px; flex-wrap: wrap; }
     .export-control { display: flex; align-items: stretch; }
@@ -602,11 +607,11 @@ interface InvoiceBreakdown {
       font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
     }
     .btn-outline { background: white; border: 1px solid #e2e8f0; color: #475569; }
-    .btn-outline:hover { border-color: #6366f1; color: #6366f1; background: #eef2ff; }
-    .btn-primary { background: #2563eb; color: white; }
-    .btn-primary:hover { background: #1d4ed8; }
+    .btn-outline:hover { border-color: #1267dd; color: #1267dd; background: #edf4ff; }
+    .btn-primary { background: #1267dd; color: white; }
+    .btn-primary:hover { background: #0d58c0; }
     .btn:disabled { opacity: 0.5; cursor: default; pointer-events: none; }
-    .btn.active { border-color: #6366f1; color: #4f46e5; background: #eef2ff; }
+    .btn.active { border-color: #1267dd; color: #1267dd; background: #edf4ff; }
     .btn-ghost { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; padding: 10px 14px; }
     .btn-ghost:hover { background: #f1f5f9; color: #0f172a; }
     .inv-count { font-size: 13px; color: #64748b; font-weight: 500; white-space: nowrap; padding-left: 2px; }
@@ -620,7 +625,7 @@ interface InvoiceBreakdown {
     .comparison-head strong { color: #0f172a; font-size: 15px; }
     .comparison-head span { color: #64748b; font-size: 12px; }
     .period-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
-    .period-block { border: 1px solid #e2e8f0; border-left: 4px solid #4f46e5; border-radius: 8px; padding: 12px; }
+    .period-block { border: 1px solid #e2e8f0; border-left: 4px solid #1267dd; border-radius: 8px; padding: 12px; }
     .period-block.previous { border-left-color: #0f766e; }
     .period-title > div { display: flex; gap: 6px; }
     .period-title input { border: 1px solid #cbd5e1; border-radius: 7px; padding: 7px 8px; color: #334155; }
@@ -643,18 +648,19 @@ interface InvoiceBreakdown {
     .results-strip small { margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; }
     .results-strip strong { color: #0f172a; font-size: 15px; }
     .results-strip .balance-value { color: #b91c1c; }
-    .results-strip .active-filter-label { display: flex; min-height: 60px; align-items: center; color: #4f46e5; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .results-strip .active-filter-label { display: flex; min-height: 60px; align-items: center; padding: 0 14px; border: 0; background: white; color: #1267dd; font-size: 12px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+    .results-strip .active-filter-label:hover { background: #f2f7ff; text-decoration: underline; }
 
     .selection-bar {
       display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px;
       padding: 10px 12px; border: 1px solid #9ec2ff; border-radius: 6px; background: #eef5ff;
     }
     .selection-bar > div:first-child { display: grid; gap: 2px; }
-    .selection-bar strong { color: #312e81; font-size: 13px; }
-    .selection-bar span { color: #6366f1; font-size: 11px; }
+    .selection-bar strong { color: #172535; font-size: 13px; }
+    .selection-bar span { color: #1267dd; font-size: 11px; }
     .selection-actions { display: flex; gap: 7px; flex-wrap: wrap; }
     .selection-actions button {
-      border: 1px solid #c7d2fe; border-radius: 7px; background: white; color: #4338ca;
+      border: 1px solid #b9d2f5; border-radius: 7px; background: white; color: #0d58c0;
       padding: 7px 10px; font-size: 11px; font-weight: 700; cursor: pointer;
     }
     .selection-actions .clear-selection { color: #64748b; border-color: #cbd5e1; }
@@ -683,7 +689,7 @@ interface InvoiceBreakdown {
     }
     .col-invoice { width: 130px; }
     .col-check { width: 48px; text-align: center !important; }
-    .col-check input { width: 16px; height: 16px; accent-color: #4f46e5; cursor: pointer; }
+    .col-check input { width: 16px; height: 16px; accent-color: #1267dd; cursor: pointer; }
     .col-client { width: 230px; }
     .col-dates { width: 190px; }
     .col-payment { width: 160px; }
@@ -692,11 +698,11 @@ interface InvoiceBreakdown {
     .col-status { width: 120px; }
     .col-actions { width: 270px; }
     .sortable { cursor: pointer; user-select: none; }
-    .sortable:hover { color: #6366f1; }
+    .sortable:hover, .sortable:focus-visible { color: #1267dd; }
 
     .data-table td { padding: 12px 14px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
     .data-table tr:hover td { background: #fafbfc; }
-    .data-table .row-selected td { box-shadow: inset 0 1px #c7d2fe, inset 0 -1px #c7d2fe; background: #eef2ff; }
+    .data-table .row-selected td { box-shadow: inset 0 1px #b9d2f5, inset 0 -1px #b9d2f5; background: #edf4ff; }
     .row-pending td { background: #fffdf7; }
     .row-overdue td { background: #fff7f7; }
     .row-pending:hover td, .row-overdue:hover td { background: #fff8ee; }
@@ -704,7 +710,7 @@ interface InvoiceBreakdown {
     .invoice-cell, .client-cell, .date-cell, .payment-cell, .amount-cell, .balance-cell, .status-cell {
       min-width: 0;
     }
-    .invoice-id { display: block; color: #4f46e5; font-weight: 800; line-height: 1.25; }
+    .invoice-id { display: block; color: #1267dd; font-weight: 800; line-height: 1.25; }
     .client-cell span, .payment-cell span, .amount-cell span, .balance-cell span {
       display: block; color: #0f172a; font-weight: 700; line-height: 1.25;
     }
@@ -735,25 +741,25 @@ interface InvoiceBreakdown {
       background: white; border: 1px solid #e2e8f0; border-radius: 8px;
       padding: 6px 8px; cursor: pointer; color: #64748b; transition: all 0.2s;
     }
-    .btn-icon:hover { background: #6366f1; color: white; border-color: #6366f1; }
+    .btn-icon:hover { background: #1267dd; color: white; border-color: #1267dd; }
     .btn-print {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 6px 9px; border-radius: 8px; font-size: 11px; font-weight: 700;
       cursor: pointer; transition: all 0.2s; border: 1px solid #e2e8f0; background: white; color: #475569;
     }
-    .btn-print:hover { border-color: #6366f1; color: #4f46e5; background: #eef2ff; }
-    .btn-invoice { color: #4f46e5; border-color: #c7d2fe; }
+    .btn-print:hover { border-color: #1267dd; color: #1267dd; background: #edf4ff; }
+    .btn-invoice { color: #1267dd; border-color: #b9d2f5; }
     .btn-receipt { color: #475569; }
     .btn-pay {
       display: inline-flex; align-items: center; gap: 4px;
       padding: 6px 10px; border: none; border-radius: 8px;
-      background: #22c55e; color: white; font-size: 11px; font-weight: 700;
+      background: #13875a; color: white; font-size: 11px; font-weight: 700;
       cursor: pointer; transition: all 0.2s;
     }
-    .btn-pay:hover { background: #16a34a; }
+    .btn-pay:hover { background: #0f6f4a; }
     .btn-details svg { transition: transform 0.16s ease; }
     .btn-details svg.rotated { transform: rotate(180deg); }
-    .btn-details.active { border-color: #2563eb; color: #1d4ed8; background: #eff6ff; }
+    .btn-details.active { border-color: #1267dd; color: #0d58c0; background: #f2f7ff; }
 
     .invoice-detail-row td { padding: 0 !important; border-bottom-color: #ccd8e2 !important; background: #f7fafc !important; }
     .invoice-detail { padding: 16px 18px 18px; border-top: 1px solid #dce5eb; }
@@ -782,7 +788,7 @@ interface InvoiceBreakdown {
     .empty-state h3 { color: #475569; margin: 8px 0 0; }
     .filtered-empty, .error-state { padding: 52px 24px; background: white; border: 1px solid #dce5eb; border-radius: 6px; }
     .error-state svg { color: #dc2626; }
-    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #6366f1; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     .spinner.small { width: 18px; height: 18px; border-width: 2px; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -984,8 +990,8 @@ export class InvoicesComponent implements OnInit {
     try {
       const invoices = await this.localDb.getInvoices(forceRefresh);
       this.setInvoices(invoices);
-    } catch (error: any) {
-      this.loadError.set(error?.message || 'No fue posible consultar las facturas guardadas.');
+    } catch {
+      this.loadError.set('No fue posible consultar las facturas guardadas. Revisa la conexión con el servidor y vuelve a intentarlo.');
     } finally {
       this.loading.set(false);
     }
@@ -1190,6 +1196,31 @@ export class InvoicesComponent implements OnInit {
     this.filterInvoices();
   }
 
+  ariaSort(col: string): 'ascending' | 'descending' | null {
+    if (this.sortCol !== col) return null;
+    return this.sortDir === 'asc' ? 'ascending' : 'descending';
+  }
+
+  trendTitle(point: InvoiceTrendPoint): string {
+    return `${point.label}: facturado ${this.money(point.invoiced)} · cobrado ${this.money(point.collected)} · ${point.count} facturas`;
+  }
+
+  /** Precio de un artículo (texto de WispHub) formateado para mostrar. */
+  articlePrice(value: string | number | null | undefined): string {
+    const text = String(value ?? '').trim();
+    const amount = Number(text.replace(/[^0-9.-]/g, ''));
+    return text && Number.isFinite(amount) ? this.money(amount) : (text || '—');
+  }
+
+  /** Avisos de rangos invertidos en los filtros avanzados (no bloquean el filtro). */
+  rangeWarning(): string {
+    const issues: string[] = [];
+    if (this.dateFrom && this.dateTo && this.dateFrom > this.dateTo) issues.push('la fecha «Desde» es posterior a «Hasta»');
+    if (this.hasNumericFilter(this.minTotal) && this.hasNumericFilter(this.maxTotal) && Number(this.minTotal) > Number(this.maxTotal)) issues.push('el total mínimo es mayor que el máximo');
+    if (this.hasNumericFilter(this.minBalance) && this.hasNumericFilter(this.maxBalance) && Number(this.minBalance) > Number(this.maxBalance)) issues.push('el saldo mínimo es mayor que el máximo');
+    return issues.length ? `Revisa los filtros: ${issues.join('; ')}. Así no aparecerá ninguna factura.` : '';
+  }
+
   sortIcon(col: string): string {
     if (this.sortCol !== col) return '';
     return this.sortDir === 'asc' ? '\u25B2' : '\u25BC';
@@ -1218,7 +1249,7 @@ export class InvoicesComponent implements OnInit {
           return;
         }
       }
-      throw new Error('La importacion continua en el servidor; vuelve a consultar en unos minutos');
+      throw new Error('La importación continúa en el servidor; vuelve a consultar en unos minutos.');
     } catch (error: any) {
       this.toast.error(error?.error?.error || error?.message || 'No se pudo sincronizar el historial');
     } finally {
@@ -1323,17 +1354,17 @@ export class InvoicesComponent implements OnInit {
       { key: 'tipo', label: 'Tipo' },
       { key: 'cliente.nombre', label: 'Cliente' },
       { key: 'cliente.usuario', label: 'Usuario' },
-      { key: 'cliente.telefono', label: 'Telefono' },
-      { key: 'cliente.cedula', label: 'Cedula' },
-      { key: 'cliente.email', label: 'Email' },
-      { key: 'cliente.direccion', label: 'Direccion' },
+      { key: 'cliente.telefono', label: 'Teléfono' },
+      { key: 'cliente.cedula', label: 'Cédula' },
+      { key: 'cliente.email', label: 'Correo' },
+      { key: 'cliente.direccion', label: 'Dirección' },
       { key: 'referencia', label: 'Referencia' },
       { key: 'comprobante_pago', label: 'Comprobante' },
       { key: 'folio', label: 'Folio' },
-      { key: 'fecha_emision', label: 'Emision' },
+      { key: 'fecha_emision', label: 'Emisión' },
       { key: 'fecha_vencimiento', label: 'Vencimiento' },
       { key: 'fecha_pago', label: 'Pago' },
-      { key: 'forma_pago.nombre', label: 'Forma Pago' },
+      { key: 'forma_pago.nombre', label: 'Forma de pago' },
       { key: 'zona.nombre', label: 'Zona' },
       { key: 'cajero.nombre', label: 'Cajero' },
       { key: 'sub_total', label: 'Subtotal' },
@@ -1344,7 +1375,7 @@ export class InvoicesComponent implements OnInit {
       { key: 'total_cobrado', label: 'Cobrado' },
       { key: 'saldo', label: 'Saldo', transform: (_value, row) => this.balanceAmount(row) },
       { key: 'estado', label: 'Estado' },
-      { key: 'articulos', label: 'Articulos', transform: (_value, row) => this.articleSummary(row) },
+      { key: 'articulos', label: 'Artículos', transform: (_value, row) => this.articleSummary(row) },
     ];
   }
 
@@ -1368,8 +1399,8 @@ export class InvoicesComponent implements OnInit {
       @page{size:landscape;margin:12mm}body{font-family:Arial,sans-serif;color:#0f172a;font-size:10px}h1{font-size:20px;margin:0 0 4px}.meta{color:#64748b;margin-bottom:14px}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}.summary div{border:1px solid #cbd5e1;padding:8px}.summary small{display:block;color:#64748b;text-transform:uppercase}.summary strong{display:block;margin-top:4px;font-size:14px}table{width:100%;border-collapse:collapse}th,td{border-bottom:1px solid #e2e8f0;padding:6px;text-align:left}th{background:#f1f5f9;text-transform:uppercase}.number{text-align:right;white-space:nowrap}.warning{color:#b45309;margin:8px 0}
     </style></head><body><h1>Listado de facturas</h1><div class="meta">Generado ${this.escapeHtml(new Date().toLocaleString('es-DO'))} | ${stats.count} resultados | ${this.escapeHtml(this.filterDescription())}</div>
     <div class="summary"><div><small>Facturas</small><strong>${stats.count}</strong></div><div><small>Facturado</small><strong>${this.money(stats.invoiced)}</strong></div><div><small>Cobrado</small><strong>${this.money(stats.collected)}</strong></div><div><small>Saldo</small><strong>${this.money(stats.balance)}</strong></div></div>
-    ${invoices.length > printLimit ? `<p class="warning">El listado impreso contiene las primeras ${printLimit} facturas. La exportacion conserva las ${invoices.length}.</p>` : ''}
-    <table><thead><tr><th>Factura</th><th>Cliente</th><th>Emision</th><th>Vencimiento</th><th>Estado</th><th class="number">Total</th><th class="number">Cobrado</th><th class="number">Saldo</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print();}</script></body></html>`;
+    ${invoices.length > printLimit ? `<p class="warning">El listado impreso contiene las primeras ${printLimit} facturas. La exportación conserva las ${invoices.length}.</p>` : ''}
+    <table><thead><tr><th>Factura</th><th>Cliente</th><th>Emisión</th><th>Vencimiento</th><th>Estado</th><th class="number">Total</th><th class="number">Cobrado</th><th class="number">Saldo</th></tr></thead><tbody>${rows}</tbody></table><script>window.onload=function(){window.print();}</script></body></html>`;
     const win = window.open('', '_blank', 'width=1200,height=900');
     if (win) { win.document.write(html); win.document.close(); }
   }
@@ -1538,9 +1569,9 @@ export class InvoicesComponent implements OnInit {
 
   private filterDescription(): string {
     const parts = [
-      this.searchTerm ? `Busqueda: ${this.searchTerm}` : '',
-      this.statusFilter ? `Estado: ${this.statusFilter}` : '',
-      this.dateFilter ? `Periodo: ${this.dateFilter}` : '',
+      this.searchTerm ? `Búsqueda: ${this.searchTerm}` : '',
+      this.statusFilter ? `Estado: ${this.optionLabel(InvoicesComponent.STATUS_LABELS, this.statusFilter)}` : '',
+      this.dateFilter ? `Período: ${this.optionLabel(InvoicesComponent.DATE_FILTER_LABELS, this.dateFilter)}` : '',
       this.paymentFilter ? `Pago: ${this.paymentFilter}` : '',
       this.zoneFilter ? `Zona: ${this.zoneFilter}` : '',
       this.cashierFilter ? `Cajero: ${this.cashierFilter}` : '',
@@ -1548,6 +1579,19 @@ export class InvoicesComponent implements OnInit {
       this.dateTo ? `Hasta: ${this.dateTo}` : '',
     ].filter(Boolean);
     return parts.length ? parts.join(' | ') : 'Sin filtros';
+  }
+
+  private static readonly STATUS_LABELS: Record<string, string> = {
+    pagada: 'Pagadas', pendiente: 'Pendientes', vencida: 'Vencidas', partial: 'Cobro parcial', closed: 'Canceladas o transferidas',
+  };
+
+  private static readonly DATE_FILTER_LABELS: Record<string, string> = {
+    overdue: 'Vencidas', due7: 'Vencen en 7 días', 'issued-today': 'Emitidas hoy', 'issued-30': 'Emitidas últimos 30 días',
+    'issued-month': 'Emitidas este mes', 'issued-year': 'Emitidas este año', 'paid-month': 'Pagadas este mes',
+  };
+
+  private optionLabel(labels: Record<string, string>, value: string): string {
+    return labels[value] || value;
   }
 
   private articleSummary(invoice: Invoice): string {
@@ -1632,12 +1676,12 @@ export class InvoicesComponent implements OnInit {
 
   invoiceSubline(inv: Invoice): string {
     const parts = [inv.folio, inv.referencia].filter(Boolean);
-    return parts.length ? parts.join(' | ') : 'Sin referencia';
+    return parts.length ? parts.join(' · ') : '—';
   }
 
   clientSubline(inv: Invoice): string {
     const parts = [inv.cliente?.telefono, inv.cliente?.cedula, inv.cliente?.email].filter(Boolean);
-    return parts.length ? parts.join(' | ') : (inv.zona?.nombre || '-');
+    return parts.length ? parts.join(' · ') : (inv.zona?.nombre || '—');
   }
 
   private searchText(inv: Invoice): string {

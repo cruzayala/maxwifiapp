@@ -1,10 +1,10 @@
-import { DecimalPipe, UpperCasePipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
   LucideAlertTriangle, LucideArrowUpRight, LucideBanknote, LucideCalendarClock,
   LucideCircleCheck, LucideDownload, LucideFileText, LucideMessageCircle,
-  LucidePhone, LucidePhoneOff, LucideRotateCcw, LucideSearch,
+  LucidePhone, LucidePhoneOff, LucideRefreshCw, LucideRotateCcw, LucideSearch,
   LucideSlidersHorizontal, LucideUsers,
 } from '@lucide/angular';
 import { RouterLink } from '@angular/router';
@@ -14,6 +14,7 @@ import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
 import { ExportService } from '../../services/export.service';
 import { LocalDbService } from '../../services/local-db.service';
+import { initialsOf } from '../../pipes/initials';
 
 type RiskLevel = 'alto' | 'medio' | 'bajo';
 type SortMode = 'priority' | 'amount' | 'invoices' | 'name';
@@ -31,10 +32,10 @@ interface MorosoInfo {
   selector: 'app-morosos',
   standalone: true,
   imports: [
-    NavbarComponent, DecimalPipe, UpperCasePipe, RouterLink, FormsModule, PlanLabelPipe,
+    NavbarComponent, DecimalPipe, RouterLink, FormsModule, PlanLabelPipe,
     LucideAlertTriangle, LucideArrowUpRight, LucideBanknote, LucideCalendarClock,
     LucideCircleCheck, LucideDownload, LucideFileText, LucideMessageCircle,
-    LucidePhone, LucidePhoneOff, LucideRotateCcw, LucideSearch,
+    LucidePhone, LucidePhoneOff, LucideRefreshCw, LucideRotateCcw, LucideSearch,
     LucideSlidersHorizontal, LucideUsers,
   ],
   templateUrl: './morosos.html',
@@ -72,8 +73,8 @@ export class MorososComponent implements OnInit {
     try {
       const [clients, invoices] = await Promise.all([this.db.getClients(), this.db.getInvoices()]);
       this.computeMorosos(clients, invoices);
-    } catch (error) {
-      this.errorMessage.set(error instanceof Error ? error.message : 'No fue posible cargar la cartera vencida.');
+    } catch {
+      this.errorMessage.set('No fue posible cargar la cartera vencida. Revisa la conexión con el servidor y vuelve a intentarlo.');
     } finally {
       this.loading.set(false);
     }
@@ -130,6 +131,14 @@ export class MorososComponent implements OnInit {
     this.filter();
   }
 
+  reload() {
+    void this.ngOnInit();
+  }
+
+  riskLabel(risk: RiskLevel): string {
+    return risk === 'alto' ? 'Alto' : risk === 'medio' ? 'Medio' : 'Reciente';
+  }
+
   filter() {
     let result = [...this.allMorosos()];
     const term = this.searchTerm.trim().toLowerCase();
@@ -178,7 +187,7 @@ export class MorososComponent implements OnInit {
   }
 
   initials(name: string): string {
-    return (name || '?').trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+    return initialsOf(name);
   }
 
   exportMorosos() {
@@ -190,19 +199,19 @@ export class MorososComponent implements OnInit {
       facturas_pendientes: item.facturasPendientes,
       monto_total: item.montoTotal,
       dias_vencido: item.diasVencido,
-      riesgo: item.riesgo,
+      riesgo: this.riskLabel(item.riesgo),
       fecha_corte: item.client.fecha_corte,
       ip: item.client.ip,
     })), 'morosos_cobranza', [
       { key: 'nombre', label: 'Cliente' },
-      { key: 'telefono', label: 'Telefono' },
+      { key: 'telefono', label: 'Teléfono' },
       { key: 'plan', label: 'Plan' },
       { key: 'precio', label: 'Precio' },
-      { key: 'facturas_pendientes', label: 'Facturas Pend.' },
-      { key: 'monto_total', label: 'Monto Total' },
-      { key: 'dias_vencido', label: 'Dias Vencido' },
+      { key: 'facturas_pendientes', label: 'Facturas pendientes' },
+      { key: 'monto_total', label: 'Monto total' },
+      { key: 'dias_vencido', label: 'Días vencido' },
       { key: 'riesgo', label: 'Riesgo' },
-      { key: 'fecha_corte', label: 'Fecha Corte' },
+      { key: 'fecha_corte', label: 'Fecha de corte' },
       { key: 'ip', label: 'IP' },
     ]);
   }
