@@ -9,8 +9,11 @@ import {
   LucideChevronLeft,
   LucideChevronRight,
   LucideCircleCheck,
+  LucideDownload,
+  LucideExternalLink,
   LucideEye,
   LucideGauge,
+  LucideHeartPulse,
   LucideLink2,
   LucideMoreHorizontal,
   LucideNetwork,
@@ -36,11 +39,28 @@ import { ToastService } from '../../services/toast.service';
 import { Tr069ConsoleComponent } from './tr069-console';
 import { OnuModelCatalogComponent } from './onu-model-catalog';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
+import { ExportService } from '../../services/export.service';
+import { CopyValueComponent } from './copy-value';
+import { OltNetworkHealthComponent } from './olt-network-health';
+import { OnuGlobalSearchComponent } from './onu-global-search';
+import { OpticalTrendComponent } from './optical-trend';
+import { QuickChip, QuickChipsComponent } from './quick-chips';
+import {
+  ONU_CSV_COLUMNS, alarmLevelLabel as alarmLevelText, formatDateTime, isCriticalPower as criticalPower,
+  isWeakPower as weakPower, matchesOnu, onuIp, onuMac, phaseStateLabel as phaseText, relativeTime,
+} from './olt-helpers';
 
-type OltTab = 'overview' | 'onus' | 'topology' | 'profiles' | 'installations' | 'discovered' | 'alarms' | 'activity';
+type OltTab = 'overview' | 'health' | 'onus' | 'topology' | 'profiles' | 'installations' | 'discovered' | 'alarms' | 'activity';
 type OnuFilter = 'all' | 'online' | 'offline';
 type MappingFilter = 'all' | 'linked' | 'unlinked';
 type DiscoveryFilter = 'all' | 'new' | 'relocation' | 'review';
+/** Filtros rápidos del inventario: los de estado/asociación usan el servidor; los de señal se calculan localmente. */
+type InventoryQuick = 'all' | 'offline' | 'weak' | 'critical' | 'unlinked';
+type InstallationFilter = 'all' | 'active' | 'error' | 'complete';
+type AlarmFilter = 'all' | 'critical' | 'signal' | 'chassis';
+
+const TAB_STORAGE_KEY = 'ispmax.olt.tab';
+const REMEMBERED_TABS: OltTab[] = ['overview', 'health', 'onus', 'installations'];
 
 type PonPortState = 'online' | 'warning' | 'critical' | 'offline' | 'empty' | 'damaged';
 
@@ -84,8 +104,9 @@ const EMPTY_RECONCILIATION: OltReconciliation = {
     NavbarComponent, FormsModule, RouterLink, LucideActivity, LucideAlertTriangle, LucideBan, LucideBox,
     LucideChevronLeft, LucideChevronRight, LucideCircleCheck, LucideGauge, LucideLink2, LucideRefreshCw,
     LucideEye, LucideMoreHorizontal, LucideNetwork, LucidePlus, LucidePower, LucideSearch, LucideServer,
-    LucideTrash2, LucideX, Tr069ConsoleComponent,
-    OnuModelCatalogComponent, PlanLabelPipe,
+    LucideTrash2, LucideX, LucideDownload, LucideExternalLink, LucideHeartPulse, Tr069ConsoleComponent,
+    OnuModelCatalogComponent, PlanLabelPipe, CopyValueComponent, OltNetworkHealthComponent, OnuGlobalSearchComponent,
+    OpticalTrendComponent, QuickChipsComponent,
   ],
   templateUrl: './olt.html',
   styleUrl: './olt.scss',
@@ -93,6 +114,7 @@ const EMPTY_RECONCILIATION: OltReconciliation = {
 export class OltComponent implements OnInit, OnDestroy {
   private readonly olt = inject(OltService);
   private readonly toast = inject(ToastService);
+  private readonly exporter = inject(ExportService);
   readonly auth = inject(AuthService);
 
   readonly status = signal<OltStatus>(EMPTY_STATUS);
@@ -200,6 +222,91 @@ export class OltComponent implements OnInit, OnDestroy {
   });
   readonly ponMapGroups = computed<PonMapGroup[]>(() => this.buildPonMapGroups());
 
+  // --- Análisis local (solo lectura) sobre el inventario ya cargado para el mapa ---
+  readonly localSignalFilter = signal<'weak' | 'critical' | null>(null);
+  readonly installationFilter = signal<InstallationFilter>('all');
+  readonly alarmFilter = signal<AlarmFilter>('all');
+  private readonly onusByIndex = computed(() => new Map(this.mapOnus().map((onu) => [onu.onuIndex, onu])));
+  readonly signalCounts = computed(() => {
+    const online = this.mapOnus().filter((onu) => onu.online);
+    return {
+      weak: online.filter((onu) => weakPower(onu.rxPowerDbm) && !criticalPower(onu.rxPowerDbm)).length,
+      critical: online.filter((onu) => criticalPower(onu.rxPowerDbm)).length,
+    };
+  });
+  /** Problemas que merecen atención: ONUs caídas + señal crítica (insignia de la pestaña Salud). */
+  readonly healthIssues = computed(() => this.status().totals.offlineOnus + this.signalCounts().critical);
+  readonly activeQuickFilter = computed<InventoryQuick | null>(() => {
+    const local = this.localSignalFilter();
+    if (local) return local;
+    const status = this.onuStatus();
+    const mapping = this.mappingStatus();
+    if (status === 'all' && mapping === 'all') return 'all';
+    if (status === 'offline' && mapping === 'all') return 'offline';
+    if (status === 'all' && mapping === 'unlinked') return 'unlinked';
+    return null;
+  });
+  readonly inventoryChips = computed<QuickChip[]>(() => {
+    const totals = this.status().totals;
+    const counts = this.signalCounts();
+    return [
+      { key: 'all', label: 'Todas', count: totals.totalOnus },
+      { key: 'offline', label: 'Caídas', count: totals.offlineOnus, tone: 'danger', hint: 'ONUs sin conexión ahora' },
+      { key: 'critical', label: 'Señal crítica', count: counts.critical, tone: 'danger', hint: 'En línea con RX de -30 dBm o menos' },
+      { key: 'weak', label: 'Señal débil', count: counts.weak, tone: 'warning', hint: 'En línea con RX entre -27 y -30 dBm' },
+      { key: 'unlinked', label: 'Sin cliente asociado', count: totals.unlinkedOnus, tone: 'info', hint: 'ONUs sin cliente de WispHub asociado' },
+    ];
+  });
+  /** Filas del filtro de señal: se calculan con el inventario del mapa, de peor a mejor señal. */
+  readonly localSignalRows = computed(() => {
+    const filter = this.localSignalFilter();
+    if (!filter) return [];
+    const pon = this.selectedPon();
+    const query = this.search();
+    return this.mapOnus()
+      .filter((onu) => onu.online && (filter === 'critical'
+        ? criticalPower(onu.rxPowerDbm)
+        : weakPower(onu.rxPowerDbm) && !criticalPower(onu.rxPowerDbm)))
+      .filter((onu) => pon == null || onu.pon === pon)
+      .filter((onu) => matchesOnu(onu, query))
+      .sort((a, b) => Number(a.rxPowerDbm) - Number(b.rxPowerDbm));
+  });
+  readonly inventoryRows = computed(() => this.localSignalFilter() ? this.localSignalRows() : this.onuPage().items);
+  readonly installationChips = computed<QuickChip[]>(() => {
+    const jobs = this.installations();
+    return [
+      { key: 'all', label: 'Todas', count: jobs.length },
+      { key: 'active', label: 'En curso', count: jobs.filter((job) => !['complete', 'cancelled', 'failed'].includes(job.status)).length, tone: 'info' },
+      { key: 'error', label: 'Con error', count: jobs.filter((job) => this.installationHasError(job)).length, tone: 'danger' },
+      { key: 'complete', label: 'Completadas', count: jobs.filter((job) => job.status === 'complete').length, tone: 'success' },
+    ];
+  });
+  readonly filteredInstallations = computed(() => {
+    const filter = this.installationFilter();
+    return this.installations().filter((job) => {
+      if (filter === 'active') return !['complete', 'cancelled', 'failed'].includes(job.status);
+      if (filter === 'error') return this.installationHasError(job);
+      if (filter === 'complete') return job.status === 'complete';
+      return true;
+    });
+  });
+  readonly alarmChips = computed<QuickChip[]>(() => [
+    { key: 'all', label: 'Todas', count: this.alarms().length + this.signalAlerts().length },
+    { key: 'critical', label: 'Críticas', count: this.alarms().filter((alarm) => alarm.level === 'critical').length + this.signalAlerts().filter((alert) => alert.severity === 'critical').length, tone: 'danger' },
+    { key: 'signal', label: 'Señal óptica', count: this.signalAlerts().length, tone: 'warning' },
+    { key: 'chassis', label: 'Chasis OLT', count: this.alarms().length, tone: 'info' },
+  ]);
+  readonly visibleSignalAlerts = computed(() => {
+    const filter = this.alarmFilter();
+    if (filter === 'chassis') return [];
+    return this.signalAlerts().filter((alert) => filter !== 'critical' || alert.severity === 'critical');
+  });
+  readonly visibleAlarms = computed(() => {
+    const filter = this.alarmFilter();
+    if (filter === 'signal') return [];
+    return this.alarms().filter((alarm) => filter !== 'critical' || alarm.level === 'critical');
+  });
+
   private refreshTimer?: ReturnType<typeof setInterval>;
   private searchTimer?: ReturnType<typeof setTimeout>;
   private clientSearchTimer?: ReturnType<typeof setTimeout>;
@@ -231,6 +338,7 @@ export class OltComponent implements OnInit, OnDestroy {
   newProfile = { name: '', onuType: '', vendorPrefix: '', vlan: 101, tcontProfile: '', trafficProfile: '', isDefault: false };
 
   ngOnInit() {
+    this.restoreRememberedTab();
     this.loadAll();
     this.refreshTimer = setInterval(() => this.loadAll(true), 60000);
   }
@@ -294,6 +402,7 @@ export class OltComponent implements OnInit, OnDestroy {
 
   setTab(tab: OltTab) {
     this.tab.set(tab);
+    this.rememberTab(tab);
     this.activeWorkspace.set('map');
     if (tab === 'profiles' && !this.planSyncPreview()) this.loadPlanSyncPreview();
   }
@@ -407,6 +516,127 @@ export class OltComponent implements OnInit, OnDestroy {
     return 'Buena';
   }
 
+  // --- Funciones nuevas de análisis, navegación y exportación (no escriben en la OLT) ---
+
+  /** Chip rápido del inventario. «Caídas» y «Sin cliente» usan los filtros del servidor; la señal se filtra localmente. */
+  setQuickFilter(key: string) {
+    const quick = key as InventoryQuick;
+    if (quick === 'weak' || quick === 'critical') {
+      // Filtro local: no consulta al servidor; los filtros de estado quedan en «Todas» para no confundir.
+      this.localSignalFilter.set(quick);
+      this.onuStatus.set('all');
+      this.mappingStatus.set('all');
+      return;
+    }
+    this.localSignalFilter.set(null);
+    this.onuStatus.set(quick === 'offline' ? 'offline' : 'all');
+    this.mappingStatus.set(quick === 'unlinked' ? 'unlinked' : 'all');
+    this.loadOnus(1);
+  }
+
+  /** Desde el panel de salud: abre el inventario con el filtro indicado y todas las PON. */
+  showInventoryFilter(key: string) {
+    this.selectedPon.set(null);
+    this.setTab('onus');
+    this.setQuickFilter(key);
+  }
+
+  /** Desde el panel de salud: abre el mapa en el PON indicado. */
+  openPonOnMap(pon: number) {
+    this.setTab('overview');
+    this.selectMapPon(pon);
+  }
+
+  showSearchInInventory() {
+    this.localSignalFilter.set(null);
+    this.setTab('onus');
+  }
+
+  exportInventory() {
+    const rows = this.inventoryRows();
+    if (!rows.length) { this.toast.info('No hay ONUs en la vista actual para exportar'); return; }
+    const suffix = this.localSignalFilter() || (this.onuStatus() !== 'all' ? this.onuStatus() : '') || (this.mappingStatus() !== 'all' ? this.mappingStatus() : '');
+    this.exporter.exportCSV(rows, suffix ? `onus_${suffix}` : 'onus', ONU_CSV_COLUMNS);
+    this.toast.success(`${rows.length} ONUs exportadas a CSV`);
+  }
+
+  setInstallationFilter(key: string) { this.installationFilter.set(key as InstallationFilter); }
+  setAlarmFilter(key: string) { this.alarmFilter.set(key as AlarmFilter); }
+
+  installationHasError(job: ProvisioningJob) {
+    if (job.status === 'complete' || job.status === 'cancelled') return false;
+    return job.status === 'failed' || job.status === 'partial' || job.localStatus === 'error' || Boolean(job.errorMessage);
+  }
+
+  exportInstallations() {
+    const rows = this.filteredInstallations();
+    if (!rows.length) { this.toast.info('No hay expedientes en la vista actual para exportar'); return; }
+    this.exporter.exportCSV(rows, 'instalaciones', [
+      { key: 'clientName', label: 'Cliente' },
+      { key: 'clientIdServicio', label: 'ID servicio' },
+      { key: 'ip', label: 'IP' },
+      { key: 'serial', label: 'Serial' },
+      { key: 'model', label: 'Modelo' },
+      { key: 'ponIndex', label: 'PON' },
+      { key: 'onuIndex', label: 'ONU' },
+      { key: 'stage', label: 'Etapa', transform: (value: string) => this.installationStage(value || '') },
+      { key: 'status', label: 'Estado', transform: (_: unknown, row: ProvisioningJob) => this.installationStatusLabel(row) },
+      { key: 'errorMessage', label: 'Error' },
+      { key: 'agentVersion', label: 'Versión del agente' },
+      { key: 'createdAt', label: 'Creado', transform: (value: string) => formatDateTime(value) },
+      { key: 'updatedAt', label: 'Actualizado', transform: (value: string) => formatDateTime(value) },
+    ]);
+  }
+
+  exportAlarms() {
+    const rows = [
+      ...this.visibleSignalAlerts().map((alert) => ({
+        tipo: 'Señal óptica', nivel: alarmLevelText(alert.severity), descripcion: alert.message, onu: alert.onuIndex,
+        cliente: this.alertOnu(alert.onuIndex)?.client?.nombre || '', detecciones: alert.occurrenceCount,
+        desde: formatDateTime(alert.firstSeenAt), ultima: formatDateTime(alert.lastSeenAt),
+      })),
+      ...this.visibleAlarms().map((alarm) => ({
+        tipo: 'Chasis OLT', nivel: alarmLevelText(alarm.level), descripcion: alarm.description, onu: '', cliente: '',
+        detecciones: '', desde: alarm.alarmTime || '', ultima: formatDateTime(alarm.lastSeenAt),
+      })),
+    ];
+    if (!rows.length) { this.toast.info('No hay alarmas en la vista actual para exportar'); return; }
+    this.exporter.exportCSV(rows, 'alarmas_olt', [
+      { key: 'tipo', label: 'Tipo' }, { key: 'nivel', label: 'Nivel' }, { key: 'descripcion', label: 'Descripción' },
+      { key: 'onu', label: 'ONU' }, { key: 'cliente', label: 'Cliente' }, { key: 'detecciones', label: 'Detecciones' },
+      { key: 'desde', label: 'Desde' }, { key: 'ultima', label: 'Última vez' },
+    ]);
+  }
+
+  /** ONU del inventario cargado que corresponde a una alerta de señal (para abrirla o ver su cliente). */
+  alertOnu(onuIndex: string) { return this.onusByIndex().get(onuIndex) || null; }
+
+  onuIpAddress(onu: OltOnu) { return onuIp(onu); }
+  onuMacAddress(onu: OltOnu) { return onuMac(onu); }
+  timeAgo(value?: string | Date | null) { return relativeTime(value); }
+
+  /** Resumen del PON para el título (tooltip) de la lista lateral del mapa. */
+  ponTooltip(pon: OltPon) {
+    const parts = [`PON ${pon.pon}: ${pon.total}/${pon.capacity} ONUs`, `${pon.online} en línea`];
+    if (pon.offline) parts.push(`${pon.offline} sin conexión`);
+    if (pon.weak) parts.push(`${pon.weak} señal débil`);
+    if (pon.critical) parts.push(`${pon.critical} señal crítica`);
+    if (pon.avgRxPowerDbm != null) parts.push(`RX promedio ${pon.avgRxPowerDbm} dBm`);
+    return parts.join(' · ');
+  }
+
+  private rememberTab(tab: OltTab) {
+    if (!REMEMBERED_TABS.includes(tab)) return;
+    try { localStorage.setItem(TAB_STORAGE_KEY, tab); } catch { /* almacenamiento no disponible */ }
+  }
+
+  private restoreRememberedTab() {
+    try {
+      const saved = localStorage.getItem(TAB_STORAGE_KEY) as OltTab | null;
+      if (saved && REMEMBERED_TABS.includes(saved)) this.tab.set(saved);
+    } catch { /* almacenamiento no disponible */ }
+  }
+
   formatDbm(value?: number | null) {
     return value != null ? `${value} dBm` : '--';
   }
@@ -416,11 +646,7 @@ export class OltComponent implements OnInit, OnDestroy {
   }
 
   alarmLevelLabel(level?: string | null) {
-    const labels: Record<string, string> = {
-      critical: 'Crítica', major: 'Mayor', minor: 'Menor', warning: 'Aviso', info: 'Informativa', normal: 'Normal',
-    };
-    const key = String(level || '').trim().toLowerCase();
-    return labels[key] || level || 'Aviso';
+    return alarmLevelText(level);
   }
 
   installationStatusLabel(job: ProvisioningJob) {
@@ -451,18 +677,7 @@ export class OltComponent implements OnInit, OnDestroy {
 
   // Estados de fase que reporta la ZTE C320, traducidos para el operador.
   private phaseStateLabel(phase?: string | null) {
-    const labels: Record<string, string> = {
-      'los': 'Sin señal óptica (LOS)',
-      'dyinggasp': 'Sin energía',
-      'offline': 'Fuera de línea',
-      'not-seen': 'Nunca vista',
-      'syncmib': 'Sincronizando',
-      'logging': 'Registrándose',
-      'authfailed': 'Autenticación fallida',
-      'working': 'Operativa',
-    };
-    const key = String(phase || '').trim().toLowerCase();
-    return labels[key] || phase || 'Fuera de línea';
+    return phaseText(phase);
   }
 
   loadPlanSyncPreview() {
@@ -569,6 +784,7 @@ export class OltComponent implements OnInit, OnDestroy {
   }
 
   filterStatus(status: OnuFilter) {
+    this.localSignalFilter.set(null);
     this.onuStatus.set(status);
     this.loadOnus(1);
   }
@@ -580,6 +796,7 @@ export class OltComponent implements OnInit, OnDestroy {
   }
 
   filterMapping(mapping: MappingFilter) {
+    this.localSignalFilter.set(null);
     this.mappingStatus.set(mapping);
     this.loadOnus(1);
   }
@@ -1217,13 +1434,12 @@ export class OltComponent implements OnInit, OnDestroy {
     this.activeWorkspace.set('map');
   }
   ponUsage(pon: OltPon) { return pon.utilizationPercent; }
-  isWeakPower(value?: number | null) { return value != null && value <= -27; }
-  isCriticalPower(value?: number | null) { return value != null && value <= -30; }
+  isWeakPower(value?: number | null) { return weakPower(value); }
+  isCriticalPower(value?: number | null) { return criticalPower(value); }
   trackPon(_: number, pon: OltPon) { return pon.ponIndex; }
 
   formatDate(value?: string | Date | null) {
-    if (!value) return 'Sin registro';
-    return new Intl.DateTimeFormat('es-DO', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+    return formatDateTime(value);
   }
 
   private filters() {

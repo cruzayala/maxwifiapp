@@ -1,0 +1,169 @@
+<section class="health">
+  <header class="health-head">
+    <div>
+      <span class="eyebrow">Diagnóstico de fibra</span>
+      <h2>Salud de la red óptica</h2>
+      <p>
+        Lo peor primero: {{ kpis().total }} ONUs analizadas
+        @if (loadedAt()) { · actualizado {{ ago(loadedAt()) }} }
+        · se recalcula con cada lectura de la OLT.
+      </p>
+    </div>
+    <div class="head-actions">
+      <button type="button" class="ghost" (click)="exportOnus()" [disabled]="!onus().length" title="Descarga todas las ONUs cargadas en un archivo CSV"><svg lucideDownload size="15" aria-hidden="true"></svg>ONUs CSV</button>
+      <button type="button" class="ghost" (click)="exportPons()" [disabled]="!pons().length" title="Descarga el resumen por PON en un archivo CSV"><svg lucideDownload size="15" aria-hidden="true"></svg>Resumen PON</button>
+      <button type="button" class="ghost" (click)="exportAlarms()" [disabled]="!kpis().alerts" title="Descarga alarmas y alertas de señal en un archivo CSV"><svg lucideDownload size="15" aria-hidden="true"></svg>Alarmas CSV</button>
+    </div>
+  </header>
+
+  @if (partialCoverage()) {
+    <p class="coverage"><svg lucideInfo size="15" aria-hidden="true"></svg>Se analizan {{ onus().length }} de {{ totalOnus() }} ONUs (las cargadas en el mapa). Los totales por PON sí incluyen todas.</p>
+  }
+
+  <div class="kpis">
+    <div class="kpi"><span>En línea</span><strong>{{ kpis().onlinePercent }}%</strong><small>{{ kpis().online }} de {{ kpis().total }} ONUs</small></div>
+    <button type="button" class="kpi" [class.danger]="kpis().offline" (click)="showInventory.emit('offline')" title="Ver ONUs caídas en el inventario">
+      <span>Caídas</span><strong>{{ kpis().offline }}</strong><small>{{ kpis().los }} sin fibra (LOS) · {{ kpis().power }} sin energía</small>
+    </button>
+    <button type="button" class="kpi" [class.danger]="kpis().critical" (click)="showInventory.emit('critical')" title="Ver ONUs con señal crítica">
+      <span>Señal crítica</span><strong>{{ kpis().critical }}</strong><small>≤ {{ criticalLimit }} dBm</small>
+    </button>
+    <button type="button" class="kpi" [class.warning]="kpis().weak" (click)="showInventory.emit('weak')" title="Ver ONUs con señal débil">
+      <span>Señal débil</span><strong>{{ kpis().weak }}</strong><small>{{ weakLimit }} a {{ criticalLimit }} dBm</small>
+    </button>
+    <button type="button" class="kpi" [class.info]="kpis().unlinked" (click)="showInventory.emit('unlinked')" title="Ver ONUs sin cliente asociado">
+      <span>Sin cliente</span><strong>{{ kpis().unlinked }}</strong><small>Sin asociar en ISP Max</small>
+    </button>
+    <div class="kpi"><span>RX promedio</span><strong class="mono">{{ kpis().avgRx != null ? kpis().avgRx + ' dBm' : '--' }}</strong><small>{{ kpis().noReading }} en línea sin lectura</small></div>
+  </div>
+
+  <section class="card insights" aria-labelledby="health-insights-title">
+    <header><h3 id="health-insights-title">Qué revisar primero</h3><small>Conclusiones automáticas a partir del estado actual</small></header>
+    @for (item of insights(); track item.key) {
+      <div [class]="'insight ' + item.tone">
+        <span class="insight-icon">
+          @if (item.tone === 'critical') { <svg lucideAlertTriangle size="17" aria-hidden="true"></svg> }
+          @else if (item.key.startsWith('power')) { <svg lucidePlugZap size="17" aria-hidden="true"></svg> }
+          @else if (item.key === 'unlinked') { <svg lucideUserX size="17" aria-hidden="true"></svg> }
+          @else if (item.tone === 'info') { <svg lucideInfo size="17" aria-hidden="true"></svg> }
+          @else { <svg lucideGauge size="17" aria-hidden="true"></svg> }
+        </span>
+        <div><strong>{{ item.title }}</strong><small>{{ item.detail }}</small></div>
+        @if (item.pon != null) {
+          <button type="button" class="link" (click)="openPon.emit(item.pon)">Ver PON {{ item.pon }}<svg lucideChevronRight size="14" aria-hidden="true"></svg></button>
+        } @else if (item.filter) {
+          <button type="button" class="link" (click)="showInventory.emit(item.filter)">Ver lista<svg lucideChevronRight size="14" aria-hidden="true"></svg></button>
+        }
+      </div>
+    } @empty {
+      <div class="all-good"><svg lucideCircleCheck size="22" aria-hidden="true"></svg><div><strong>Sin problemas detectados</strong><small>Ninguna ONU caída ni con señal fuera de rango en este momento.</small></div></div>
+    }
+  </section>
+
+  <section class="card" aria-labelledby="health-pon-title">
+    <header><h3 id="health-pon-title">Resumen por PON</h3><small>Ordenado de peor a mejor · clic en una fila para abrir su mapa</small></header>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Estado</th><th>PON</th><th>Ocupación</th><th>En línea</th><th>Caídas</th><th>Señal débil / crítica</th><th>RX promedio</th><th>Peor ONU</th></tr></thead>
+        <tbody>
+          @for (row of ponRows(); track row.pon.ponIndex) {
+            <tr (click)="openPon.emit(row.pon.pon)" tabindex="0" (keydown.enter)="openPon.emit(row.pon.pon)" [title]="'Abrir el mapa del PON ' + row.pon.pon">
+              <td><span [class]="'light ' + row.tone"><i></i>{{ row.toneLabel }}</span><small class="reason">{{ row.reason }}</small></td>
+              <td class="strong">PON {{ row.pon.pon }}<small class="mono">{{ row.pon.ponIndex }}</small></td>
+              <td>
+                <div class="usage" [class.high]="row.pon.utilizationPercent >= 90"><span [style.width.%]="row.pon.utilizationPercent"></span></div>
+                <small>{{ row.pon.total }}/{{ row.pon.capacity }} · {{ row.pon.utilizationPercent }}%</small>
+              </td>
+              <td>{{ row.pon.online }}</td>
+              <td [class.bad]="row.pon.offline">
+                {{ row.pon.offline }}
+                @if (row.pon.offline) { <small>{{ row.los }} LOS · {{ row.power }} energía@if (row.otherDown) { · {{ row.otherDown }} otras }</small> }
+              </td>
+              <td><span [class.warn]="row.pon.weak">{{ row.pon.weak }}</span> / <span [class.bad]="row.pon.critical">{{ row.pon.critical }}</span></td>
+              <td class="mono">{{ row.pon.avgRxPowerDbm != null ? row.pon.avgRxPowerDbm + ' dBm' : '--' }}</td>
+              <td>
+                @if (row.worst; as worst) {
+                  <button type="button" class="onu-link" (click)="$event.stopPropagation(); openOnu.emit(worst)">{{ name(worst) }}</button>
+                  <small class="mono" [class.bad]="state(worst) === 'critical'" [class.warn]="state(worst) === 'warning'">{{ worst.rxPowerDbm }} dBm</small>
+                } @else { <span class="muted">--</span> }
+              </td>
+            </tr>
+          } @empty {
+            <tr><td colspan="8" class="empty">No hay puertos PON en el último inventario. Sincronice la OLT.</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="rankings">
+    <section class="card" aria-labelledby="health-rx-title">
+      <header><h3 id="health-rx-title">Peor señal RX</h3><small>Las 10 ONUs en línea con menos potencia</small></header>
+      <ol class="rank">
+        @for (onu of worstSignal(); track onu.id; let index = $index) {
+          <li>
+            <b class="pos">{{ index + 1 }}</b>
+            <div class="rank-copy">
+              <button type="button" class="onu-link" (click)="openOnu.emit(onu)">{{ name(onu) }}</button>
+              <small>PON {{ onu.pon }} · ONU {{ onu.onuId }} · <app-copy-value [value]="onu.serial" label="serial" /></small>
+              <div class="meter" [attr.aria-label]="onu.rxPowerDbm + ' dBm'">
+                <span [class]="'fill ' + state(onu)" [style.width.%]="meter(onu.rxPowerDbm)"></span>
+                <i class="mark" [style.left.%]="thresholdPosition(weakLimit)"></i>
+                <i class="mark red" [style.left.%]="thresholdPosition(criticalLimit)"></i>
+              </div>
+            </div>
+            <strong [class]="'dbm ' + state(onu)">{{ onu.rxPowerDbm }} dBm</strong>
+          </li>
+        } @empty {
+          <li class="empty">Aún no hay lecturas ópticas de ONUs en línea.</li>
+        }
+      </ol>
+    </section>
+
+    <section class="card" aria-labelledby="health-down-title">
+      <header><h3 id="health-down-title">Caídas ahora</h3><small>Primero sin fibra (LOS), luego sin energía</small></header>
+      <ol class="rank">
+        @for (onu of downNow(); track onu.id) {
+          <li>
+            <span [class]="'cause ' + cause(onu)" [title]="causeLabel(onu)">
+              @if (cause(onu) === 'power') { <svg lucidePlugZap size="15" aria-hidden="true"></svg> } @else { <svg lucideUnplug size="15" aria-hidden="true"></svg> }
+            </span>
+            <div class="rank-copy">
+              <button type="button" class="onu-link" (click)="openOnu.emit(onu)">{{ name(onu) }}</button>
+              <small>PON {{ onu.pon }} · ONU {{ onu.onuId }} · {{ causeLabel(onu) }}</small>
+            </div>
+            <span class="side">
+              @if (onu.clientIdServicio) { <a [routerLink]="['/clients', onu.clientIdServicio]" title="Abrir expediente del cliente">Cliente</a> }
+              <small [title]="date(onu.lastSeenAt)">{{ ago(onu.lastSeenAt) }}</small>
+            </span>
+          </li>
+        } @empty {
+          <li class="empty ok"><svg lucideCircleCheck size="16" aria-hidden="true"></svg>Todas las ONUs están en línea.</li>
+        }
+      </ol>
+      @if (kpis().offline > downNow().length) {
+        <button type="button" class="more" (click)="showInventory.emit('offline')">Ver las {{ kpis().offline }} caídas<svg lucideChevronRight size="14" aria-hidden="true"></svg></button>
+      }
+    </section>
+
+    <section class="card" aria-labelledby="health-alerts-title">
+      <header><h3 id="health-alerts-title">Más alertas de señal</h3><small>ONUs con más detecciones de degradación</small></header>
+      <ol class="rank">
+        @for (group of alertRanking(); track group.onuIndex) {
+          <li>
+            <b class="count" [class.critical]="group.critical" [title]="group.alerts + ' alertas activas'">{{ group.detections }}</b>
+            <div class="rank-copy">
+              @if (group.onu; as onu) {
+                <button type="button" class="onu-link" (click)="openOnu.emit(onu)">{{ name(onu) }}</button>
+              } @else { <strong class="mono">{{ group.onuIndex }}</strong> }
+              <small>{{ group.message }}</small>
+            </div>
+            <small class="side" [title]="date(group.lastSeenAt)">{{ ago(group.lastSeenAt) }}</small>
+          </li>
+        } @empty {
+          <li class="empty ok"><svg lucideCircleCheck size="16" aria-hidden="true"></svg>Sin alertas de degradación activas.</li>
+        }
+      </ol>
+    </section>
+  </div>
+</section>

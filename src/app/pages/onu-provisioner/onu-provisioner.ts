@@ -13,6 +13,9 @@ import { firstValueFrom } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { AuthService } from '../../services/auth.service';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
+import { ExportService } from '../../services/export.service';
+import { CopyValueComponent } from '../olt/copy-value';
+import { AgentReadinessComponent } from './agent-readiness';
 
 type AgentTab = 'operation' | 'agents' | 'history';
 type AgentTaskAction = 'discover' | 'check' | 'provision';
@@ -108,7 +111,7 @@ interface OnuModelProfile {
     LucideDownload, LucideHistory, LucideKeyRound, LucideLaptop,
     LucideLoaderCircle, LucidePencil, LucidePlay, LucideRefreshCw, LucideRouter,
     LucideSearch, LucideServer, LucideSettings, LucideShieldCheck, LucideShieldOff,
-    LucideUserPlus, LucideWifi, LucideX,
+    LucideUserPlus, LucideWifi, LucideX, AgentReadinessComponent, CopyValueComponent,
   ],
   templateUrl: './onu-provisioner.html',
   styleUrl: './onu-provisioner.scss',
@@ -117,6 +120,7 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient);
   private readonly route = inject(ActivatedRoute);
   private readonly auth = inject(AuthService);
+  private readonly exporter = inject(ExportService);
   readonly tab = signal<AgentTab>('operation');
   readonly agents = signal<OnuAgent[]>([]);
   readonly tasks = signal<OnuAgentTask[]>([]);
@@ -548,6 +552,65 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
     let value: any = this.onuInventory();
     for (const key of path.split('.')) value = value?.[key];
     return value == null || value === '' ? fallback : String(value);
+  }
+
+  /** Qué falta en el paso «Servicio» (solo informativo; la validación real sigue en prepareService). */
+  serviceMissing() {
+    const missing: string[] = [];
+    if (!this.detectedSerial()) missing.push('serial leído de la ONU');
+    if (this.serviceOperation === 'new_client') {
+      if (!this.clientName.trim()) missing.push('nombre del cliente');
+      if (!this.zoneId) missing.push('zona');
+      if (!this.planId) missing.push('plan');
+      if (this.serviceMode === 'router' && !this.wanIp) missing.push('IP disponible');
+    } else {
+      if (!this.selectedExistingClient()) missing.push('cliente existente');
+      else if (!this.operationReason.trim()) missing.push('motivo técnico');
+      if (this.serviceOperation === 'migrate_pon' && this.selectedExistingClient() && !this.targetPonIndex.trim()) missing.push('PON de destino');
+    }
+    return missing.length ? `Falta: ${missing.join(', ')}` : '';
+  }
+
+  /** Qué falta en el paso «WiFi» (solo informativo). */
+  wifiMissing() {
+    if (this.serviceMode !== 'router' || !this.wifiEnabled) return '';
+    if (!this.wifiSsid.trim()) return 'Falta: nombre de la red WiFi';
+    if (this.wifiPassword.length < 8) return 'Falta: clave WiFi de al menos 8 caracteres';
+    return '';
+  }
+
+  /** Tiempo relativo corto para el último contacto de un agente. */
+  seenAgo(value?: string | null) {
+    if (!value) return 'sin registro';
+    const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+    if (seconds < 60) return `hace ${seconds} s`;
+    const minutes = Math.round(seconds / 60);
+    if (minutes < 60) return `hace ${minutes} min`;
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `hace ${hours} h`;
+    return `hace ${Math.round(hours / 24)} días`;
+  }
+
+  /** Exporta a CSV el historial visible (respeta la búsqueda). */
+  exportHistory() {
+    const rows = this.filteredTasks();
+    if (!rows.length) { this.notice.set('No hay trabajos en la vista actual para exportar'); return; }
+    this.exporter.exportCSV(rows, 'trabajos_onu_studio', [
+      { key: 'id', label: 'Trabajo' },
+      { key: 'createdAt', label: 'Fecha', transform: (value: string) => this.formatDate(value) },
+      { key: 'action', label: 'Operación', transform: (value: AgentTaskAction) => this.actionLabel(value) || value },
+      { key: 'status', label: 'Estado', transform: (value: AgentTaskStatus) => this.statusLabel(value) || value },
+      { key: 'stageLabel', label: 'Etapa' },
+      { key: 'agentName', label: 'Agente' },
+      { key: 'createdBy', label: 'Creado por' },
+      { key: 'payload.device.model', label: 'Modelo' },
+      { key: 'payload.wan.ip_address', label: 'IP WAN' },
+      { key: 'payload.wan.vlan_id', label: 'VLAN' },
+      { key: 'payload.wifi.ssid', label: 'WiFi' },
+      { key: 'cloudJobId', label: 'Expediente' },
+      { key: 'completedAt', label: 'Duración', transform: (_: unknown, row: OnuAgentTask) => this.taskDuration(row) },
+      { key: 'errorMessage', label: 'Error' },
+    ]);
   }
 
   generateWifiDefaults() {

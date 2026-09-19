@@ -35,7 +35,7 @@
           @for (agent of operationalAgents(); track trackAgent($index, agent)) {
             <button type="button" class="agent-row" [class.selected]="selectedAgentId() === agent.id" (click)="selectAgent(agent.id)">
               <span class="radio-dot"></span><svg lucideLaptop size="19"></svg>
-              <span class="agent-copy"><strong>{{ agent.displayName }}</strong><small class="agent-state" [class.online]="agent.online"><i></i>{{ agent.online ? 'Conectado' : 'Desconectado' }}</small><small>{{ agent.windowsUser || agent.hostname || agent.agentId }}</small><small>v{{ agent.version || '--' }} · {{ formatTime(agent.lastSeenAt) }}</small></span>
+              <span class="agent-copy"><strong>{{ agent.displayName }}</strong><small class="agent-state" [class.online]="agent.online"><i></i>{{ agent.online ? 'Conectado' : 'Desconectado' }}</small><small>{{ agent.windowsUser || agent.hostname || agent.agentId }}</small><small [title]="'Último contacto: ' + formatDate(agent.lastSeenAt)">v{{ agent.version || '--' }} · {{ seenAgo(agent.lastSeenAt) }}</small></span>
             </button>
           } @empty { <div class="rail-empty"><svg lucideLaptop size="22"></svg><strong>No hay agentes vinculados</strong><span>Descarga ONU Studio e inicia sesión con ISP Max.</span></div> }
         </div>
@@ -59,6 +59,8 @@
             <div><dt>Latencia</dt><dd>{{ agent.discovery?.device?.latency_ms != null ? agent.discovery?.device?.latency_ms + ' ms' : '--' }}</dd></div>
             <div><dt>Permisos</dt><dd [class.good]="agent.isAdmin">{{ agent.isAdmin ? 'Administrador' : 'Limitados' }}</dd></div>
           </dl>
+
+          <app-agent-readiness [agent]="agent" [latestVersion]="manifest()?.version" />
 
           <div class="workflow-track" aria-label="Etapas del trabajo">
             <div class="done"><span><svg lucideCheck size="14"></svg></span><small>Agente</small></div><i></i>
@@ -121,7 +123,7 @@
       <footer class="agent-enrollment-note"><svg lucideShieldCheck size="17"></svg><div><b>Vinculación controlada</b><span>Al revocar una PC, su credencial y su sesión recordada dejan de funcionar. Para reconectarla, abre ONU Studio e inicia sesión con un administrador; se emitirá una credencial nueva.</span></div></footer>
     </section>
   } @else {
-    <section class="history-view"><header><div><h2>Historial de trabajos</h2><p>Auditoría centralizada de detecciones, comprobaciones y configuraciones.</p></div><label><svg lucideSearch size="16"></svg><input type="search" placeholder="Buscar agente, ONU, estado o ID" [ngModel]="historyQuery()" (ngModelChange)="historyQuery.set($event)" /></label></header><ng-container *ngTemplateOutlet="taskTable; context: { tasks: filteredTasks() }"></ng-container></section>
+    <section class="history-view"><header><div><h2>Historial de trabajos</h2><p>Auditoría centralizada de detecciones, comprobaciones y configuraciones.</p></div><div class="history-tools"><label><svg lucideSearch size="16"></svg><input type="search" placeholder="Buscar agente, ONU, estado o ID" [ngModel]="historyQuery()" (ngModelChange)="historyQuery.set($event)" /></label><button class="secondary-button" type="button" (click)="exportHistory()" [disabled]="!filteredTasks().length" title="Descargar en CSV los trabajos de esta vista"><svg lucideDownload size="15"></svg>Exportar CSV</button></div></header><ng-container *ngTemplateOutlet="taskTable; context: { tasks: filteredTasks() }"></ng-container></section>
   }
 </main>
 
@@ -174,7 +176,7 @@
               <button class="secondary-button" type="button" [disabled]="wizardBusy() || inspectionTask()?.status === 'processing'" (click)="startInspection(true)"><svg lucideRefreshCw size="15" [class.spinning]="wizardBusy()"></svg>Intentar nuevamente</button>
             } @else {
               <div class="inspection-success"><span><svg lucideCircleCheck size="30"></svg></span><div><small>Lectura directa completada</small><h3>{{ inventoryFact('device.model', deviceModel) }}</h3><p>El serial y la configuración fueron leídos desde la ONU, no escritos manualmente.</p></div><b>{{ profileStatusLabel() }}</b></div>
-              <dl class="inspection-facts"><div><dt>Serial GPON</dt><dd class="mono">{{ detectedSerial() }}</dd></div><div><dt>IP de gestión</dt><dd class="mono">{{ deviceHost }}</dd></div><div><dt>Firmware</dt><dd>{{ inventoryFact('device.software_version') }}</dd></div><div><dt>Estado GPON</dt><dd>{{ inventoryFact('device.registration_status') }}</dd></div><div><dt>WAN actual</dt><dd>{{ inventoryFact('wan.0.name', 'Sin perfil') }}</dd></div><div><dt>WiFi actual</dt><dd>{{ inventoryFact('wifi.radios.0.ssid', 'Sin SSID') }}</dd></div></dl>
+              <dl class="inspection-facts"><div><dt>Serial GPON</dt><dd><app-copy-value [value]="detectedSerial()" label="serial" /></dd></div><div><dt>IP de gestión</dt><dd class="mono">{{ deviceHost }}</dd></div><div><dt>Firmware</dt><dd>{{ inventoryFact('device.software_version') }}</dd></div><div><dt>Estado GPON</dt><dd>{{ inventoryFact('device.registration_status') }}</dd></div><div><dt>WAN actual</dt><dd>{{ inventoryFact('wan.0.name', 'Sin perfil') }}</dd></div><div><dt>WiFi actual</dt><dd>{{ inventoryFact('wifi.radios.0.ssid', 'Sin SSID') }}</dd></div></dl>
               <details class="wizard-advanced"><summary>Ver lectura técnica completa</summary><div class="advanced-grid"><span><b>Hardware</b>{{ inventoryFact('device.hardware_version') }}</span><span><b>MAC</b>{{ inventoryFact('device.mac', inventoryFact('ethernet.mac')) }}</span><span><b>CPU</b>{{ inventoryFact('device.cpu_usage') }}</span><span><b>Memoria</b>{{ inventoryFact('device.memory_usage') }}</span><span><b>RX óptico</b>{{ inventoryFact('optical.rx_power_dbm') }}</span><span><b>Adaptador</b>{{ selectedAgent()?.discovery?.device?.adapter_name || '--' }}</span></div></details>
             }
           </section>
@@ -234,7 +236,7 @@
 
       <footer class="guided-footer">
         <button class="secondary-button" type="button" [disabled]="wizardStep() === 1 || wizardBusy() || !!provisionTaskId() || (wizardStep() === 3 && servicePrepared())" (click)="previousWizardStep()"><svg lucideArrowLeft size="16"></svg>Atrás</button>
-        <div><small>Paso {{ wizardStep() }} de 4</small><strong>{{ wizardMessage() }}</strong></div>
+        <div><small>Paso {{ wizardStep() }} de 4</small><strong>{{ wizardMessage() }}</strong>@if (wizardStep() === 2 && serviceMissing()) { <em class="missing-hint">{{ serviceMissing() }}</em> } @else if (wizardStep() === 3 && wifiMissing()) { <em class="missing-hint">{{ wifiMissing() }}</em> }</div>
         @if (wizardStep() === 1) {
           @if (onuInventory() && operationMode === 'provision') { <button class="primary-button" type="button" (click)="wizardStep.set(2)">Continuar <svg lucideArrowRight size="16"></svg></button> }
           @if (wizardComplete() && operationMode === 'check') { <button class="primary-button" type="button" (click)="closeOperation()">Cerrar comprobación</button> }

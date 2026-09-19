@@ -7,10 +7,7 @@
       <h1>{{ activeWorkspace() === 'map' ? 'Mapa PON' : (selectedOnu()?.client?.nombre || selectedOnu()?.name || 'Detalle de ONU') }}</h1>
     </div>
     <div class="command-actions">
-      <label class="global-onu-search">
-        <svg lucideSearch size="17" aria-hidden="true"></svg>
-        <input type="search" [ngModel]="search()" (ngModelChange)="searchChanged($event)" placeholder="Buscar cliente, ONU o serial" />
-      </label>
+      <app-onu-global-search [onus]="mapOnus()" [query]="search()" (queryChange)="searchChanged($event)" (openOnu)="inspectOnu($event)" (showAll)="showSearchInInventory()" />
       @if (auth.hasRole(['admin'])) {
         <button class="primary-action" type="button" (click)="setTab('discovered')">
           <svg lucidePlus size="16" aria-hidden="true"></svg>Autorizar ONU
@@ -32,7 +29,7 @@
     <span class="system-divider"></span>
     <span class="alert-inline"><strong>{{ status().totals.activeAlarms + (status().totals.activeSignalAlerts || 0) }}</strong> alertas</span>
     <span class="system-divider"></span>
-    <span class="sync-inline" title="Última lectura de la OLT"><svg lucideRefreshCw size="15" [class.spinning]="syncing() || status().syncing" aria-hidden="true"></svg> Leída {{ formatDate(status().latest?.capturedAt) }}</span>
+    <span class="sync-inline" [title]="'Última lectura de la OLT: ' + formatDate(status().latest?.capturedAt)"><svg lucideRefreshCw size="15" [class.spinning]="syncing() || status().syncing" aria-hidden="true"></svg> Leída {{ timeAgo(status().latest?.capturedAt) }}</span>
     @if (auth.hasRole(['admin'])) {
       <button class="icon-action sync-button" type="button" title="Sincronizar ahora" aria-label="Sincronizar ahora" (click)="runSync(false)" [disabled]="syncing()">
         <svg lucideRefreshCw size="17" [class.spinning]="syncing()"></svg>
@@ -54,6 +51,7 @@
 
   <nav class="view-tabs primary-nav" aria-label="Secciones OLT">
     <button type="button" [class.active]="tab() === 'overview'" (click)="setTab('overview')"><svg lucideNetwork size="16"></svg>Red OLT</button>
+    <button type="button" [class.active]="tab() === 'health'" (click)="setTab('health')" title="Ranking de peor señal, caídas y resumen por PON"><svg lucideHeartPulse size="16"></svg>Salud de la red @if (healthIssues()) { <span class="issue-count">{{ healthIssues() }}</span> }</button>
     <button type="button" [class.active]="tab() === 'onus'" (click)="setTab('onus')"><svg lucideBox size="16"></svg>ONUs <span>{{ status().totals.totalOnus }}</span></button>
     <button type="button" [class.active]="tab() === 'installations'" (click)="setTab('installations')"><svg lucideActivity size="16"></svg>Instalaciones <span>{{ activeInstallations() }}</span></button>
     <button type="button" [class.active]="isManagementTab()" (click)="setTab('profiles')"><svg lucideMoreHorizontal size="16"></svg>Gestión</button>
@@ -95,7 +93,7 @@
           <label class="rail-search"><svg lucideSearch size="15"></svg><input type="search" [ngModel]="ponSearch()" (ngModelChange)="ponSearch.set($event)" placeholder="Filtrar puertos" /></label>
           <div class="pon-list">
             @for (pon of filteredPons(); track pon.ponIndex) {
-              <button type="button" [class.active]="activePon()?.pon === pon.pon" (click)="selectMapPon(pon.pon)">
+              <button type="button" [class.active]="activePon()?.pon === pon.pon" (click)="selectMapPon(pon.pon)" [title]="ponTooltip(pon)">
                 <span class="pon-health-dot" [class.warning]="pon.health === 'warning'" [class.critical]="pon.health === 'critical'"></span>
                 <strong>PON {{ pon.pon }}</strong>
                 <span>{{ pon.total }}/{{ pon.capacity }}</span>
@@ -147,15 +145,17 @@
             <div class="context-identity"><span>{{ (onu.client?.nombre || onu.name || 'ON').slice(0, 2).toUpperCase() }}</span><div><h2>{{ onu.client?.nombre || onu.name || 'ONU sin asociar' }}</h2><p>PON {{ onu.pon }} · ONU {{ onu.onuId }}</p></div></div>
             <dl class="context-details">
               <div><dt>Señal óptica (RX)</dt><dd><span class="signal" [class.none]="onu.rxPowerDbm == null" [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><i></i>{{ signalLabel(onu.rxPowerDbm) }}@if (onu.rxPowerDbm != null) { · {{ formatDbm(onu.rxPowerDbm) }} }</span></dd></div>
-              <div><dt>Serial</dt><dd class="mono">{{ onu.serial || '--' }}</dd></div>
+              <div><dt>Serial</dt><dd><app-copy-value [value]="onu.serial" label="serial" /></dd></div>
               <div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div>
-              <div><dt>IP de gestión</dt><dd class="mono">{{ onu.client?.ip || onu.agentInventory?.summary?.wanIp || '--' }}</dd></div>
+              <div><dt>IP de gestión</dt><dd><app-copy-value [value]="onuIpAddress(onu)" label="IP" /></dd></div>
+              @if (onuMacAddress(onu)) { <div><dt>MAC</dt><dd><app-copy-value [value]="onuMacAddress(onu)" label="MAC" /></dd></div> }
               <div><dt>Distancia</dt><dd>{{ onu.distanceM != null ? onu.distanceM + ' m' : '--' }}</dd></div>
               <div><dt>Tiempo en línea</dt><dd>{{ onu.onlineDuration || '--' }}</dd></div>
             </dl>
             <div class="context-actions">
               <button class="primary-action" type="button" (click)="openOnuWorkspace(onu)"><svg lucideEye size="16"></svg>Abrir ONU</button>
               <button class="secondary-action" type="button" (click)="refreshOpticalPreview(onu)" [disabled]="detailLoading()"><svg lucideGauge size="16"></svg>{{ detailLoading() ? 'Leyendo...' : 'Leer óptica' }}</button>
+              @if (onu.clientIdServicio) { <a class="secondary-action client-file-link" [routerLink]="['/clients', onu.clientIdServicio]" title="Abrir el expediente del cliente (Ctrl+clic: otra pestaña)"><svg lucideExternalLink size="15" aria-hidden="true"></svg>Expediente del cliente</a> }
             </div>
             <section class="quick-diagnostics">
               <div><strong>Acciones rápidas</strong><span>Se ejecutan sin salir del mapa.</span></div>
@@ -171,8 +171,8 @@
     } @else if (selectedOnu(); as onu) {
       <section class="onu-workbench">
         <header class="onu-workbench-header">
-          <div class="onu-title-block"><span class="detail-avatar">{{ (onu.client?.nombre || onu.name || 'ON').slice(0, 2).toUpperCase() }}</span><div><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online">{{ onuStatusLabel(onu) }}</span><h2>{{ onu.client?.nombre || onu.name || 'ONU sin asociar' }}</h2><p class="mono">{{ onu.onuIndex }} · {{ onu.serial || 'Sin serial' }}</p></div></div>
-          <div class="onu-header-actions"><button class="secondary-action" type="button" (click)="refreshOpticalPreview(onu)" [disabled]="detailLoading()"><svg lucideRefreshCw size="16" [class.spinning]="detailLoading()"></svg>Actualizar</button><button class="secondary-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()"><svg lucideActivity size="16"></svg>Diagnóstico</button>@if (auth.hasRole(['admin'])) { <button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online" [title]="onu.online ? 'Reiniciar ONU' : 'La ONU está sin conexión'"><svg lucidePower size="16"></svg>Reiniciar</button> }</div>
+          <div class="onu-title-block"><span class="detail-avatar">{{ (onu.client?.nombre || onu.name || 'ON').slice(0, 2).toUpperCase() }}</span><div><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online">{{ onuStatusLabel(onu) }}</span><h2>{{ onu.client?.nombre || onu.name || 'ONU sin asociar' }}</h2><p class="mono">{{ onu.onuIndex }} · <app-copy-value [value]="onu.serial" label="serial" /></p></div></div>
+          <div class="onu-header-actions">@if (onu.clientIdServicio) { <a class="secondary-action" [routerLink]="['/clients', onu.clientIdServicio]" title="Abrir el expediente del cliente (Ctrl+clic: otra pestaña)"><svg lucideExternalLink size="16" aria-hidden="true"></svg>Expediente</a> }<button class="secondary-action" type="button" (click)="refreshOpticalPreview(onu)" [disabled]="detailLoading()"><svg lucideRefreshCw size="16" [class.spinning]="detailLoading()"></svg>Actualizar</button><button class="secondary-action" type="button" (click)="loadServiceDiagnostic(onu)" [disabled]="diagnosticLoading()"><svg lucideActivity size="16"></svg>Diagnóstico</button>@if (auth.hasRole(['admin'])) { <button class="secondary-action reboot-action" type="button" (click)="prepareReboot()" [disabled]="!onu.online" [title]="onu.online ? 'Reiniciar ONU' : 'La ONU está sin conexión'"><svg lucidePower size="16"></svg>Reiniciar</button> }</div>
         </header>
         @if (detailLoading()) {
           <div class="drawer-loading workbench-loading"><svg lucideRefreshCw size="22" class="spinning"></svg><span>Consultando la OLT...</span></div>
@@ -235,19 +235,24 @@
               </article>
             }
             <article class="service-diagnostic optical-history">
-              <div class="drawer-section-title"><div><strong>Historial óptico</strong><span>Últimas {{ opticalHistory().length }} mediciones.</span></div></div>
-              <div class="history-list">@for (reading of opticalHistory().slice().reverse().slice(0, 8); track reading.id) { <div><time>{{ formatDate(reading.capturedAt) }}</time><span class="signal" [class.none]="reading.rxPowerDbm == null" [class.weak]="isWeakPower(reading.rxPowerDbm)" [class.critical]="isCriticalPower(reading.rxPowerDbm)"><i></i>{{ formatDbm(reading.rxPowerDbm) }} · {{ signalLabel(reading.rxPowerDbm) }}</span></div> } @empty { <p>La primera medición se guardará al consultar esta ONU.</p> }</div>
+              <div class="drawer-section-title"><div><strong>Historial óptico</strong><span>Tendencia de las últimas {{ opticalHistory().length }} mediciones.</span></div></div>
+              <app-optical-trend [readings]="opticalHistory()" />
             </article>
           </section>
         }
       </section>
     }
+  } @else if (tab() === 'health') {
+    <app-olt-network-health [onus]="mapOnus()" [pons]="pons()" [alarms]="alarms()" [signalAlerts]="signalAlerts()"
+      [totalOnus]="status().totals.totalOnus" [loadedAt]="lastLoadedAt()"
+      (openOnu)="inspectOnu($event)" (openPon)="openPonOnMap($event)" (showInventory)="showInventoryFilter($event)" />
   } @else if (tab() === 'onus') {
     <section class="section-block inventory-block">
+      <app-quick-chips class="inventory-chips" [chips]="inventoryChips()" [active]="activeQuickFilter()" ariaLabel="Filtros rápidos de ONUs" (selected)="setQuickFilter($event)" />
       <div class="inventory-toolbar">
         <div class="search-control">
           <svg lucideSearch size="17" aria-hidden="true"></svg>
-          <input type="search" [ngModel]="search()" (ngModelChange)="searchChanged($event)" placeholder="Buscar ONU, serial o modelo" />
+          <input type="search" [ngModel]="search()" (ngModelChange)="searchChanged($event)" placeholder="Buscar cliente, ONU, serial o modelo" />
         </div>
         <div class="segmented" aria-label="Filtrar estado">
           <button type="button" [class.active]="onuStatus() === 'all'" (click)="filterStatus('all')">Todas</button>
@@ -269,34 +274,42 @@
           </button>
           <button class="secondary-action" type="button" (click)="runSync(true)" [disabled]="syncing()" title="Vuelve a leer todo el inventario de la OLT">{{ syncing() ? 'Leyendo OLT...' : 'Actualizar seriales' }}</button>
         }
+        <button class="secondary-action" type="button" (click)="exportInventory()" [disabled]="!inventoryRows().length" title="Descargar en CSV las ONUs de esta vista"><svg lucideDownload size="15" aria-hidden="true"></svg>Exportar CSV</button>
       </div>
+      @if (localSignalFilter()) {
+        <p class="inventory-note">Mostrando ONUs en línea con señal {{ localSignalFilter() === 'critical' ? 'crítica (-30 dBm o menos)' : 'débil (entre -27 y -30 dBm)' }}, de peor a mejor, calculadas con las {{ mapOnus().length }} ONUs de la última lectura.</p>
+      }
       <div class="table-wrap onu-table">
         <table>
           <thead><tr><th>Estado</th><th>ONU</th><th>Nombre / cliente</th><th>Modelo</th><th>Serial</th><th>Señal óptica</th><th>Última lectura</th><th></th></tr></thead>
           <tbody>
-            @for (onu of onuPage().items; track onu.id) {
+            @for (onu of inventoryRows(); track onu.id) {
               <tr [class.offline-row]="!onu.online">
                 <td><span class="state-pill" [class.online]="onu.online && !isWeakPower(onu.rxPowerDbm)" [class.warning]="onu.online && isWeakPower(onu.rxPowerDbm)" [class.offline]="!onu.online" [title]="onuStatusLabel(onu)">{{ onuStatusLabel(onu) }}</span></td>
                 <td class="mono strong">{{ onu.onuIndex }}</td>
-                <td><span class="client-name">{{ onu.client?.nombre || onu.name || 'Sin asociar' }}</span>@if (onu.client?.usuario) { <small class="client-meta">{{ onu.client?.usuario }} · {{ onu.client?.ip || 'Sin IP' }}</small> }</td>
-                <td>{{ onu.model || '--' }}</td><td class="mono">{{ onu.serial || '--' }}</td>
+                <td>
+                  @if (onu.clientIdServicio) { <a class="client-name client-link" [routerLink]="['/clients', onu.clientIdServicio]" title="Abrir el expediente del cliente (Ctrl+clic: otra pestaña)">{{ onu.client?.nombre || onu.name || ('Cliente #' + onu.clientIdServicio) }}</a> }
+                  @else { <span class="client-name">{{ onu.name || 'Sin asociar' }}</span><small class="client-meta">Sin cliente asociado</small> }
+                  @if (onu.client?.usuario) { <small class="client-meta">{{ onu.client?.usuario }} · {{ onu.client?.ip || 'Sin IP' }}</small> }
+                </td>
+                <td>{{ onu.model || '--' }}</td><td><app-copy-value [value]="onu.serial" label="serial" /></td>
                 <td><span class="signal" [class.none]="onu.rxPowerDbm == null" [class.weak]="isWeakPower(onu.rxPowerDbm)" [class.critical]="isCriticalPower(onu.rxPowerDbm)"><i></i>{{ signalLabel(onu.rxPowerDbm) }}@if (onu.rxPowerDbm != null) { <b class="mono">{{ formatDbm(onu.rxPowerDbm) }}</b> }</span></td>
                 <td>{{ formatDate(onu.lastDetailAt || onu.lastSeenAt) }}</td>
                 <td><button class="secondary-action compact-action" type="button" title="Abrir diagnóstico de la ONU" (click)="inspectOnu(onu)"><svg lucideEye size="15" aria-hidden="true"></svg>Abrir</button></td>
               </tr>
             } @empty {
-              <tr><td colspan="8"><div class="empty-state">No hay ONUs para estos filtros. Cambie la búsqueda o elija «Todas».</div></td></tr>
+              <tr><td colspan="8"><div class="empty-state">{{ localSignalFilter() ? 'Ninguna ONU en línea tiene señal ' + (localSignalFilter() === 'critical' ? 'crítica' : 'débil') + ' con estos filtros. Buena noticia.' : 'No hay ONUs para estos filtros. Cambie la búsqueda o elija «Todas».' }}</div></td></tr>
             }
           </tbody>
         </table>
       </div>
       <footer class="pagination">
-        <span>{{ onuPage().total }} ONUs encontradas</span>
-        <div>
+        <span>{{ localSignalFilter() ? inventoryRows().length : onuPage().total }} ONUs encontradas</span>
+        @if (!localSignalFilter()) { <div>
           <button class="icon-action" type="button" [disabled]="onuPage().page <= 1" (click)="loadOnus(onuPage().page - 1)" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button>
           <strong>{{ onuPage().page }} / {{ onuPage().pages }}</strong>
           <button class="icon-action" type="button" [disabled]="onuPage().page >= onuPage().pages" (click)="loadOnus(onuPage().page + 1)" aria-label="Página siguiente"><svg lucideChevronRight size="17"></svg></button>
-        </div>
+        </div> }
       </footer>
     </section>
   } @else if (tab() === 'topology') {
@@ -380,18 +393,19 @@
     </section>
   } @else if (tab() === 'installations') {
     <section class="section-block">
-      <div class="section-heading"><div><h2>Expedientes de instalación</h2><p>Progreso persistente desde la reserva de IP hasta la entrega del servicio.</p></div></div>
+      <div class="section-heading"><div><h2>Expedientes de instalación</h2><p>Progreso persistente desde la reserva de IP hasta la entrega del servicio.</p></div><button class="secondary-action" type="button" (click)="exportInstallations()" [disabled]="!filteredInstallations().length" title="Descargar en CSV los expedientes de esta vista"><svg lucideDownload size="15" aria-hidden="true"></svg>Exportar CSV</button></div>
+      <app-quick-chips class="section-chips" [chips]="installationChips()" [active]="installationFilter()" ariaLabel="Filtrar expedientes de instalación" (selected)="setInstallationFilter($event)" />
       <div class="table-wrap">
         <table>
           <thead><tr><th>Cliente</th><th>IP</th><th>Serial</th><th>Etapa</th><th>Estado</th><th>Actualizado</th><th></th></tr></thead>
           <tbody>
-            @for (job of installations(); track job.id) {
+            @for (job of filteredInstallations(); track job.id) {
               <tr>
-                <td><span class="client-name">{{ job.clientName || 'Sin nombre' }}</span>@if (job.clientIdServicio) { <small class="client-meta">WispHub #{{ job.clientIdServicio }}</small> }</td>
-                <td class="mono">{{ job.ip || '--' }}</td><td class="mono">{{ job.serial || '--' }}</td>
+                <td>@if (job.clientIdServicio) { <a class="client-name client-link" [routerLink]="['/clients', job.clientIdServicio]" title="Abrir el expediente del cliente (Ctrl+clic: otra pestaña)">{{ job.clientName || ('Cliente #' + job.clientIdServicio) }}</a><small class="client-meta">WispHub #{{ job.clientIdServicio }}</small> } @else { <span class="client-name">{{ job.clientName || 'Sin nombre' }}</span> }</td>
+                <td><app-copy-value [value]="job.ip" label="IP" /></td><td><app-copy-value [value]="job.serial" label="serial" /></td>
                 <td><strong>{{ installationStage(job.stage) }}</strong>@if (job.ponIndex) { <small class="client-meta">PON {{ job.ponIndex }}</small> }@if (job.errorMessage) { <small class="client-meta error-meta">{{ job.errorMessage }}</small> }</td>
                 <td><span class="state-pill" [class.online]="job.status === 'complete' || job.localStatus === 'success'" [class.warning]="!['complete', 'failed', 'cancelled'].includes(job.status)" [class.offline]="job.status === 'failed' || job.localStatus === 'error'">{{ installationStatusLabel(job) }}</span>@if (job.agentVersion) { <small class="client-meta">Agente v{{ job.agentVersion }}</small> }</td>
-                <td>{{ formatDate(job.updatedAt) }}</td>
+                <td [title]="formatDate(job.updatedAt)">{{ timeAgo(job.updatedAt) }}</td>
                 <td>
                   <div class="table-actions">
                     @if (job.stage === 'olt_discovered') { <button class="authorize-button" type="button" (click)="continueInstallation(job)">Continuar</button> }
@@ -403,7 +417,7 @@
                   </div>
                 </td>
               </tr>
-            } @empty { <tr><td colspan="7"><div class="empty-state">Aún no existen expedientes de instalación.</div></td></tr> }
+            } @empty { <tr><td colspan="7"><div class="empty-state">{{ installations().length ? 'No hay expedientes en este filtro. Elija «Todas».' : 'Aún no existen expedientes de instalación.' }}</div></td></tr> }
           </tbody>
         </table>
       </div>
@@ -447,22 +461,25 @@
     </section>
   } @else if (tab() === 'alarms') {
     <section class="section-block alarms-block">
-      <div class="section-heading"><div><h2>Alarmas activas</h2><p>Eventos del chasis y degradación calculada desde el historial óptico.</p></div></div>
+      <div class="section-heading"><div><h2>Alarmas activas</h2><p>Eventos del chasis y degradación calculada desde el historial óptico.</p></div><button class="secondary-action" type="button" (click)="exportAlarms()" [disabled]="!visibleAlarms().length && !visibleSignalAlerts().length" title="Descargar en CSV las alarmas de esta vista"><svg lucideDownload size="15" aria-hidden="true"></svg>Exportar CSV</button></div>
+      <app-quick-chips class="section-chips" [chips]="alarmChips()" [active]="alarmFilter()" ariaLabel="Filtrar alarmas" (selected)="setAlarmFilter($event)" />
       <div class="alarm-list">
-        @for (alert of signalAlerts(); track alert.id) {
+        @for (alert of visibleSignalAlerts(); track alert.id) {
           <article class="alarm-row signal-alarm" [class.critical]="alert.severity === 'critical'">
             <div class="alarm-icon"><svg lucideGauge size="18" aria-hidden="true"></svg></div>
-            <div class="alarm-copy"><div><span class="alarm-level">{{ alarmLevelLabel(alert.severity) }}</span><strong>{{ alert.message }}</strong></div><small>ONU {{ alert.onuIndex }} · {{ alert.occurrenceCount }} detecciones</small></div>
-            <time>{{ formatDate(alert.lastSeenAt) }}</time>
+            <div class="alarm-copy"><div><span class="alarm-level">{{ alarmLevelLabel(alert.severity) }}</span><strong>{{ alert.message }}</strong></div>
+              <small>@if (alertOnu(alert.onuIndex); as target) { <button type="button" class="alarm-onu-link" (click)="inspectOnu(target)" title="Abrir el diagnóstico de esta ONU">{{ target.client?.nombre || target.name || ('ONU ' + alert.onuIndex) }}</button> · } ONU {{ alert.onuIndex }} · {{ alert.occurrenceCount }} detecciones@if (alert.currentValue != null) { · actual {{ alert.currentValue }} dBm }@if (alert.baselineValue != null) { (antes {{ alert.baselineValue }} dBm) }</small></div>
+            <time [title]="formatDate(alert.lastSeenAt)">{{ timeAgo(alert.lastSeenAt) }}</time>
           </article>
         }
-        @for (alarm of alarms(); track alarm.alarmId) {
+        @for (alarm of visibleAlarms(); track alarm.alarmId) {
           <article class="alarm-row" [class.critical]="alarm.level === 'critical'" [class.major]="alarm.level === 'major'">
             <div class="alarm-icon"><svg lucideAlertTriangle size="18" aria-hidden="true"></svg></div>
             <div class="alarm-copy"><div><span class="alarm-level">{{ alarmLevelLabel(alarm.level) }}</span><strong>{{ alarm.description }}</strong></div><small>ID {{ alarm.alarmId }} · Código {{ alarm.code || '--' }}</small></div>
             <time>{{ alarm.alarmTime || formatDate(alarm.lastSeenAt) }}</time>
           </article>
         }
+        @if ((alarms().length || signalAlerts().length) && !visibleAlarms().length && !visibleSignalAlerts().length) { <div class="empty-state">No hay alarmas en este filtro. Elija «Todas».</div> }
         @if (!alarms().length && !signalAlerts().length) { <div class="healthy-empty"><svg lucideCircleCheck size="26" aria-hidden="true"></svg><strong>Sin alarmas activas</strong><span>La OLT no reporta eventos pendientes.</span></div> }
       </div>
     </section>
