@@ -100,9 +100,8 @@ wisphub_speed_*.bin
 /recibo-inteligente-android/
 newcookies.txt
 
-# Binarios de distribucion: se publican con `railway up`, no se versionan
-/agent-downloads/*.apk
-/agent-downloads/*.exe
+# Binarios de distribucion: no se versionan, pero SI deben subirse con `railway up`
+# (el servidor los ofrece para descargar), por eso agent-downloads no se ignora aqui.
 /onu-provisioner/release-cloud/
 
 # Configuracion local de Claude Code
