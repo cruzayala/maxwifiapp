@@ -112,7 +112,7 @@ export class SidebarComponent implements OnInit {
       label: 'Red e infraestructura',
       description: 'MikroTik, OLT y ONU',
       items: [
-        { label: 'Estado de red', path: '/network', exact: true },
+        { label: 'Centro de red', path: '/network', exact: true },
         { label: 'Velocidad', path: '/bandwidth', exact: true },
         { label: 'Auditoría de red', path: '/auditoria-red', exact: true },
         { label: 'MikroTik', path: '/mikrotik', exact: true },
