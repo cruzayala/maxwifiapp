@@ -11,18 +11,20 @@ import { ToastService } from '../../services/toast.service';
         type="button"
         class="btn-ac btn-warn"
         [disabled]="busy() !== null || crmAction() === 'block'"
+        [title]="crmAction() === 'block' ? 'El servicio ya está desactivado; reactívelo primero' : 'Marcar al cliente como moroso por falta de pago'"
         (click)="run('moroso')"
       >
-        {{ busy() === 'moroso' ? '...' : 'Moroso' }}
+        {{ busy() === 'moroso' ? 'Aplicando…' : 'Marcar moroso' }}
       </button>
       @if (paymentPilotEnabled()) {
         <button
           type="button"
           class="btn-ac btn-danger"
           [disabled]="busy() !== null || crmAction() === 'block'"
+          [title]="crmAction() === 'block' ? 'El servicio ya está desactivado' : 'Desactivar el servicio y mostrar el portal de pago'"
           (click)="run('block')"
         >
-          {{ busy() === 'block' ? '...' : 'Desactivar con portal' }}
+          {{ busy() === 'block' ? 'Aplicando…' : 'Desactivar con portal' }}
         </button>
       }
       @if (crmAction() === 'moroso' || crmAction() === 'block') {
@@ -30,9 +32,10 @@ import { ToastService } from '../../services/toast.service';
           type="button"
           class="btn-ac btn-ok"
           [disabled]="busy() !== null"
+          title="Quitar la marca y devolver el servicio a la normalidad"
           (click)="run('clear')"
         >
-          {{ busy() === 'clear' ? '...' : 'Reactivar' }}
+          {{ busy() === 'clear' ? 'Aplicando…' : 'Reactivar' }}
         </button>
       }
     </div>
@@ -40,15 +43,18 @@ import { ToastService } from '../../services/toast.service';
   styles: [`
     .actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
     .btn-ac {
-      padding: 5px 10px; border-radius: 8px; font-size: 11px;
-      font-weight: 700; border: none; cursor: pointer;
-      letter-spacing: 0.05em; transition: filter 0.15s, transform 0.1s;
+      min-height: 30px; padding: 5px 10px; border-radius: 6px; font-size: 12px;
+      font-weight: 700; border: 1px solid transparent; cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
     }
-    .btn-ac:disabled { opacity: 0.4; cursor: not-allowed; }
-    .btn-ac:not(:disabled):hover { filter: brightness(1.08); transform: translateY(-1px); }
-    .btn-warn { background: #f97316; color: white; }
-    .btn-danger { background: #dc2626; color: white; }
-    .btn-ok { background: #16a34a; color: white; }
+    .btn-ac:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-warn { background: #fff6e8; border-color: #f3d19e; color: #8a520c; }
+    .btn-warn:not(:disabled):hover { background: #ffeccc; }
+    .btn-danger { background: #fff0ef; border-color: #f0b4ae; color: #b42318; }
+    .btn-danger:not(:disabled):hover { background: #ffe2df; }
+    .btn-ok { background: #13875a; color: white; }
+    .btn-ok:not(:disabled):hover { background: #0f704b; }
+    .btn-ac:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
   `],
 })
 export class ClientBlockActionsComponent {
@@ -66,8 +72,12 @@ export class ClientBlockActionsComponent {
 
   run(action: ClientAction) {
     const verb = action === 'moroso' ? 'Marcar como moroso' : action === 'block' ? 'Desactivar servicio' : 'Reactivar';
+    const done = action === 'moroso' ? 'Marcado como moroso' : action === 'block' ? 'Servicio desactivado' : 'Servicio reactivado';
     const def = action === 'moroso' ? 'Falta de pago' : action === 'block' ? 'Desactivado manualmente' : 'Reactivado';
-    const reason = window.prompt(`${verb} a ${this.clientName()}\nMotivo:`, def);
+    const effect = action === 'block'
+      ? 'Esto afecta el servicio de internet del cliente.'
+      : action === 'clear' ? 'Se quitará la marca actual del cliente.' : 'El cliente quedará marcado por falta de pago.';
+    const reason = window.prompt(`${verb}: ${this.clientName()}\n${effect}\n\nEscriba el motivo (queda en el historial) y pulse Aceptar para confirmar:`, def);
     if (reason === null) return;
 
     this.busy.set(action);
@@ -75,16 +85,17 @@ export class ClientBlockActionsComponent {
       next: (res) => {
         this.busy.set(null);
         if (res.ok) {
-          const killed = res.connectionsKilled ? `, sesiones cerradas: ${res.connectionsKilled}` : '';
-          this.toast.success(`${verb} OK (${res.ip})${killed}`);
+          const killed = res.connectionsKilled ? ` · ${res.connectionsKilled} conexiones cerradas` : '';
+          const ip = res.ip ? ` (IP ${res.ip})` : '';
+          this.toast.success(`${done}: ${this.clientName()}${ip}${killed}`);
           this.changed.emit({ action, result: res });
         } else {
-          this.toast.error(res.error || 'Error');
+          this.toast.error(res.error || `No se pudo completar: ${verb.toLowerCase()}`);
         }
       },
       error: (err) => {
         this.busy.set(null);
-        this.toast.error(err.error?.error || err.message || 'Error');
+        this.toast.error(err.error?.error || err.message || 'No se pudo conectar con el servidor. Intente de nuevo.');
       },
     });
   }

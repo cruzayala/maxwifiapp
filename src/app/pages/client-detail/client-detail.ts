@@ -15,9 +15,9 @@ import { ClientExtrasComponent } from '../../components/client-extras/client-ext
 import { ClientMetricsComponent } from '../../components/client-metrics/client-metrics';
 import { ClientEquipmentComponent } from '../../components/client-equipment/client-equipment';
 import {
-  LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideHistory,
-  LucideMapPin, LucidePackageSearch, LucidePrinter, LucideReceiptText,
-  LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
+  LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideCopy, LucideExternalLink, LucideHistory,
+  LucideMapPin, LucidePackageSearch, LucidePencil, LucidePrinter, LucideReceiptText,
+  LucideSearchX, LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
 } from '@lucide/angular';
 
 type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'activity';
@@ -28,9 +28,9 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
   imports: [
     NavbarComponent, RouterLink, DecimalPipe, DatePipe, FormsModule, PlanLabelPipe,
     ClientExtrasComponent, ClientMetricsComponent, ClientEquipmentComponent,
-    LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideHistory,
-    LucideMapPin, LucidePackageSearch, LucidePrinter, LucideReceiptText,
-    LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
+    LucideActivity, LucideChevronLeft, LucideCircleDollarSign, LucideCopy, LucideExternalLink, LucideHistory,
+    LucideMapPin, LucidePackageSearch, LucidePencil, LucidePrinter, LucideReceiptText,
+    LucideSearchX, LucideUserRound, LucideWalletCards, LucideWifi, LucideX,
   ],
   template: `
     <app-navbar [pageTitle]="clientName()" />
@@ -42,7 +42,7 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
       </a>
 
       @if (loading()) {
-        <div class="loading-state"><div class="spinner"></div></div>
+        <div class="loading-state"><div class="spinner"></div><p>Cargando expediente del cliente…</p></div>
       } @else if (client()) {
         <!-- PERFIL BAR -->
         <div class="profile-bar">
@@ -53,27 +53,36 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             <div>
               <h2>{{ client()!.nombre }}</h2>
               <div class="profile-badges">
-                <span class="badge" [class]="'badge-' + getStatusClass(client()!.estado)">{{ client()!.estado }}</span>
+                <span class="badge" [class]="'badge-' + getStatusClass(client()!.estado)">{{ client()!.estado || 'Sin estado' }}</span>
                 <span class="badge badge-plan" [title]="client()!.plan_internet?.nombre || ''">{{ client()!.plan_internet?.nombre | planLabel }}</span>
                 <span class="id-tag">#{{ client()!.id_servicio }}</span>
               </div>
             </div>
           </div>
           <div class="profile-actions">
-            <button class="btn btn-outline" (click)="pingClient()">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-              Ping
+            <button type="button" class="btn btn-outline" (click)="pingClient()" [disabled]="pinging()" title="Comprobar si el equipo del cliente responde">
+              <svg lucideActivity size="16"></svg>
+              {{ pinging() ? 'Haciendo ping…' : 'Ping' }}
             </button>
             @if ((client()!.estado || '').toLowerCase() === 'activo') {
-              <button class="btn btn-red" (click)="deactivateClient()">Suspender</button>
+              <button type="button" class="btn btn-red" (click)="deactivateClient()" [disabled]="changingStatus()">{{ changingStatus() ? 'Suspendiendo…' : 'Suspender servicio' }}</button>
             } @else {
-              <button class="btn btn-green" (click)="activateClient()">Activar</button>
+              <button type="button" class="btn btn-green" (click)="activateClient()" [disabled]="changingStatus()">{{ changingStatus() ? 'Activando…' : 'Activar servicio' }}</button>
             }
           </div>
         </div>
 
-        @if (pingResult()) {
-          <div class="ping-box" [class.success]="pingSuccess()"><pre>{{ pingResult() }}</pre></div>
+        @if (pinging()) {
+          <div class="ping-box pending" role="status"><strong>Haciendo ping a {{ client()!.ip || 'el cliente' }}…</strong></div>
+        } @else if (pingResult()) {
+          <div class="ping-box" [class.success]="pingSuccess()" role="status">
+            <div class="ping-head"><strong>{{ pingSuccess() ? 'Ping enviado: WispHub respondió a la solicitud' : 'El ping no obtuvo respuesta' }}</strong><button type="button" class="ping-close" aria-label="Cerrar resultado del ping" (click)="pingResult.set('')"><svg lucideX size="15"></svg></button></div>
+            @if (pingSuccess()) {
+              <details><summary>Ver detalle técnico</summary><pre>{{ pingResult() }}</pre></details>
+            } @else {
+              <p>{{ pingResult() }}</p>
+            }
+          </div>
         }
 
         <nav class="client-tabs" role="tablist" aria-label="Secciones del cliente">
@@ -91,8 +100,8 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
             <div class="card-head">
               <h3>Datos del cliente</h3>
               @if (!editingProfile()) {
-                <button class="btn-edit" (click)="startEditProfile()">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <button type="button" class="btn-edit" (click)="startEditProfile()">
+                  <svg lucidePencil size="14"></svg>
                   Editar
                 </button>
               }
@@ -101,50 +110,51 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
               <div class="edit-form">
                 <div class="form-row">
                   <div class="form-group">
-                    <label>Nombre completo</label>
-                    <input type="text" [(ngModel)]="editName" class="form-input" />
+                    <label for="cd-nombre">Nombre completo <b class="req">*</b></label>
+                    <input id="cd-nombre" type="text" [(ngModel)]="editName" class="form-input" [class.invalid]="!editName.trim()" />
+                    @if (!editName.trim()) { <span class="field-error">Escriba el nombre del cliente.</span> }
                   </div>
                   <div class="form-group">
-                    <label>Teléfono</label>
-                    <input type="text" [(ngModel)]="editPhone" class="form-input" />
-                  </div>
-                </div>
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>Cédula</label>
-                    <input type="text" [(ngModel)]="editCedula" class="form-input" />
-                  </div>
-                  <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" [(ngModel)]="editEmail" class="form-input" />
+                    <label for="cd-tel">Teléfono</label>
+                    <input id="cd-tel" type="tel" [(ngModel)]="editPhone" class="form-input" placeholder="809-000-0000" />
                   </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>Dirección</label>
-                    <input type="text" [(ngModel)]="editDireccion" class="form-input" />
+                    <label for="cd-cedula">Cédula</label>
+                    <input id="cd-cedula" type="text" [(ngModel)]="editCedula" class="form-input" placeholder="000-0000000-0" />
                   </div>
                   <div class="form-group">
-                    <label>Ciudad</label>
-                    <input type="text" [(ngModel)]="editCiudad" class="form-input" />
+                    <label for="cd-email">Correo electrónico</label>
+                    <input id="cd-email" type="email" [(ngModel)]="editEmail" class="form-input" />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="cd-direccion">Dirección</label>
+                    <input id="cd-direccion" type="text" [(ngModel)]="editDireccion" class="form-input" />
+                  </div>
+                  <div class="form-group">
+                    <label for="cd-ciudad">Ciudad</label>
+                    <input id="cd-ciudad" type="text" [(ngModel)]="editCiudad" class="form-input" />
                   </div>
                 </div>
                 <div class="edit-actions">
-                  <button class="btn btn-primary" (click)="saveProfile()" [disabled]="saving()">
-                    {{ saving() ? 'Guardando...' : 'Guardar' }}
+                  <button type="button" class="btn btn-primary" (click)="saveProfile()" [disabled]="saving() || !editName.trim()">
+                    {{ saving() ? 'Guardando…' : 'Guardar cambios' }}
                   </button>
-                  <button class="btn btn-outline" (click)="editingProfile.set(false)">Cancelar</button>
+                  <button type="button" class="btn btn-outline" (click)="editingProfile.set(false)" [disabled]="saving()">Cancelar</button>
                 </div>
               </div>
             } @else {
               <div class="info-grid">
-                <div class="info-item"><span class="lbl">Usuario</span><span class="val mono">{{ client()!.usuario }}</span></div>
-                <div class="info-item"><span class="lbl">Teléfono</span><span class="val phone">{{ client()!.telefono || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Email</span><span class="val">{{ client()!.email || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Cédula</span><span class="val">{{ client()!.cedula || '-' }}</span></div>
-                <div class="info-item full"><span class="lbl">Dirección</span><span class="val">{{ client()!.direccion || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Ciudad</span><span class="val">{{ client()!.ciudad || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Técnico</span><span class="val">{{ client()!.tecnico?.nombre || '-' }}</span></div>
+                <div class="info-item"><span class="lbl">Usuario</span><span class="val mono">{{ client()!.usuario || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Teléfono</span><span class="val phone">@if (client()!.telefono) { <a [href]="'tel:' + client()!.telefono">{{ client()!.telefono }}</a><button type="button" class="copy-btn" title="Copiar teléfono" aria-label="Copiar teléfono" (click)="copyValue(client()!.telefono, 'Teléfono')"><svg lucideCopy size="13"></svg></button> } @else { — }</span></div>
+                <div class="info-item"><span class="lbl">Correo</span><span class="val">{{ client()!.email || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Cédula</span><span class="val">{{ client()!.cedula || '—' }}</span></div>
+                <div class="info-item full"><span class="lbl">Dirección</span><span class="val">{{ client()!.direccion || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Ciudad</span><span class="val">{{ client()!.ciudad || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Técnico</span><span class="val">{{ client()!.tecnico?.nombre || '—' }}</span></div>
               </div>
             }
           </div>
@@ -152,69 +162,70 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
           <!-- EDITAR SERVICIO -->
           <div class="card" [class.tab-hidden]="activeTab() !== 'service'">
             <div class="card-head">
-              <h3>Servicio de Internet</h3>
+              <h3>Servicio de internet</h3>
               @if (!editingService()) {
-                <button class="btn-edit" (click)="startEditService()">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <button type="button" class="btn-edit" (click)="startEditService()">
+                  <svg lucidePencil size="14"></svg>
                   Editar
                 </button>
               }
             </div>
             @if (editingService()) {
               <div class="edit-form">
+                <p class="edit-warning">Estos datos se guardan en WispHub. Cambiar la IP o la MAC puede afectar la conexión del cliente.</p>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>IP</label>
-                    <input type="text" [(ngModel)]="editIp" class="form-input mono-input" />
+                    <label for="cd-ip">IP</label>
+                    <input id="cd-ip" type="text" [(ngModel)]="editIp" class="form-input mono-input" />
                   </div>
                   <div class="form-group">
-                    <label>MAC CPE</label>
-                    <input type="text" [(ngModel)]="editMac" class="form-input mono-input" />
+                    <label for="cd-mac">MAC del CPE</label>
+                    <input id="cd-mac" type="text" [(ngModel)]="editMac" class="form-input mono-input" />
                   </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>Interfaz LAN</label>
-                    <input type="text" [(ngModel)]="editLan" class="form-input" />
+                    <label for="cd-lan">Interfaz LAN</label>
+                    <input id="cd-lan" type="text" [(ngModel)]="editLan" class="form-input" />
                   </div>
                   <div class="form-group">
-                    <label>SN ONU</label>
-                    <input type="text" [(ngModel)]="editOnu" class="form-input mono-input" />
+                    <label for="cd-onu">Serial de la ONU</label>
+                    <input id="cd-onu" type="text" [(ngModel)]="editOnu" class="form-input mono-input" />
                   </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label>SSID WiFi</label>
-                    <input type="text" [(ngModel)]="editSsid" class="form-input" />
+                    <label for="cd-ssid">Nombre de la red WiFi (SSID)</label>
+                    <input id="cd-ssid" type="text" [(ngModel)]="editSsid" class="form-input" />
                   </div>
                   <div class="form-group">
-                    <label>Password WiFi</label>
-                    <input type="text" [(ngModel)]="editWifiPass" class="form-input" />
+                    <label for="cd-wifipass">Clave WiFi</label>
+                    <input id="cd-wifipass" type="text" [(ngModel)]="editWifiPass" class="form-input" autocomplete="off" />
                   </div>
                 </div>
                 <div class="form-group">
-                  <label>Comentarios</label>
-                  <textarea [(ngModel)]="editComentarios" class="form-input" rows="2"></textarea>
+                  <label for="cd-coment">Comentarios</label>
+                  <textarea id="cd-coment" [(ngModel)]="editComentarios" class="form-input" rows="2"></textarea>
                 </div>
                 <div class="edit-actions">
-                  <button class="btn btn-primary" (click)="saveService()" [disabled]="saving()">
-                    {{ saving() ? 'Guardando...' : 'Guardar' }}
+                  <button type="button" class="btn btn-primary" (click)="saveService()" [disabled]="saving()">
+                    {{ saving() ? 'Guardando…' : 'Guardar cambios' }}
                   </button>
-                  <button class="btn btn-outline" (click)="editingService.set(false)">Cancelar</button>
+                  <button type="button" class="btn btn-outline" (click)="editingService.set(false)" [disabled]="saving()">Cancelar</button>
                 </div>
               </div>
             } @else {
               <div class="info-grid">
-                <div class="info-item"><span class="lbl">Plan</span><span class="val highlight">{{ client()!.plan_internet?.nombre || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Precio</span><span class="val highlight">RD$ {{ client()!.precio_plan }}</span></div>
-                <div class="info-item"><span class="lbl">IP</span><span class="val mono">{{ client()!.ip || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">MAC CPE</span><span class="val mono">{{ client()!.mac_cpe || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Interfaz LAN</span><span class="val mono">{{ client()!.interfaz_lan || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">SN ONU</span><span class="val mono">{{ client()!.sn_onu || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Zona</span><span class="val">{{ client()!.zona?.nombre || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Router</span><span class="val">{{ client()!.router?.nombre || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">SSID WiFi</span><span class="val mono">{{ client()!.ssid_router_wifi || '-' }}</span></div>
-                <div class="info-item"><span class="lbl">Clave WiFi</span><span class="val mono secret-val">@if (!client()!.password_ssid_router_wifi) { - } @else { {{ showWifiPassword() ? client()!.password_ssid_router_wifi : '••••••••' }} <button type="button" class="reveal-btn" (click)="showWifiPassword.set(!showWifiPassword())">{{ showWifiPassword() ? 'Ocultar' : 'Mostrar' }}</button> }</span></div>
+                <div class="info-item"><span class="lbl">Plan</span><span class="val highlight" [title]="client()!.plan_internet?.nombre || ''">{{ client()!.plan_internet?.nombre | planLabel:'—' }}</span></div>
+                <div class="info-item"><span class="lbl">Precio mensual</span><span class="val highlight">{{ planPrice() !== null ? 'RD$ ' + (planPrice() | number:'1.0-2') : '—' }}</span></div>
+                <div class="info-item"><span class="lbl">IP</span><span class="val mono">@if (client()!.ip) { {{ client()!.ip }}<button type="button" class="copy-btn" title="Copiar IP" aria-label="Copiar IP" (click)="copyValue(client()!.ip, 'IP')"><svg lucideCopy size="13"></svg></button> } @else { — }</span></div>
+                <div class="info-item"><span class="lbl">MAC del CPE</span><span class="val mono">{{ client()!.mac_cpe || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Interfaz LAN</span><span class="val mono">{{ client()!.interfaz_lan || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Serial de la ONU</span><span class="val mono">{{ client()!.sn_onu || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Zona</span><span class="val">{{ client()!.zona?.nombre || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Router</span><span class="val">{{ client()!.router?.nombre || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Red WiFi (SSID)</span><span class="val mono">{{ client()!.ssid_router_wifi || '—' }}</span></div>
+                <div class="info-item"><span class="lbl">Clave WiFi</span><span class="val mono secret-val">@if (!client()!.password_ssid_router_wifi) { — } @else { {{ showWifiPassword() ? client()!.password_ssid_router_wifi : '••••••••' }} <button type="button" class="reveal-btn" (click)="showWifiPassword.set(!showWifiPassword())">{{ showWifiPassword() ? 'Ocultar' : 'Mostrar' }}</button> }</span></div>
               </div>
             }
           </div>
@@ -223,27 +234,27 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
           <div class="card" [class.tab-hidden]="activeTab() !== 'overview'">
             <h3>Facturación</h3>
             <div class="info-grid">
-              <div class="info-item"><span class="lbl">Estado Facturas</span>
-                <span class="val"><span class="badge" [class]="'badge-' + getFacturaClass(client()!.estado_facturas)">{{ client()!.estado_facturas || '-' }}</span></span>
+              <div class="info-item"><span class="lbl">Estado de facturas</span>
+                <span class="val"><span class="badge" [class]="'badge-' + getFacturaClass(client()!.estado_facturas)">{{ client()!.estado_facturas || 'Sin datos' }}</span></span>
               </div>
               <div class="info-item"><span class="lbl">Saldo</span><span class="val saldo" [class.red]="clientOpenBalance() > 0" [class.unconfirmed]="clientOpenBalance() === 0 && (client()!.estado_facturas || '').toLowerCase().includes('pendiente')" [title]="clientOpenBalance() === 0 && (client()!.estado_facturas || '').toLowerCase().includes('pendiente') ? 'WispHub marca la factura como pendiente, pero el monto aún no está sincronizado' : ''">RD$ {{ clientOpenBalance() | number:'1.2-2' }}</span></div>
-              <div class="info-item"><span class="lbl">Fecha de instalación</span><span class="val">{{ client()!.fecha_instalacion || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">Fecha Corte</span><span class="val">{{ client()!.fecha_corte || '-' }}</span></div>
+              <div class="info-item"><span class="lbl">Fecha de instalación</span><span class="val">{{ readableDate(client()!.fecha_instalacion) }}</span></div>
+              <div class="info-item"><span class="lbl">Fecha de corte</span><span class="val">{{ readableDate(client()!.fecha_corte) }}</span></div>
               <div class="info-item"><span class="lbl">Firewall</span><span class="val">{{ client()!.firewall ? 'Sí' : 'No' }}</span></div>
-              <div class="info-item"><span class="lbl">Último cambio</span><span class="val">{{ client()!.ultimo_cambio || '-' }}</span></div>
+              <div class="info-item"><span class="lbl">Último cambio</span><span class="val">{{ readableDate(client()!.ultimo_cambio) }}</span></div>
             </div>
           </div>
 
           <!-- CONFIG WiFi (solo lectura) -->
           <div class="card" [class.tab-hidden]="activeTab() !== 'service'">
-            <h3>Router / CPE</h3>
+            <h3>Router y equipo del cliente</h3>
             <div class="info-grid">
-              <div class="info-item"><span class="lbl">Modelo Router</span><span class="val">{{ client()!.modelo_router_wifi || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">IP Router</span><span class="val mono">{{ client()!.ip_router_wifi || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">MAC Router</span><span class="val mono">{{ client()!.mac_router_wifi || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">Antena</span><span class="val">{{ client()!.modelo_antena || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">Contratacion</span><span class="val">{{ client()!.forma_contratacion || '-' }}</span></div>
-              <div class="info-item"><span class="lbl">Comentarios</span><span class="val">{{ client()!.comentarios || '-' }}</span></div>
+              <div class="info-item"><span class="lbl">Modelo del router</span><span class="val">{{ client()!.modelo_router_wifi || '—' }}</span></div>
+              <div class="info-item"><span class="lbl">IP del router</span><span class="val mono">{{ client()!.ip_router_wifi || '—' }}</span></div>
+              <div class="info-item"><span class="lbl">MAC del router</span><span class="val mono">{{ client()!.mac_router_wifi || '—' }}</span></div>
+              <div class="info-item"><span class="lbl">Antena</span><span class="val">{{ client()!.modelo_antena || '—' }}</span></div>
+              <div class="info-item"><span class="lbl">Contratación</span><span class="val">{{ client()!.forma_contratacion || '—' }}</span></div>
+              <div class="info-item full"><span class="lbl">Comentarios</span><span class="val">{{ client()!.comentarios || '—' }}</span></div>
             </div>
           </div>
         </div>
@@ -260,20 +271,22 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
                   <span class="gps-label">Precisión</span><span class="gps-val">±{{ gpsAccuracy() }}m</span>
                 }
                 @if (gpsCapturedAt()) {
-                  <span class="gps-label">Capturado</span><span class="gps-val">{{ gpsCapturedAt() | date:'dd/MM/yyyy HH:mm' }}{{ gpsCapturedBy() ? ' por ' + gpsCapturedBy() : '' }}</span>
+                  <span class="gps-label">Capturada</span><span class="gps-val">{{ gpsCapturedAt() | date:'dd/MM/yyyy h:mm a' }}{{ gpsCapturedBy() ? ' por ' + gpsCapturedBy() : '' }}</span>
                 }
               </div>
               <div class="gps-actions">
-                <a [href]="googleMapsUrl()" target="_blank" rel="noopener" class="btn btn-outline">🗺 Ver en Google Maps</a>
-                <button class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
-                  @if (capturingGps()) { Capturando... } @else { Actualizar ubicación }
+                <a [href]="googleMapsUrl()" target="_blank" rel="noopener" class="btn btn-outline"><svg lucideExternalLink size="15"></svg> Ver en Google Maps</a>
+                <button type="button" class="btn btn-outline" (click)="copyValue(gpsText(), 'Coordenadas')"><svg lucideCopy size="15"></svg> Copiar coordenadas</button>
+                <button type="button" class="btn btn-primary" (click)="confirmUpdateGps()" [disabled]="capturingGps()">
+                  @if (capturingGps()) { Capturando… } @else { Actualizar ubicación }
                 </button>
               </div>
             </div>
           } @else {
             <p class="gps-empty">Este cliente no tiene ubicación GPS guardada.</p>
-            <button class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
-              @if (capturingGps()) { Capturando... } @else { Capturar mi ubicación actual }
+            <button type="button" class="btn btn-primary" (click)="captureGps()" [disabled]="capturingGps()">
+              <svg lucideMapPin size="15"></svg>
+              @if (capturingGps()) { Capturando… } @else { Capturar mi ubicación actual }
             </button>
             <p class="gps-hint">El navegador pedirá permiso de ubicación. Para mayor precisión, captura desde el sitio del cliente con el celular.</p>
           }
@@ -293,6 +306,13 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
         @if (activeTab() === 'equipment') {
           <section class="tab-panel" role="tabpanel"><app-client-equipment [idServicio]="client()!.id_servicio" /></section>
         }
+      } @else {
+        <div class="not-found">
+          <svg lucideSearchX size="40"></svg>
+          <h3>No encontramos este cliente</h3>
+          <p>Puede que el enlace sea incorrecto o que la cartera no esté sincronizada. Vuelva a la lista y pulse «Sincronizar».</p>
+          <a routerLink="/clients" class="btn btn-primary">Ir a la lista de clientes</a>
+        </div>
       }
 
       @if (invoiceModalOpen() && client()) {
@@ -320,20 +340,20 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
 
             <div class="portfolio-table-wrap">
               <table class="data-table portfolio-table">
-                <thead><tr><th>Factura</th><th>Emisión</th><th>Vencimiento</th><th>Total</th><th>Estado</th><th>Pago</th><th aria-label="Acciones"></th></tr></thead>
+                <thead><tr><th>Factura</th><th>Emisión</th><th>Vencimiento</th><th>Total</th><th>Estado</th><th>Forma de pago</th><th>Recibo</th></tr></thead>
                 <tbody>
                   @for (inv of visibleClientInvoices(); track inv.id_factura) {
                     <tr>
                       <td data-label="Factura" class="id-col">#{{ inv.id_factura }}</td>
-                      <td data-label="Emisión">{{ inv.fecha_emision || '-' }}</td>
-                      <td data-label="Vencimiento">{{ inv.fecha_vencimiento || '-' }}</td>
+                      <td data-label="Emisión">{{ readableDate(inv.fecha_emision) }}</td>
+                      <td data-label="Vencimiento">{{ readableDate(inv.fecha_vencimiento) }}</td>
                       <td data-label="Total" class="money">RD$ {{ inv.total | number:'1.2-2' }}</td>
                       <td data-label="Estado"><span class="badge" [class]="'badge-' + getInvStatusClass(inv.estado)">{{ inv.estado || '-' }}</span></td>
-                      <td data-label="Pago">{{ inv.forma_pago?.nombre || '-' }}</td>
-                      <td data-label="Recibo"><button class="btn-icon" type="button" (click)="printReceipt(inv)" [attr.aria-label]="'Imprimir recibo de factura ' + inv.id_factura"><svg lucidePrinter size="16"></svg></button></td>
+                      <td data-label="Pago">{{ inv.forma_pago?.nombre || '—' }}</td>
+                      <td data-label="Recibo"><button class="btn-icon" type="button" (click)="printReceipt(inv)" [attr.aria-label]="'Imprimir recibo de factura ' + inv.id_factura" title="Imprimir recibo"><svg lucidePrinter size="16"></svg></button></td>
                     </tr>
                   } @empty {
-                    <tr><td colspan="7" class="portfolio-empty">No hay facturas en este estado.</td></tr>
+                    <tr><td colspan="7" class="portfolio-empty">{{ clientInvoices().length ? 'No hay facturas en este estado.' : 'Este cliente no tiene facturas guardadas. Sincronice las facturas desde el módulo de Facturación.' }}</td></tr>
                   }
                 </tbody>
               </table>
@@ -344,8 +364,8 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     </div>
   `,
   styles: [`
-    .page { padding: 20px 24px 32px; color: #26384b; }
-    .back-link { display: inline-flex; align-items: center; gap: 5px; color: #2563eb; text-decoration: none; font-size: 13px; font-weight: 700; margin-bottom: 12px; }
+    .page { padding: 20px 24px 32px; color: #334250; }
+    .back-link { display: inline-flex; align-items: center; gap: 5px; color: #1267dd; text-decoration: none; font-size: 13px; font-weight: 700; margin-bottom: 12px; }
     .back-link:hover { text-decoration: underline; }
 
     .profile-bar {
@@ -355,37 +375,46 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     }
     .profile-left { display: flex; align-items: center; gap: 16px; }
     .avatar-lg { width: 58px; height: 58px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 22px; color: white; }
-    .avatar-lg.active { background: linear-gradient(135deg, #22c55e, #16a34a); }
-    .avatar-lg.suspended { background: linear-gradient(135deg, #ef4444, #dc2626); }
-    .avatar-lg.free { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-    .avatar-lg.default { background: linear-gradient(135deg, #94a3b8, #64748b); }
-    .profile-left h2 { margin: 0 0 6px; font-size: 22px; font-weight: 700; color: #0f172a; }
+    .avatar-lg.active { background: #13875a; }
+    .avatar-lg.suspended { background: #b42318; }
+    .avatar-lg.free { background: #1267dd; }
+    .avatar-lg.default { background: #72808d; }
+    .profile-left { min-width: 0; }
+    .profile-left h2 { margin: 0 0 6px; font-size: 22px; font-weight: 700; color: #172535; overflow-wrap: anywhere; }
     .profile-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .id-tag { font-size: 13px; color: #94a3b8; }
-    .profile-actions { display: flex; gap: 10px; }
+    .id-tag { font-size: 13px; color: #667582; }
+    .profile-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
-    .btn { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 7px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.2s; }
-    .btn-outline { background: white; border: 1px solid #e2e8f0; color: #475569; }
-    .btn-outline:hover { border-color: #1267dd; color: #1267dd; }
-    .btn-green { background: #22c55e; color: white; }
-    .btn-green:hover { background: #16a34a; }
-    .btn-red { background: #ef4444; color: white; }
-    .btn-red:hover { background: #dc2626; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 18px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; border: 1px solid transparent; transition: background .15s, border-color .15s, color .15s; text-decoration: none; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-outline { background: white; border-color: #ccd6de; color: #334250; }
+    .btn-outline:hover:not(:disabled) { border-color: #1267dd; color: #1267dd; }
+    .btn-green { background: #13875a; color: white; }
+    .btn-green:hover:not(:disabled) { background: #0f704b; }
+    .btn-red { background: #fff; border-color: #f0b4ae; color: #b42318; }
+    .btn-red:hover:not(:disabled) { background: #fff0ef; border-color: #b42318; }
     .btn-primary { background: #1267dd; color: white; }
-    .btn-primary:hover { background: #0d58c0; }
-    .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-primary:hover:not(:disabled) { background: #0d58c0; }
+    .btn:focus-visible, .btn-edit:focus-visible, .client-tabs button:focus-visible, .copy-btn:focus-visible, .reveal-btn:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
 
     .btn-edit {
       display: inline-flex; align-items: center; gap: 6px;
-      padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
-      background: white; font-size: 12px; color: #1267dd; font-weight: 500;
+      padding: 6px 14px; border: 1px solid #ccd6de; border-radius: 6px;
+      background: white; font-size: 12px; color: #1267dd; font-weight: 600;
       cursor: pointer; transition: all 0.2s;
     }
     .btn-edit:hover { background: #1267dd; color: white; border-color: #1267dd; }
 
-    .ping-box { margin-bottom: 20px; padding: 12px 16px; border-radius: 10px; background: #fef2f2; border: 1px solid #fecaca; }
-    .ping-box.success { background: #f0fdf4; border-color: #bbf7d0; }
-    .ping-box pre { margin: 0; font-size: 12px; white-space: pre-wrap; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .ping-box { margin-bottom: 12px; padding: 12px 16px; border-radius: 8px; background: #fff0ef; border: 1px solid #f0b4ae; color: #b42318; font-size: 13px; }
+    .ping-box.success { background: #e9f8f1; border-color: #a8dcc3; color: #13875a; }
+    .ping-box.pending { background: #f2f7ff; border-color: #cfe0f8; color: #1267dd; }
+    .ping-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .ping-close { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+    .ping-close:hover { background: rgba(255,255,255,.7); }
+    .ping-box p { margin: 6px 0 0; color: #334250; }
+    .ping-box details { margin-top: 6px; color: #334250; }
+    .ping-box summary { cursor: pointer; font-size: 12px; font-weight: 600; }
+    .ping-box pre { margin: 6px 0 0; max-height: 220px; overflow: auto; font-size: 12px; white-space: pre-wrap; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
 
     .client-tabs {
       position: sticky; top: 64px; z-index: 12; display: flex; align-items: flex-end; gap: 2px;
@@ -399,10 +428,10 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
       background: transparent; color: #627589; font-size: 12px; font-weight: 700; cursor: pointer;
     }
     .client-tabs button:hover { color: #243a50; background: rgba(255,255,255,0.55); }
-    .client-tabs button.active { position: relative; color: #1d4ed8; border-color: #dce5eb; background: #fff; box-shadow: 0 -2px 6px rgba(30, 51, 73, 0.05); }
+    .client-tabs button.active { position: relative; color: #1267dd; border-color: #dce5eb; background: #fff; box-shadow: 0 -2px 6px rgba(30, 51, 73, 0.05); }
     .client-tabs button.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: #fff; }
-    .client-tabs .portfolio-tab { margin-left: auto; color: #0f7b4c; }
-    .client-tabs .portfolio-tab b { display: grid; place-items: center; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px; background: #dff5e9; color: #0f7b4c; font-size: 12px; }
+    .client-tabs .portfolio-tab { margin-left: auto; color: #13875a; }
+    .client-tabs .portfolio-tab b { display: grid; place-items: center; min-width: 21px; height: 21px; padding: 0 5px; border-radius: 11px; background: #e9f8f1; color: #13875a; font-size: 12px; }
     .tab-hidden { display: none !important; }
     .tab-panel { min-width: 0; animation: panelIn 0.16s ease; }
     @keyframes panelIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
@@ -410,64 +439,72 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
     .card { background: white; border-radius: 8px; border: 1px solid #dce5eb; padding: 20px; }
 
-    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
-    .card-head h3 { margin: 0; font-size: 15px; font-weight: 600; color: #0f172a; }
-    .card h3 { font-size: 15px; font-weight: 600; color: #0f172a; margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid #f1f5f9; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #edf0f2; }
+    .card-head h3 { margin: 0; font-size: 15px; font-weight: 600; color: #172535; }
+    .card h3 { font-size: 15px; font-weight: 600; color: #172535; margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid #edf0f2; }
 
     .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .info-item.full { grid-column: 1 / -1; }
-    .lbl { display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.3px; margin-bottom: 2px; }
-    .val { font-size: 14px; color: #0f172a; font-weight: 500; overflow-wrap: anywhere; }
+    .lbl { display: block; font-size: 11px; color: #667582; text-transform: uppercase; font-weight: 700; margin-bottom: 3px; }
+    .val { font-size: 14px; color: #172535; font-weight: 500; overflow-wrap: anywhere; }
+    .val a { color: inherit; text-decoration: none; }
+    .val a:hover { color: #1267dd; text-decoration: underline; }
+    .copy-btn { display: inline-grid; place-items: center; width: 24px; height: 24px; margin-left: 6px; padding: 0; border: 1px solid #dfe5ea; border-radius: 5px; background: #fff; color: #667582; cursor: pointer; vertical-align: middle; }
+    .copy-btn:hover { color: #1267dd; border-color: #1267dd; background: #f2f7ff; }
     .val.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 13px; }
     .secret-val { display: inline-flex; align-items: center; gap: 8px; }
     .reveal-btn { padding: 2px 8px; border: 1px solid #ccd6de; border-radius: 4px; background: #fff; color: #1267dd; font: 600 11px Inter, sans-serif; cursor: pointer; }
     .reveal-btn:hover { background: #f2f7ff; }
     .val.highlight { color: #1267dd; font-weight: 700; }
-    .val.phone { color: #0f172a; font-size: 16px; font-weight: 700; }
-    .val.saldo { font-size: 18px; font-weight: 700; color: #22c55e; }
-    .val.saldo.red { color: #ef4444; }
+    .val.phone { color: #172535; font-size: 16px; font-weight: 700; }
+    .val.saldo { font-size: 18px; font-weight: 700; color: #13875a; }
+    .val.saldo.red { color: #b42318; }
     .val.saldo.unconfirmed { color: #b36b12; }
 
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-    .badge-active { background: #dcfce7; color: #16a34a; }
-    .badge-suspended { background: #fee2e2; color: #dc2626; }
-    .badge-free { background: #dbeafe; color: #2563eb; }
-    .badge-default { background: #f1f5f9; color: #64748b; }
-    .badge-plan { background: #eef2ff; color: #1267dd; }
-    .badge-paid { background: #dcfce7; color: #16a34a; }
-    .badge-pending { background: #fef3c7; color: #d97706; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+    .badge-active { background: #e9f8f1; color: #13875a; }
+    .badge-suspended { background: #fff0ef; color: #b42318; }
+    .badge-free { background: #edf4ff; color: #1267dd; }
+    .badge-default { background: #eef1f4; color: #526170; }
+    .badge-plan { background: #edf4ff; color: #1267dd; }
+    .badge-paid { background: #e9f8f1; color: #13875a; }
+    .badge-pending { background: #fff6e8; color: #b36b12; }
 
     /* EDIT FORM */
     .edit-form { animation: fadeIn 0.2s ease; }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form-group { margin-bottom: 12px; }
-    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px; }
-    .form-input { width: 100%; padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; color: #334155; outline: none; box-sizing: border-box; transition: border 0.2s; }
+    .form-group label { display: block; font-size: 12px; font-weight: 600; color: #334250; margin-bottom: 4px; }
+    .req { color: #b42318; }
+    .field-error { display: block; margin-top: 4px; color: #b42318; font-size: 12px; }
+    .form-input.invalid { border-color: #b42318; }
+    .edit-warning { margin: 0 0 12px; padding: 8px 10px; border: 1px solid #f3d19e; border-radius: 6px; background: #fff6e8; color: #7a4a0c; font-size: 12px; }
+    .form-input { width: 100%; padding: 9px 12px; border: 1px solid #ccd6de; border-radius: 6px; font-size: 14px; color: #172535; outline: none; box-sizing: border-box; transition: border 0.2s; }
     .form-input:focus { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221,0.1); }
     .mono-input { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
     textarea.form-input { resize: vertical; }
     .edit-actions { display: flex; gap: 8px; margin-top: 4px; }
 
     .gps-section { padding: 18px 20px; }
-    .gps-section h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 14px; font-size: 15px; color: #0f172a; }
+    .gps-section h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 14px; font-size: 15px; color: #172535; }
     .gps-saved { display: flex; flex-direction: column; gap: 14px; }
     .gps-coords {
       display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px;
-      background: #f8fafc; padding: 12px 16px; border-radius: 10px;
+      background: #f8fafc; padding: 12px 16px; border-radius: 8px;
     }
-    .gps-label { color: #64748b; font-size: 12px; font-weight: 600; }
-    .gps-val { color: #0f172a; font-size: 13px; }
-    .gps-val.mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .gps-label { color: #667582; font-size: 12px; font-weight: 600; }
+    .gps-val { color: #172535; font-size: 13px; overflow-wrap: anywhere; }
+    .gps-val.mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; }
     .gps-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-    .gps-empty { color: #94a3b8; font-size: 13px; margin: 0 0 12px; }
-    .gps-hint { color: #94a3b8; font-size: 12px; margin: 10px 0 0; }
+    .gps-empty { color: #334250; font-size: 13px; margin: 0 0 12px; }
+    .gps-hint { color: #667582; font-size: 12px; margin: 10px 0 0; }
     .data-table { width: 100%; border-collapse: collapse; }
-    .data-table th { text-align: left; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; }
-    .data-table td { padding: 10px 12px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; }
+    .data-table th { text-align: left; font-size: 11px; font-weight: 700; color: #667582; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid #dfe5ea; }
+    .data-table td { padding: 10px 12px; font-size: 13px; color: #334250; border-bottom: 1px solid #edf0f2; }
     .id-col { font-weight: 600; color: #1267dd; }
-    .money { font-family: 'Courier New', monospace; font-weight: 600; }
-    .btn-icon { background: none; border: 1px solid #e2e8f0; border-radius: 8px; padding: 5px 7px; cursor: pointer; color: #64748b; transition: all 0.2s; }
+    .money { font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+    .btn-icon { background: none; border: 1px solid #dfe5ea; border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #64748b; transition: all 0.2s; }
     .btn-icon:hover { background: #1267dd; color: white; border-color: #1267dd; }
 
     .modal-backdrop {
@@ -483,31 +520,36 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     @keyframes modalIn { from { opacity: 0; transform: translateY(8px) scale(0.99); } }
     .portfolio-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; border-bottom: 1px solid #dce5eb; background: #fff; }
     .portfolio-title { display: flex; align-items: center; gap: 12px; min-width: 0; }
-    .portfolio-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 7px; background: #e9f2ff; color: #2563eb; }
+    .portfolio-icon { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; border-radius: 6px; background: #edf4ff; color: #1267dd; }
     .portfolio-title > div { min-width: 0; }
-    .portfolio-title small { display: block; margin: 0; color: #718396; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .portfolio-title small { display: block; margin: 0; color: #667582; font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .portfolio-title h2 { margin: 2px 0 0; color: #172b40; font-size: 18px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .portfolio-title p { margin: 3px 0 0; color: #7d8d9c; font-size: 11px; }
+    .portfolio-title p { margin: 3px 0 0; color: #667582; font-size: 12px; }
     .modal-close { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; color: #607386; cursor: pointer; }
     .modal-close:hover { color: #b42318; border-color: #f0b4ae; background: #fff5f4; }
     .portfolio-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin: 12px 12px 0; overflow: hidden; border: 1px solid #dce5eb; border-radius: 6px; background: #dce5eb; }
     .portfolio-kpis > div { min-width: 0; padding: 11px 13px; background: #fff; }
-    .portfolio-kpis span { display: flex; align-items: center; gap: 6px; color: #718396; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .portfolio-kpis span { display: flex; align-items: center; gap: 6px; color: #667582; font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .portfolio-kpis strong { display: block; margin-top: 5px; color: #22384d; font-size: 17px; overflow-wrap: anywhere; }
-    .portfolio-kpis .paid strong { color: #0f8a50; }
-    .portfolio-kpis .pending strong, .danger-text { color: #c2413a !important; }
+    .portfolio-kpis .paid strong { color: #13875a; }
+    .portfolio-kpis .pending strong, .danger-text { color: #b42318 !important; }
     .portfolio-toolbar { padding: 10px 12px; }
     .portfolio-filters { display: inline-flex; gap: 4px; padding: 3px; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; }
     .portfolio-filters button { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 0; border-radius: 4px; background: transparent; color: #617487; font-size: 11px; font-weight: 700; cursor: pointer; }
-    .portfolio-filters button.active { color: #1d4ed8; background: #eaf2ff; }
+    .portfolio-filters button.active { color: #1267dd; background: #edf4ff; }
     .portfolio-filters b { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 4px; border-radius: 10px; background: #edf1f4; color: inherit; font-size: 11px; }
     .portfolio-table-wrap { min-height: 0; margin: 0 12px 12px; overflow: auto; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; }
     .portfolio-table { min-width: 760px; }
     .portfolio-table thead { position: sticky; top: 0; z-index: 1; background: #f6f8fa; }
     .portfolio-table tbody tr:hover td { background: #f8fbfd; }
-    .portfolio-empty { padding: 44px !important; text-align: center; color: #8292a0 !important; }
+    .portfolio-empty { padding: 44px !important; text-align: center; color: #667582 !important; }
 
-    .loading-state { display: flex; flex-direction: column; align-items: center; padding: 80px; }
+    .loading-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 80px 20px; color: #667582; font-size: 13px; }
+    .loading-state p { margin: 0; }
+    .not-found { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 460px; margin: 40px auto; padding: 32px 20px; text-align: center; border: 1px solid #dfe5ea; border-radius: 8px; background: #fff; }
+    .not-found > svg { color: #8a9aa8; }
+    .not-found h3 { margin: 0; color: #172535; font-size: 17px; }
+    .not-found p { margin: 0 0 6px; color: #667582; font-size: 13px; line-height: 1.5; }
     .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -520,7 +562,8 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
       .page { padding: 12px; }
       .profile-bar { flex-direction: column; align-items: flex-start; }
       .profile-actions { width: 100%; flex-wrap: wrap; }
-      .profile-actions .btn { flex: 1; justify-content: center; }
+      .profile-actions .btn { flex: 1 1 140px; justify-content: center; }
+      .gps-actions .btn { flex: 1 1 100%; }
       .avatar-lg { width: 56px; height: 56px; font-size: 20px; }
       .profile-left h2 { font-size: 18px; }
       .card { padding: 16px; }
@@ -557,6 +600,14 @@ export class ClientDetailComponent implements OnInit {
   saving = signal(false);
   pingResult = signal('');
   pingSuccess = signal(false);
+  pinging = signal(false);
+  changingStatus = signal(false);
+  planPrice = computed(() => {
+    const raw = this.client()?.precio_plan as unknown;
+    if (raw === null || raw === undefined || raw === '') return null;
+    const value = typeof raw === 'number' ? raw : Number.parseFloat(String(raw).replace(/,/g, '').replace(/[^\d.-]/g, ''));
+    return Number.isFinite(value) ? value : null;
+  });
   activeTab = signal<ClientDetailTab>('overview');
   invoiceModalOpen = signal(false);
   invoiceStatusFilter = signal<'all' | 'paid' | 'pending'>('all');
@@ -681,7 +732,7 @@ export class ClientDetailComponent implements OnInit {
     const c = this.client();
     if (!c) return;
     if (!('geolocation' in navigator)) {
-      this.toast.error('Este navegador no soporta GPS');
+      this.toast.error('Este navegador no permite obtener la ubicación');
       return;
     }
     this.capturingGps.set(true);
@@ -720,20 +771,20 @@ export class ClientDetailComponent implements OnInit {
               this.db.saveClients([updated]).catch(() => {});
               this.toast.success(`Ubicación guardada (precisión ±${Math.round(accuracy)}m)`);
             } else {
-              this.toast.error(r?.error || 'No se pudo guardar');
+              this.toast.error(r?.error || 'No se pudo guardar la ubicación');
             }
           },
           error: (e) => {
             this.capturingGps.set(false);
-            this.toast.error(e.error?.error || 'Error al guardar GPS');
+            this.toast.error(e.error?.error || 'No se pudo guardar la ubicación. Intente de nuevo.');
           },
         });
       },
       (err) => {
         this.capturingGps.set(false);
-        let msg = 'No se pudo obtener GPS';
-        if (err.code === 1) msg = 'Permiso de ubicación denegado. Habilítalo en el navegador.';
-        else if (err.code === 2) msg = 'GPS no disponible. Verifica que esta activado.';
+        let msg = 'No se pudo obtener la ubicación';
+        if (err.code === 1) msg = 'Permiso de ubicación denegado. Habilítelo en el navegador.';
+        else if (err.code === 2) msg = 'GPS no disponible. Verifique que la ubicación del equipo esté activada.';
         else if (err.code === 3) msg = 'Se agotó el tiempo para obtener la ubicación';
         this.toast.error(msg);
       },
@@ -781,7 +832,7 @@ export class ClientDetailComponent implements OnInit {
       },
       error: (e) => {
         this.saving.set(false);
-        this.toast.error('Error: ' + (e.error?.detail || 'No se pudo guardar'));
+        this.toast.error('No se pudo guardar: ' + (e.error?.detail || 'WispHub no respondió. Intente de nuevo.'));
       }
     });
   }
@@ -844,7 +895,7 @@ export class ClientDetailComponent implements OnInit {
       },
       error: (e) => {
         this.saving.set(false);
-        this.toast.error('Error: ' + (e.error?.detail || 'No se pudo guardar'));
+        this.toast.error('No se pudo guardar: ' + (e.error?.detail || 'WispHub no respondió. Intente de nuevo.'));
       }
     });
   }
@@ -853,29 +904,62 @@ export class ClientDetailComponent implements OnInit {
   activateClient() {
     const c = this.client();
     if (!c) return;
+    if (!confirm(`¿Activar el servicio de internet de ${c.nombre}?\n\nSe enviará la orden de activación a WispHub.`)) return;
+    this.changingStatus.set(true);
     this.api.activateClient(c.id_servicio).subscribe({
-      next: () => this.toast.success('Cliente activado'),
-      error: (e) => this.toast.error('Error: ' + (e.error?.detail || 'Sin permisos'))
+      next: () => { this.changingStatus.set(false); this.toast.success(`Servicio de ${c.nombre} activado. Sincronice la cartera para ver el nuevo estado.`); },
+      error: (e) => { this.changingStatus.set(false); this.toast.error('No se pudo activar: ' + (e.error?.detail || 'no tiene permisos o WispHub no respondió')); }
     });
   }
 
   deactivateClient() {
     const c = this.client();
     if (!c) return;
+    if (!confirm(`¿Suspender el servicio de internet de ${c.nombre}?\n\nEl cliente se quedará sin internet hasta que se active de nuevo.`)) return;
+    this.changingStatus.set(true);
     this.api.deactivateClient(c.id_servicio).subscribe({
-      next: () => this.toast.success('Cliente suspendido'),
-      error: (e) => this.toast.error('Error: ' + (e.error?.detail || 'Sin permisos'))
+      next: () => { this.changingStatus.set(false); this.toast.success(`Servicio de ${c.nombre} suspendido. Sincronice la cartera para ver el nuevo estado.`); },
+      error: (e) => { this.changingStatus.set(false); this.toast.error('No se pudo suspender: ' + (e.error?.detail || 'no tiene permisos o WispHub no respondió')); }
     });
   }
 
   pingClient() {
     const c = this.client();
     if (!c) return;
-    this.pingResult.set('Realizando ping...');
+    this.pingResult.set('');
+    this.pinging.set(true);
     this.api.pingClient(c.id_servicio).subscribe({
-      next: (res) => { this.pingResult.set(JSON.stringify(res, null, 2)); this.pingSuccess.set(true); },
-      error: (e) => { this.pingResult.set('Error: ' + (e.error?.detail || 'Sin respuesta')); this.pingSuccess.set(false); }
+      next: (res) => { this.pinging.set(false); this.pingResult.set(JSON.stringify(res, null, 2)); this.pingSuccess.set(true); },
+      error: (e) => { this.pinging.set(false); this.pingResult.set(e.error?.detail || 'El equipo del cliente no respondió. Verifique que esté encendido y conectado.'); this.pingSuccess.set(false); }
     });
+  }
+
+  gpsText(): string {
+    const lat = this.gpsLat(), lng = this.gpsLng();
+    return lat == null || lng == null ? '' : `${lat},${lng}`;
+  }
+
+  confirmUpdateGps() {
+    if (!confirm('¿Reemplazar la ubicación guardada por su ubicación actual?\n\nHágalo solo si está en el sitio del cliente.')) return;
+    this.captureGps();
+  }
+
+  copyValue(value: string | null | undefined, label: string) {
+    if (!value) return this.toast.info(`${label} no disponible`);
+    if (!navigator.clipboard) return this.toast.info('El navegador no permite copiar automáticamente');
+    navigator.clipboard.writeText(value)
+      .then(() => this.toast.success(`${label} copiado`))
+      .catch(() => this.toast.info('No se pudo copiar automáticamente'));
+  }
+
+  readableDate(value: string | null | undefined): string {
+    if (!value) return '—';
+    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+    if (!match) return String(value);
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4] || 0), Number(match[5] || 0));
+    if (Number.isNaN(date.getTime())) return String(value);
+    const day = date.toLocaleDateString('es-DO', { day: 'numeric', month: 'short', year: 'numeric' });
+    return match[4] ? `${day}, ${date.toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' })}` : day;
   }
 
   printReceipt(inv: Invoice) {
@@ -883,9 +967,9 @@ export class ClientDetailComponent implements OnInit {
   }
 
   getInitials(nombre: string): string {
-    if (!nombre) return '?';
-    const p = nombre.trim().split(/\s+/);
-    return ((p[0]?.[0] || '') + (p[1]?.[0] || '')).toUpperCase();
+    // Solo letras, igual que en la lista de clientes: "algeny 30" no debe producir "A3".
+    const words = String(nombre || '').match(/\p{L}+/gu) || [];
+    return ((words[0]?.[0] || '') + (words[1]?.[0] || '')).toUpperCase() || '#';
   }
 
   getStatusClass(estado: string | null | undefined): string {

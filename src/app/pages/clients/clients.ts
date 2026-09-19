@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, effect, inject, signal } from '@angular/core';
+import { Component, ElementRef, HostListener, OnInit, OnDestroy, effect, inject, signal } from '@angular/core';
 import { Subject, takeUntil } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { LocalDbService } from '../../services/local-db.service';
@@ -18,7 +18,7 @@ import { formatPlanName } from '../../pipes/plan-label.pipe';
 import {
   LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
   LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid,
-  LucideMoreHorizontal, LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch,
+  LucideMoreHorizontal, LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch, LucideSearchX,
   LucideSlidersHorizontal, LucideTable2, LucideTriangleAlert, LucideUserCheck,
   LucideUserX, LucideUsers, LucideWalletCards, LucideWifi, LucideX,
 } from '@lucide/angular';
@@ -43,7 +43,7 @@ interface ClientGroup {
     NavbarComponent, RouterLink, FormsModule, ClientBlockActionsComponent, DecimalPipe,
     LucideCalendarDays, LucideChevronLeft, LucideChevronRight, LucideCircleDollarSign,
     LucideCircleDot, LucideCopy, LucideDownload, LucideEye, LucideGauge, LucideLayoutGrid,
-    LucideMoreHorizontal, LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch,
+    LucideMoreHorizontal, LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch, LucideSearchX,
     LucideSlidersHorizontal, LucideTable2, LucideTriangleAlert, LucideUserCheck,
     LucideUserX, LucideUsers, LucideWalletCards, LucideWifi, LucideX,
   ],
@@ -72,7 +72,7 @@ interface ClientGroup {
         <button class="summary-card info" type="button" (click)="setQuickFilter('missing')" [class.active]="quickFilter === 'missing'">
           <span class="kpi-icon"><svg lucideUserX size="19"></svg></span><span><small>Datos incompletos</small><strong>{{ countMissingData() }}</strong><em>{{ dataCompleteness() }}% completitud</em></span>
         </button>
-        <button class="summary-card revenue" type="button" (click)="setQuickFilter('high_value')" [class.active]="quickFilter === 'high_value'" [title]="'Facturación estimada: RD$ ' + totalMonthlyRevenue()">
+        <button class="summary-card revenue" type="button" (click)="setQuickFilter('high_value')" [class.active]="quickFilter === 'high_value'" [title]="'Facturación mensual estimada: RD$ ' + (totalMonthlyRevenue() | number:'1.0-0')">
           <span class="kpi-icon"><svg lucideWalletCards size="19"></svg></span><span><small>Facturación mensual</small><strong>RD$ {{ totalMonthlyRevenue() / 1000 | number:'1.0-1' }} mil</strong><em>ver planes de RD$ 1,500+</em></span>
         </button>
       </section>
@@ -90,8 +90,8 @@ interface ClientGroup {
           <button class="filter-toggle" type="button" [class.active]="filtersExpanded || activeFilterCount() > 0" (click)="filtersExpanded = !filtersExpanded"><svg lucideSlidersHorizontal size="17"></svg>Filtros @if (activeFilterCount()) { <span>{{ activeFilterCount() }}</span> }</button>
           <div class="toolbar-actions">
             <a routerLink="/clients/new" class="btn btn-green"><svg lucidePlus size="16"></svg>Nuevo cliente</a>
-            <button class="btn btn-outline" type="button" (click)="exportCSV()" title="Exportar resultados"><svg lucideDownload size="16"></svg>CSV</button>
-            <button class="btn btn-primary" type="button" [disabled]="syncing()" (click)="syncClients()"><svg lucideRefreshCw size="16" [class.spinning]="syncing()"></svg>{{ syncing() ? 'Sincronizando' : 'Sincronizar' }}</button>
+            <button class="btn btn-outline" type="button" (click)="exportCSV()" [disabled]="!filteredClients().length" [title]="filteredClients().length ? 'Descargar los ' + filteredClients().length + ' clientes visibles en Excel (CSV)' : 'No hay clientes para exportar'"><svg lucideDownload size="16"></svg>Exportar</button>
+            <button class="btn btn-primary" type="button" [disabled]="syncing()" (click)="syncClients()" title="Traer los datos más recientes desde WispHub"><svg lucideRefreshCw size="16" [class.spinning]="syncing()"></svg>{{ syncing() ? 'Sincronizando…' : 'Sincronizar' }}</button>
           </div>
         </div>
         @if (filtersExpanded) {
@@ -99,14 +99,14 @@ interface ClientGroup {
             <label><span>Estado</span><select [(ngModel)]="statusFilter" (change)="filterClients()"><option value="">Todos</option><option value="activo">Activo</option><option value="suspendido">Suspendido</option><option value="cortado">Cortado</option><option value="gratis">Gratis</option><option value="retirado">Retirado</option></select></label>
             <label><span>Facturación</span><select [(ngModel)]="invoiceFilter" (change)="filterClients()"><option value="">Todas</option><option value="pending">Pendientes</option><option value="paid">Pagadas</option></select></label>
             <label><span>Zona</span><select [(ngModel)]="zoneFilter" (change)="filterClients()"><option value="">Todas</option>@for (zone of allZones(); track zone) { <option [value]="zone">{{ zone }}</option> }</select></label>
-            <label><span>Plan</span><select [(ngModel)]="planFilter" (change)="filterClients()"><option value="">Todos</option>@for (plan of allPlans(); track plan) { <option [value]="plan">{{ plan }}</option> }</select></label>
+            <label><span>Plan</span><select [(ngModel)]="planFilter" (change)="filterClients()"><option value="">Todos</option>@for (plan of allPlans(); track plan) { <option [value]="plan">{{ planOptionLabel(plan) }}</option> }</select></label>
             <label><span>Riesgo</span><select [(ngModel)]="tierFilter" (change)="filterClients()"><option value="">Todos</option><option value="EXCELENTE">Excelente</option><option value="BUENO">Bueno</option><option value="REGULAR">Regular</option><option value="RIESGO">Riesgo</option><option value="CRITICO">Crítico</option></select></label>
             <label><span>Consumo</span><select [(ngModel)]="consumptionFilter" (change)="filterClients()"><option value="">Todos</option><option value="INTENSIVO">Intensivo</option><option value="NORMAL">Normal</option><option value="BAJO">Bajo</option><option value="INACTIVO">Inactivo</option></select></label>
             <label><span>Calidad de datos</span><select [(ngModel)]="dataFilter" (change)="filterClients()"><option value="">Todos</option><option value="complete">Expediente completo</option><option value="missing_ip">Sin IP</option><option value="missing_phone">Sin teléfono</option><option value="missing_onu">Sin ONU o MAC</option><option value="missing_zone">Sin zona</option></select></label>
             <button class="clear-filter" type="button" (click)="clearFilters()"><svg lucideX size="15"></svg>Limpiar filtros</button>
           </div>
         }
-        <footer class="result-bar"><span><b>{{ filteredClients().length }}</b> resultados de {{ allClients().length }}</span>@if (activeFilterCount()) { <button type="button" (click)="clearFilters()">Restablecer vista</button> }</footer>
+        <footer class="result-bar"><span><b>{{ filteredClients().length }}</b> {{ filteredClients().length === 1 ? 'resultado' : 'resultados' }} de {{ allClients().length }}</span>@if (activeFilterCount()) { <button type="button" (click)="clearFilters()">Restablecer vista</button> }</footer>
       </section>
 
       @if (!loading() && allClients().length > 0) {
@@ -123,7 +123,7 @@ interface ClientGroup {
       @if (loading()) {
         <div class="loading-state">
           <div class="spinner"></div>
-          <p>Cargando clientes...</p>
+          <p>Cargando clientes…</p>
         </div>
       } @else if (loadError()) {
         <div class="empty-state error-state">
@@ -134,9 +134,17 @@ interface ClientGroup {
         </div>
       } @else if (filteredClients().length === 0 && allClients().length === 0) {
         <div class="empty-state">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-          <h3>Sin clientes</h3>
-          <p>Presiona "Sincronizar" para traer la cartera desde WispHub.</p>
+          <svg lucideUsers size="48"></svg>
+          <h3>Todavía no hay clientes guardados</h3>
+          <p>Pulse «Sincronizar» para traer la cartera desde WispHub.</p>
+          <button class="btn btn-primary" type="button" [disabled]="syncing()" (click)="syncClients()"><svg lucideRefreshCw size="16"></svg>{{ syncing() ? 'Sincronizando…' : 'Sincronizar ahora' }}</button>
+        </div>
+      } @else if (filteredClients().length === 0) {
+        <div class="empty-state">
+          <svg lucideSearchX size="44"></svg>
+          <h3>Ningún cliente coincide con la búsqueda</h3>
+          <p>@if (searchTerm.trim()) { No hay resultados para «{{ searchTerm.trim() }}». } Revise lo escrito o quite algunos filtros.</p>
+          <button class="btn btn-outline" type="button" (click)="clearFilters()"><svg lucideX size="16"></svg>Limpiar búsqueda y filtros</button>
         </div>
       } @else {
         @if (viewMode === 'table') {
@@ -144,12 +152,12 @@ interface ClientGroup {
           <table class="data-table">
             <thead>
               <tr>
-                <th class="sortable col-client" (click)="sort('nombre')">Cliente {{ sortIcon('nombre') }}</th>
-                <th class="sortable col-service" (click)="sort('plan_internet.nombre')">Plan y red {{ sortIcon('plan_internet.nombre') }}</th>
-                <th class="sortable col-status" (click)="sort('estado')">Estado {{ sortIcon('estado') }}</th>
-                <th class="sortable col-billing" (click)="sort('precio_plan')">Facturación {{ sortIcon('precio_plan') }}</th>
-                <th class="sortable col-location" (click)="sort('zona.nombre')">Ubicación {{ sortIcon('zona.nombre') }}</th>
-                <th class="sortable col-score" (click)="sort('creditScore')">Salud {{ sortIcon('creditScore') }}</th>
+                <th class="sortable col-client" (click)="sort('nombre')" [attr.aria-sort]="ariaSort('nombre')" title="Ordenar por nombre">Cliente {{ sortIcon('nombre') }}</th>
+                <th class="sortable col-service" (click)="sort('plan_internet.nombre')" [attr.aria-sort]="ariaSort('plan_internet.nombre')" title="Ordenar por plan">Plan y red {{ sortIcon('plan_internet.nombre') }}</th>
+                <th class="sortable col-status" (click)="sort('estado')" [attr.aria-sort]="ariaSort('estado')" title="Ordenar por estado">Estado {{ sortIcon('estado') }}</th>
+                <th class="sortable col-billing" (click)="sort('precio_plan')" [attr.aria-sort]="ariaSort('precio_plan')" title="Ordenar por mensualidad">Facturación {{ sortIcon('precio_plan') }}</th>
+                <th class="sortable col-location" (click)="sort('zona.nombre')" [attr.aria-sort]="ariaSort('zona.nombre')" title="Ordenar por zona">Ubicación {{ sortIcon('zona.nombre') }}</th>
+                <th class="sortable col-score" (click)="sort('creditScore')" [attr.aria-sort]="ariaSort('creditScore')" title="Ordenar por puntuación de pago">Salud {{ sortIcon('creditScore') }}</th>
                 <th class="col-actions"><span class="sr-only">Acciones</span></th>
               </tr>
             </thead>
@@ -161,20 +169,20 @@ interface ClientGroup {
                       <div class="avatar-sm" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</div>
                       <div class="client-identity">
                         <span class="name">{{ c.nombre }}</span>
-                        <span class="sub">#{{ c.id_servicio }} · {{ c.usuario || 'Sin usuario' }}</span>
+                        <span class="sub">#{{ c.id_servicio }}@if (c.usuario) { · {{ c.usuario }} }</span>
                         @if (contactLine(c); as contact) { <span class="contact-line">{{ contact }}</span> }
-                        @else { <span class="contact-line missing">Sin teléfono</span> }
+                        @else { <span class="contact-line missing" title="Sin teléfono registrado">—</span> }
                       </div>
                     </div>
                   </td>
                   <td data-label="Plan y red">
                     <div class="service-cell">
                       <span class="plan-name" [title]="c.plan_internet?.nombre || ''">{{ planLabel(c) }}</span>
-                      <span class="network-line"><b class="mono" [class.missing]="!c.ip">{{ c.ip || 'Sin IP' }}</b>@if (c.mac_cpe || c.sn_onu) { <small class="mono">{{ c.mac_cpe || c.sn_onu }}</small> }</span>
+                      <span class="network-line"><b class="mono" [class.missing]="!c.ip" [title]="c.ip ? '' : 'Sin IP asignada'">{{ c.ip || 'Sin IP' }}</b>@if (c.mac_cpe || c.sn_onu) { <small class="mono">{{ c.mac_cpe || c.sn_onu }}</small> }</span>
                     </div>
                   </td>
                   <td data-label="Estado">
-                    <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ c.estado || '-' }}</span>
+                    <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ statusLabel(c.estado) }}</span>
                     @if (crmActionLabel(c.id_servicio); as lbl) { <span class="crm-state badge-{{ lbl.color }}">{{ lbl.text }}</span> }
                   </td>
                   <td data-label="Facturación">
@@ -182,7 +190,7 @@ interface ClientGroup {
                   </td>
                   <td data-label="Ubicación">
                     <div class="location-cell">
-                      <span [class.missing]="!c.zona?.nombre">{{ c.zona?.nombre || 'Sin zona' }}</span>
+                      <span [class.missing]="!c.zona?.nombre">{{ c.zona?.nombre || '—' }}</span>
                       @if (c.direccion || c.localidad) { <small [title]="c.direccion || c.localidad">{{ c.direccion || c.localidad }}</small> }
                     </div>
                   </td>
@@ -191,19 +199,19 @@ interface ClientGroup {
                       <div class="score-cell">
                         @if (m.creditTier && tierStyle(m.creditTier); as ts) {
                           <span class="tier-pill" [style.background]="ts.bg" [style.color]="ts.color"
-                                [title]="'Score: ' + (m.creditScore || '?') + '/100 — ' + ts.label">
-                            {{ ts.emoji }} {{ m.creditScore }}
+                                [title]="'Puntuación de pago: ' + (m.creditScore ?? '—') + ' de 100 · ' + tierLabel(ts.label)">
+                            <b>{{ m.creditScore ?? '—' }}</b> {{ tierLabel(ts.label) }}
                           </span>
                         }
                         @if (m.consumptionTier && consStyle(m.consumptionTier); as cs) {
                           <span class="cons-pill" [style.background]="cs.bg" [style.color]="cs.color"
-                                [title]="cs.label + ' — ' + ((m.consumptionMb30d || 0) / 1024 | number:'1.1-1') + ' GB en 30d'">
-                            {{ cs.emoji }}
+                                [title]="'Consumo ' + tierLabel(cs.label).toLowerCase() + ': ' + ((m.consumptionMb30d || 0) / 1024 | number:'1.1-1') + ' GB en 30 días'">
+                            {{ tierLabel(cs.label) }}
                           </span>
                         }
                       </div>
                     } @else {
-                      <span class="empty-tier" title="Aún no hay suficiente historial de pagos y consumo">—</span>
+                      <span class="empty-tier" title="Aún no hay suficiente historial de pagos y consumo">Sin datos</span>
                     }
                   </td>
                   <td data-label="Acciones" (click)="$event.stopPropagation()">
@@ -211,8 +219,8 @@ interface ClientGroup {
                       <summary title="Acciones del cliente" aria-label="Acciones para {{ c.nombre }}"><svg lucideMoreHorizontal size="18"></svg></summary>
                       <div class="row-menu">
                         <button type="button" (click)="openClient(c.id_servicio)"><svg lucideEye size="15"></svg><span><b>Ver expediente</b><small>Datos, facturas y equipos</small></span></button>
-                        <button type="button" [disabled]="!c.ip" (click)="copyValue(c.ip, 'IP')"><svg lucideCopy size="15"></svg><span><b>Copiar IP</b><small>{{ c.ip || 'No disponible' }}</small></span></button>
-                        <button type="button" [disabled]="!c.telefono" (click)="copyValue(c.telefono, 'Teléfono')"><svg lucidePhone size="15"></svg><span><b>Copiar teléfono</b><small>{{ c.telefono || 'No disponible' }}</small></span></button>
+                        <button type="button" [disabled]="!c.ip" (click)="copyValue(c.ip, 'IP')"><svg lucideCopy size="15"></svg><span><b>Copiar IP</b><small>{{ c.ip || 'Sin IP asignada' }}</small></span></button>
+                        <button type="button" [disabled]="!c.telefono" (click)="copyValue(c.telefono, 'Teléfono')"><svg lucidePhone size="15"></svg><span><b>Copiar teléfono</b><small>{{ c.telefono || 'Sin teléfono registrado' }}</small></span></button>
                         <div class="service-actions"><span>Control de servicio</span><app-client-block-actions [idServicio]="c.id_servicio" [clientName]="c.nombre" [crmAction]="crmActionFor(c.id_servicio)" [paymentPilotEnabled]="paymentPilotFor(c.id_servicio)" (changed)="onActionChanged($event, c.id_servicio)" /></div>
                       </div>
                     </details>
@@ -232,21 +240,21 @@ interface ClientGroup {
                     <strong>{{ c.nombre }}</strong>
                     <span>{{ c.usuario || ('#' + c.id_servicio) }}</span>
                   </div>
-                  <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ c.estado || '-' }}</span>
+                  <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ statusLabel(c.estado) }}</span>
                 </div>
                 <div class="client-card-service">
                   <span>{{ planLabel(c) }}</span>
                   <strong>RD$ {{ monthlyAmount(c) | number:'1.0-0' }}</strong>
                 </div>
                 <div class="client-card-grid">
-                  <div><span>IP</span><strong class="mono">{{ c.ip || '-' }}</strong></div>
-                  <div><span>Zona</span><strong>{{ c.zona?.nombre || '-' }}</strong></div>
-                  <div><span>Factura</span><strong>{{ invoiceShort(c) }}</strong></div>
+                  <div><span>IP</span><strong class="mono" [class.missing]="!c.ip">{{ c.ip || '—' }}</strong></div>
+                  <div><span>Zona</span><strong [class.missing]="!c.zona?.nombre">{{ c.zona?.nombre || '—' }}</strong></div>
+                  <div><span>Factura</span><strong [class.pending-text]="invoiceShort(c) === 'Pendiente'">{{ invoiceShort(c) }}</strong></div>
                   <div><span>Corte</span><strong>{{ billingCycleLabel(c) }}</strong></div>
-                  <div><span>Teléfono</span><strong>{{ c.telefono || '-' }}</strong></div>
-                  <div><span>ONU</span><strong class="mono">{{ c.sn_onu || '-' }}</strong></div>
+                  <div><span>Teléfono</span><strong [class.missing]="!c.telefono">{{ c.telefono || '—' }}</strong></div>
+                  <div><span>ONU</span><strong class="mono" [class.missing]="!c.sn_onu">{{ c.sn_onu || '—' }}</strong></div>
                 </div>
-                <p>{{ c.direccion || 'Sin dirección registrada' }}</p>
+                <p [class.missing]="!c.direccion">{{ c.direccion || 'Sin dirección registrada' }}</p>
                 <footer>Ver expediente <svg lucideEye size="14"></svg></footer>
               </article>
             }
@@ -259,6 +267,7 @@ interface ClientGroup {
                 <strong>{{ c.nombre }}</strong>
                 <span>{{ planLabel(c) }}</span>
                 <small>{{ c.zona?.nombre || 'Sin zona' }} · {{ billingCycleLabel(c) }}</small>
+                <em class="circle-status" [class]="'badge-' + getStatusClass(c.estado)">{{ statusLabel(c.estado) }}</em>
               </button>
             }
           </div>
@@ -279,15 +288,15 @@ interface ClientGroup {
                   <span>RD$ {{ group.totalMonthly | number:'1.0-0' }}</span>
                 </div>
                 <div class="group-list">
-                  @for (c of previewClients(group.clients); track c.id_servicio) {
+                  @for (c of previewClients(group); track c.id_servicio) {
                     <button type="button" class="group-row" (click)="openClient(c.id_servicio)">
                       <span class="mini-avatar" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</span>
                       <span class="group-client-name">{{ c.nombre }}</span>
-                      <small>{{ c.plan_internet?.nombre || c.servicio || '-' }}</small>
+                      <small>{{ c.plan_internet?.nombre ? planLabel(c) : (c.servicio || '—') }}</small>
                     </button>
                   }
                   @if (group.clients.length > 8) {
-                    <div class="more-row">+{{ group.clients.length - 8 }} clientes más</div>
+                    <button type="button" class="more-row" (click)="toggleGroup(group)">{{ isGroupExpanded(group) ? 'Mostrar menos' : 'Ver los ' + (group.clients.length - 8) + ' clientes restantes' }}</button>
                   }
                 </div>
               </section>
@@ -313,15 +322,15 @@ interface ClientGroup {
                   <span>RD$ {{ group.totalMonthly | number:'1.0-0' }}</span>
                 </div>
                 <div class="group-list">
-                  @for (c of previewClients(group.clients); track c.id_servicio) {
+                  @for (c of previewClients(group); track c.id_servicio) {
                     <button type="button" class="group-row" (click)="openClient(c.id_servicio)">
                       <span class="mini-avatar" [class]="getStatusClass(c.estado)">{{ getInitials(c.nombre) }}</span>
                       <span class="group-client-name">{{ c.nombre }}</span>
-                      <small>{{ c.fecha_corte || 'Sin corte' }}</small>
+                      <small>{{ cutDateLabel(c.fecha_corte) }}</small>
                     </button>
                   }
                   @if (group.clients.length > 8) {
-                    <div class="more-row">+{{ group.clients.length - 8 }} clientes más</div>
+                    <button type="button" class="more-row" (click)="toggleGroup(group)">{{ isGroupExpanded(group) ? 'Mostrar menos' : 'Ver los ' + (group.clients.length - 8) + ' clientes restantes' }}</button>
                   }
                 </div>
               </section>
@@ -344,7 +353,7 @@ interface ClientGroup {
                   <span>RD$ {{ group.totalMonthly | number:'1.0-0' }}</span>
                 </div>
                 <div class="amount-stack">
-                  @for (c of previewClients(group.clients); track c.id_servicio) {
+                  @for (c of previewClients(group); track c.id_servicio) {
                     <button type="button" class="amount-row" (click)="openClient(c.id_servicio)">
                       <span>
                         <strong>{{ c.nombre }}</strong>
@@ -354,7 +363,7 @@ interface ClientGroup {
                     </button>
                   }
                   @if (group.clients.length > 8) {
-                    <div class="more-row">+{{ group.clients.length - 8 }} clientes más</div>
+                    <button type="button" class="more-row" (click)="toggleGroup(group)">{{ isGroupExpanded(group) ? 'Mostrar menos' : 'Ver los ' + (group.clients.length - 8) + ' clientes restantes' }}</button>
                   }
                 </div>
               </section>
@@ -366,7 +375,7 @@ interface ClientGroup {
       @if (!loading() && isPagedView() && filteredClients().length > pageSize) {
         <nav class="pagination" aria-label="Paginación de clientes">
           <span>Mostrando <b>{{ firstVisible() }}–{{ lastVisible() }}</b> de {{ filteredClients().length }}</span>
-          <div><label>Filas <select [(ngModel)]="pageSize" (change)="page = 1"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label><button type="button" [disabled]="page === 1" (click)="changePage(page - 1)" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button><strong>Página {{ page }} de {{ pageCount() }}</strong><button type="button" [disabled]="page === pageCount()" (click)="changePage(page + 1)" aria-label="Página siguiente"><svg lucideChevronRight size="17"></svg></button></div>
+          <div><label>Por página <select [(ngModel)]="pageSize" (change)="page = 1"><option [ngValue]="25">25</option><option [ngValue]="50">50</option><option [ngValue]="100">100</option></select></label><button type="button" [disabled]="page === 1" (click)="changePage(page - 1)" aria-label="Página anterior"><svg lucideChevronLeft size="17"></svg></button><strong>Página {{ page }} de {{ pageCount() }}</strong><button type="button" [disabled]="page === pageCount()" (click)="changePage(page + 1)" aria-label="Página siguiente"><svg lucideChevronRight size="17"></svg></button></div>
         </nav>
       }
 
@@ -391,7 +400,7 @@ interface ClientGroup {
     .summary-card:hover { border-color: #aebdca; transform: translateY(-1px); box-shadow: 0 7px 18px rgba(21, 34, 47, .07); }
     .summary-card.active { border-color: #1267dd; box-shadow: inset 0 -2px #1267dd, 0 6px 16px rgba(18, 103, 221, .08); }
     .kpi-icon { width: 36px; height: 36px; border-radius: 5px; display: grid; place-items: center; background: #edf4ff; color: #1267dd; }
-    .summary-card.success .kpi-icon { background: #e9f8f1; color: #13875a; }.summary-card.warning .kpi-icon { background: #fff6e8; color: #b36b12; }.summary-card.danger .kpi-icon { background: #fff0ef; color: #b42318; }.summary-card.info .kpi-icon { background: #eef3f7; color: #526b80; }.summary-card.revenue .kpi-icon { background: #f1f0ff; color: #6659c7; }
+    .summary-card.success .kpi-icon { background: #e9f8f1; color: #13875a; }.summary-card.warning .kpi-icon { background: #fff6e8; color: #b36b12; }.summary-card.danger .kpi-icon { background: #fff0ef; color: #b42318; }.summary-card.info .kpi-icon { background: #eef3f7; color: #526b80; }.summary-card.revenue .kpi-icon { background: #edf4ff; color: #1267dd; }
     .summary-card small, .summary-card strong, .summary-card em { display: block; min-width: 0; }
     .summary-card small { color: #667582; font-size: 11px; font-weight: 800; text-transform: uppercase; }
     .summary-card strong { margin-top: 6px; color: #172535; font-size: 21px; line-height: 1; overflow-wrap: anywhere; }
@@ -410,7 +419,7 @@ interface ClientGroup {
     .filter-toggle.active { border-color: #a7c5e5; background: #f1f7ff; color: #1267dd; }.filter-toggle span { min-width: 18px; height: 18px; display: grid; place-items: center; border-radius: 9px; background: #1267dd; color: #fff; font-size: 11px; }
     .toolbar-actions { display: flex; align-items: center; gap: 6px; }
     .btn { height: 40px; padding: 0 12px; border: 1px solid transparent; border-radius: 5px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; font-size: 12px; font-weight: 750; cursor: pointer; transition: background .15s, border-color .15s; white-space: nowrap; }
-    .btn:disabled { opacity: .55; cursor: wait; }.btn-outline { border-color: #ccd6de; background: #fff; color: #4e5e6c; }.btn-outline:hover { background: #f4f7f9; }.btn-primary { background: #1267dd; color: #fff; }.btn-primary:hover { background: #0d58c0; }.btn-green { background: #13875a; color: #fff; text-decoration: none; }.btn-green:hover { background: #0f704b; }
+    .btn:disabled { opacity: .55; cursor: not-allowed; }.btn-outline { border-color: #ccd6de; background: #fff; color: #4e5e6c; }.btn-outline:hover { background: #f4f7f9; }.btn-primary { background: #1267dd; color: #fff; }.btn-primary:hover { background: #0d58c0; }.btn-green { background: #13875a; color: #fff; text-decoration: none; }.btn-green:hover { background: #0f704b; }
     .advanced-filters { padding: 12px 10px; display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)) auto; align-items: end; gap: 8px; border-top: 1px solid #e2e7eb; background: #f8fafb; }
     .advanced-filters label > span { display: block; margin-bottom: 5px; color: #687784; font-size: 11px; font-weight: 750; }
     .advanced-filters select { width: 100%; height: 36px; padding: 0 8px; border: 1px solid #ccd6de; border-radius: 4px; outline: 0; background: #fff; color: #354351; font-size: 12px; }
@@ -461,9 +470,6 @@ interface ClientGroup {
 
     .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; letter-spacing: -.01em; }
     .missing { color: #a0aab4 !important; font-weight: 500 !important; font-style: italic; }
-    .ip { color: #6366f1; font-weight: 500; }
-    .price { font-weight: 700; color: #0f172a; }
-    .date { font-size: 12px; color: #64748b; }
 
     .plan-name { display: block; font-size: 12px; font-weight: 750; color: #263442; line-height: 1.25; }
     .service-cell, .location-cell { min-width: 0; }
@@ -480,20 +486,23 @@ interface ClientGroup {
       display: inline-block; padding: 3px 7px;
       border-radius: 10px; font-size: 11px; font-weight: 750; white-space: nowrap;
     }
-    .badge-active { background: #dcfce7; color: #16a34a; }
-    .badge-suspended { background: #fee2e2; color: #dc2626; }
-    .badge-free { background: #dbeafe; color: #2563eb; }
-    .badge-default { background: #f1f5f9; color: #64748b; }
-    .badge-paid { background: #dcfce7; color: #16a34a; }
-    .badge-pending { background: #fef3c7; color: #d97706; }
+    .badge-active { background: #e9f8f1; color: #13875a; }
+    .badge-suspended { background: #fff0ef; color: #b42318; }
+    .badge-free { background: #edf4ff; color: #1267dd; }
+    .badge-default { background: #eef1f4; color: #526170; }
+    .badge-paid { background: #e9f8f1; color: #13875a; }
+    .badge-pending { background: #fff6e8; color: #b36b12; }
+    .pending-text { color: #b36b12 !important; }
     .crm-state { display: block; width: max-content; margin-top: 5px; padding: 3px 6px; border-radius: 3px; font-size: 11px; font-weight: 800; }.crm-state.badge-warn { border: 0; }.crm-state.badge-danger { border: 0; }
 
     .loading-state, .empty-state {
       display: flex; flex-direction: column;
-      align-items: center; padding: 80px 40px; gap: 12px; color: #94a3b8;
+      align-items: center; padding: 64px 24px; gap: 12px; color: #667582; font-size: 13px;
     }
-    .empty-state h3 { color: #475569; margin: 8px 0 0; }
-    .empty-state p { margin: 0; text-align: center; }.error-state svg { color: #b42318; }
+    .empty-state { border: 1px dashed #ccd6de; border-radius: 8px; background: #fff; }
+    .empty-state > svg { color: #8a9aa8; }
+    .empty-state h3 { color: #172535; margin: 4px 0 0; font-size: 17px; text-align: center; }
+    .empty-state p { margin: 0; max-width: 460px; text-align: center; line-height: 1.5; }.error-state svg { color: #b42318; }
 
     .spinner { width: 32px; height: 32px; border: 3px solid #e2e8f0; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     .spinner.small { width: 18px; height: 18px; border-width: 2px; }
@@ -501,16 +510,16 @@ interface ClientGroup {
 
     .sync-bar {
       position: fixed; bottom: -60px; left: 260px; right: 0;
-      height: 48px; background: #0f172a; color: white;
+      height: 48px; background: #172535; color: white;
       display: flex; align-items: center; justify-content: center;
       gap: 12px; font-size: 14px; transition: bottom 0.3s; z-index: 50;
     }
     .sync-bar.visible { bottom: 0; }
 
-    .badge-warn { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
-    .badge-danger { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; padding: 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 4px; display: inline-block; }
+    .badge-warn { background: #fff6e8; color: #b36b12; border: 1px solid #f3d19e; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 4px; display: inline-block; }
+    .badge-danger { background: #fff0ef; color: #b42318; border: 1px solid #f0b4ae; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; margin-bottom: 4px; display: inline-block; }
 
-    .score-cell { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }.tier-pill { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border-radius: 10px; font-size: 11px; font-weight: 750; white-space: nowrap; cursor: help; }.cons-pill { display: inline-flex; align-items: center; padding: 3px 5px; border-radius: 10px; font-size: 11px; cursor: help; }.empty-tier { color: #9aa6b0; font-size: 11px; }
+    .score-cell { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }.tier-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; cursor: help; }.tier-pill b { font-weight: 800; }.cons-pill { display: inline-flex; align-items: center; padding: 3px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: help; }.empty-tier { color: #8a98a5; font-size: 11px; font-style: italic; }
 
     .row-actions { position: relative; }.row-actions > summary { width: 32px; height: 32px; margin-left: auto; border: 1px solid #d8e0e6; border-radius: 4px; display: grid; place-items: center; color: #586775; background: #fff; cursor: pointer; list-style: none; }.row-actions > summary::-webkit-details-marker { display: none; }.row-actions[open] > summary { border-color: #1267dd; color: #1267dd; background: #f2f7ff; }
     .row-menu { width: 230px; margin: 7px 0 2px -180px; padding: 5px; display: grid; gap: 2px; border: 1px solid #d5dde4; border-radius: 5px; background: #fff; box-shadow: 0 8px 20px rgba(20, 33, 45, .08); }
@@ -519,23 +528,6 @@ interface ClientGroup {
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
     .pagination { min-height: 52px; margin-top: 10px; padding: 8px 10px; display: flex; align-items: center; justify-content: space-between; border: 1px solid #dce3e8; border-radius: 6px; background: #fff; color: #75838f; font-size: 11px; }.pagination > span b { color: #344250; }.pagination > div { display: flex; align-items: center; gap: 8px; }.pagination label { display: flex; align-items: center; gap: 6px; }.pagination select { height: 32px; border: 1px solid #d5dde4; border-radius: 4px; background: #fff; color: #43515e; font-size: 11px; }.pagination button { width: 32px; height: 32px; border: 1px solid #d5dde4; border-radius: 4px; display: grid; place-items: center; background: #fff; color: #475664; }.pagination button:disabled { opacity: .35; }.pagination strong { min-width: 92px; text-align: center; color: #43515e; font-size: 11px; }
-
-    .btn-survey {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe;
-      border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 600;
-      cursor: pointer; margin-top: 4px; transition: all 0.15s;
-    }
-    .btn-survey:hover:not(:disabled) { background: #dbeafe; border-color: #3b82f6; }
-    .btn-survey:disabled { opacity: 0.5; cursor: wait; }
-    .btn-clear-survey {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: #f8fafc; color: #475569; border: 1px solid #cbd5e1;
-      border-radius: 8px; padding: 5px 10px; font-size: 13px; font-weight: 600;
-      cursor: pointer; margin-top: 4px; margin-left: 4px; transition: all 0.15s;
-    }
-    .btn-clear-survey:hover:not(:disabled) { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }
-    .btn-clear-survey:disabled { opacity: 0.5; cursor: wait; }
 
     .cards-grid {
       display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -558,21 +550,21 @@ interface ClientGroup {
     .avatar-card.default, .circle-avatar.default, .mini-avatar.default { background: #72808d; }
     .client-card-title { min-width: 0; flex: 1; }
     .client-card-title strong {
-      display: block; color: #0f172a; font-size: 14px; line-height: 1.25;
+      display: block; color: #172535; font-size: 14px; line-height: 1.25;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .client-card-title span { display: block; margin-top: 2px; color: #94a3b8; font-size: 12px; }
+    .client-card-title span { display: block; margin-top: 2px; color: #667582; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .client-card-service {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       margin: 14px 0 12px; padding: 10px 12px; border-radius: 5px; background: #f8fafb;
     }
-    .client-card-service span { color: #334155; font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .client-card-service strong { color: #0f172a; font-size: 14px; white-space: nowrap; }
+    .client-card-service span { color: #334250; font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .client-card-service strong { color: #172535; font-size: 14px; white-space: nowrap; }
     .client-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .client-card-grid div { min-width: 0; border: 1px solid #e7ecef; border-radius: 5px; padding: 8px; }
-    .client-card-grid span { display: block; color: #94a3b8; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
-    .client-card-grid strong { display: block; margin-top: 3px; color: #334155; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .client-card p { margin: 12px 0 0; color: #64748b; font-size: 12px; line-height: 1.4; min-height: 34px; }
+    .client-card-grid span { display: block; color: #667582; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+    .client-card-grid strong { display: block; margin-top: 3px; color: #334250; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .client-card p { margin: 12px 0 0; color: #667582; font-size: 12px; line-height: 1.4; min-height: 34px; }
     .client-card footer { min-height: 34px; margin-top: 10px; padding-top: 9px; border-top: 1px solid #e7ecef; display: flex; align-items: center; justify-content: flex-end; gap: 6px; color: #1267dd; font-size: 12px; font-weight: 750; }
 
     .circle-grid {
@@ -591,11 +583,12 @@ interface ClientGroup {
       color: white; font-size: 22px; font-weight: 900; margin-bottom: 10px; box-shadow: inset 0 -8px 16px rgba(15, 23, 42, 0.12);
     }
     .circle-client strong {
-      width: 100%; color: #0f172a; font-size: 13px; line-height: 1.25;
+      width: 100%; color: #172535; font-size: 13px; line-height: 1.25;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .circle-client span:not(.circle-avatar) { margin-top: 5px; color: #475569; font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .circle-client small { margin-top: 4px; color: #94a3b8; font-size: 13px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .circle-client span:not(.circle-avatar) { margin-top: 5px; color: #334250; font-size: 12px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .circle-client small { margin-top: 4px; color: #667582; font-size: 12px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .circle-status { margin-top: 7px; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; font-style: normal; }
 
     .group-layout {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -606,13 +599,13 @@ interface ClientGroup {
       box-shadow: 0 10px 26px rgba(15, 23, 42, 0.04);
     }
     .group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .group-head h3 { margin: 0; color: #0f172a; font-size: 16px; line-height: 1.2; }
-    .group-head p { margin: 4px 0 0; color: #64748b; font-size: 12px; line-height: 1.35; }
-    .group-head strong { color: #4338ca; font-size: 28px; line-height: 1; }
+    .group-head h3 { margin: 0; color: #172535; font-size: 16px; line-height: 1.2; }
+    .group-head p { margin: 4px 0 0; color: #667582; font-size: 12px; line-height: 1.35; }
+    .group-head strong { color: #1267dd; font-size: 24px; line-height: 1; }
     .group-metrics { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
     .group-metrics span {
-      display: inline-flex; padding: 5px 8px; border-radius: 999px; background: #f8fafc;
-      color: #475569; border: 1px solid #e2e8f0; font-size: 13px; font-weight: 800;
+      display: inline-flex; padding: 4px 9px; border-radius: 999px; background: #f8fafc;
+      color: #334250; border: 1px solid #dfe5ea; font-size: 12px; font-weight: 700;
     }
     .group-list, .amount-stack { display: grid; gap: 6px; }
     .group-row, .amount-row {
@@ -623,21 +616,22 @@ interface ClientGroup {
       display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 8px; align-items: center;
       padding: 8px; text-align: left;
     }
-    .group-row:hover, .amount-row:hover { background: #f8fafc; border-color: #c7d2fe; }
+    .group-row:hover, .amount-row:hover { background: #f4f8fd; border-color: #a7c5e5; }
     .mini-avatar { width: 30px; height: 30px; border-radius: 4px; color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; }
-    .group-client-name { color: #0f172a; font-size: 12px; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .group-row small { color: #64748b; font-size: 13px; white-space: nowrap; }
-    .more-row { color: #64748b; font-size: 12px; font-weight: 700; text-align: center; padding: 7px; }
-    .billing-bars { height: 8px; background: #eef2ff; border-radius: 999px; overflow: hidden; margin-top: 12px; }
-    .billing-bars span { display: block; height: 100%; min-width: 8%; border-radius: inherit; background: linear-gradient(90deg, #6366f1, #22c55e); }
+    .group-client-name { color: #172535; font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .group-row small { color: #667582; font-size: 12px; white-space: nowrap; }
+    .more-row { width: 100%; min-height: 34px; border: 1px dashed #ccd6de; border-radius: 5px; background: #fff; color: #1267dd; font-size: 12px; font-weight: 700; text-align: center; padding: 7px; cursor: pointer; }
+    .more-row:hover { background: #f2f7ff; border-color: #1267dd; }
+    .billing-bars { height: 8px; background: #edf4ff; border-radius: 999px; overflow: hidden; margin-top: 12px; }
+    .billing-bars span { display: block; height: 100%; min-width: 8%; border-radius: inherit; background: #1267dd; }
     .amount-row {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       padding: 9px 10px; text-align: left;
     }
     .amount-row span { min-width: 0; }
-    .amount-row strong { display: block; color: #0f172a; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .amount-row small { display: block; margin-top: 2px; color: #64748b; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .amount-row em { color: #0f172a; font-size: 12px; font-weight: 900; font-style: normal; white-space: nowrap; }
+    .amount-row strong { display: block; color: #172535; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .amount-row small { display: block; margin-top: 2px; color: #667582; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .amount-row em { color: #172535; font-size: 13px; font-weight: 800; font-style: normal; white-space: nowrap; }
 
     button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
@@ -672,6 +666,8 @@ interface ClientGroup {
       .advanced-filters { grid-template-columns: 1fr; }
       .btn { width: 100%; justify-content: center; padding-inline: 10px; }
       .data-table { min-width: 980px; }
+      .data-table th.col-actions, .data-table td:last-child { position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -6px 0 10px -8px rgba(20, 33, 45, .25); }
+      .data-table th.col-actions { background: #f7f9fa; }
       .view-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .view-strip button { justify-content: flex-start; padding: 0 10px; }
       .cards-grid, .group-layout { grid-template-columns: 1fr; }
@@ -696,6 +692,19 @@ export class ClientsComponent implements OnInit, OnDestroy {
   metrics = inject(MetricsService);
 
   surveyLoading = signal<number | null>(null);
+  expandedGroups = signal<Set<string>>(new Set());
+  private host = inject(ElementRef<HTMLElement>);
+  // Cierra el menú de acciones de la fila al hacer clic fuera o al elegir una opción.
+  // Se escucha en fase de captura porque las celdas detienen la propagación del clic.
+  private closeMenusOnClick = (event: Event) => {
+    const target = event.target as HTMLElement | null;
+    const menus = (this.host.nativeElement as HTMLElement).querySelectorAll<HTMLDetailsElement>('details.row-actions[open]');
+    menus.forEach((menu) => {
+      const inside = !!target && menu.contains(target);
+      const choseOption = !!target?.closest('.row-menu > button');
+      if (!inside || choseOption) menu.open = false;
+    });
+  };
 
   private destroy$ = new Subject<void>();
 
@@ -734,13 +743,21 @@ export class ClientsComponent implements OnInit, OnDestroy {
   sortCol = 'nombre';
   sortDir: 'asc' | 'desc' = 'asc';
 
+  @HostListener('document:keydown.escape')
+  closeRowMenus() {
+    (this.host.nativeElement as HTMLElement).querySelectorAll<HTMLDetailsElement>('details.row-actions[open]')
+      .forEach((menu) => menu.open = false);
+  }
+
   async ngOnInit() {
+    document.addEventListener('click', this.closeMenusOnClick, true);
     await this.loadLocal();
     this.loadCrmStates();
     this.metrics.startAutoRefresh(30000);
   }
 
   ngOnDestroy() {
+    document.removeEventListener('click', this.closeMenusOnClick, true);
     this.metrics.stopAutoRefresh();
     this.destroy$.next();
     this.destroy$.complete();
@@ -775,8 +792,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   crmActionLabel(id: number): { text: string; color: string } | null {
     const a = this.crmActionFor(id);
-    if (a === 'block') return { text: 'BLOQUEADO', color: 'danger' };
-    if (a === 'moroso') return { text: 'MOROSO', color: 'warn' };
+    if (a === 'block') return { text: 'Bloqueado', color: 'danger' };
+    if (a === 'moroso') return { text: 'Moroso', color: 'warn' };
     return null;
   }
 
@@ -794,7 +811,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.toast.error('Cliente sin IP asignada');
       return;
     }
-    const confirmMsg = `Crear encuesta para ${c.nombre} (${ip})?\n\nSe creara un enlace seguro en la nube y recordatorios. No se tocara MikroTik ni se afectara el internet del cliente.`;
+    const confirmMsg = `¿Crear encuesta para ${c.nombre} (${ip})?\n\nSe creará un enlace seguro en la nube y recordatorios. No se tocará el MikroTik ni se afectará el internet del cliente.`;
     if (!confirm(confirmMsg)) return;
     this.surveyLoading.set(c.id_servicio);
     this.survey.start(ip, c.id_servicio).subscribe({
@@ -888,7 +905,8 @@ export class ClientsComponent implements OnInit, OnDestroy {
       const plan = client.plan_internet?.nombre;
       if (plan) counts.set(plan, (counts.get(plan) || 0) + 1);
     }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'Sin plan dominante';
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return top ? formatPlanName(top) : 'Sin plan dominante';
   }
 
   activeFilterCount(): number {
@@ -918,11 +936,11 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   speedGroups(): ClientGroup[] {
     const definitions = [
-      { key: 'lte-5', title: 'Hasta 5 Mbps', subtitle: 'Planes basicos y servicios livianos' },
-      { key: '6-10', title: '6 a 10 Mbps', subtitle: 'Residencial pequeno' },
+      { key: 'lte-5', title: 'Hasta 5 Mbps', subtitle: 'Planes básicos y servicios livianos' },
+      { key: '6-10', title: '6 a 10 Mbps', subtitle: 'Residencial pequeño' },
       { key: '11-20', title: '11 a 20 Mbps', subtitle: 'Residencial medio' },
       { key: '21-50', title: '21 a 50 Mbps', subtitle: 'Planes altos' },
-      { key: 'gt-50', title: 'Mas de 50 Mbps', subtitle: 'Clientes premium o especiales' },
+      { key: 'gt-50', title: 'Más de 50 Mbps', subtitle: 'Clientes premium o especiales' },
       { key: 'unknown', title: 'Sin velocidad clara', subtitle: 'Plan sin dato de Mbps detectado' },
     ];
     return this.buildGroups(definitions, (c) => this.speedGroupKey(c));
@@ -930,10 +948,10 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   billingGroups(): ClientGroup[] {
     const definitions = [
-      { key: 'day-15', title: 'Corte dia 15', subtitle: 'Clientes que facturan a mitad de mes' },
-      { key: 'day-30', title: 'Corte dia 30/31', subtitle: 'Clientes que facturan a fin de mes' },
-      { key: 'day-1-14', title: 'Corte dia 1-14', subtitle: 'Ciclos tempranos del mes' },
-      { key: 'day-16-29', title: 'Corte dia 16-29', subtitle: 'Ciclos despues del dia 15' },
+      { key: 'day-15', title: 'Corte día 15', subtitle: 'Clientes que facturan a mitad de mes' },
+      { key: 'day-30', title: 'Corte día 30/31', subtitle: 'Clientes que facturan a fin de mes' },
+      { key: 'day-1-14', title: 'Corte del día 1 al 14', subtitle: 'Ciclos tempranos del mes' },
+      { key: 'day-16-29', title: 'Corte del día 16 al 29', subtitle: 'Ciclos después del día 15' },
       { key: 'no-cut', title: 'Sin corte', subtitle: 'Sin fecha de corte registrada' },
     ];
     return this.buildGroups(definitions, (c) => this.billingGroupKey(c));
@@ -941,17 +959,28 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   amountGroups(): ClientGroup[] {
     const definitions = [
-      { key: 'lte-700', title: 'RD$ 700 o menos', subtitle: 'Facturas pequenas' },
-      { key: '701-1000', title: 'RD$ 701 - 1,000', subtitle: 'Rango residencial comun' },
-      { key: '1001-1500', title: 'RD$ 1,001 - 1,500', subtitle: 'Planes intermedios' },
-      { key: 'gt-1500', title: 'Mas de RD$ 1,500', subtitle: 'Planes altos o especiales' },
+      { key: 'lte-700', title: 'RD$ 700 o menos', subtitle: 'Facturas pequeñas' },
+      { key: '701-1000', title: 'RD$ 701 a 1,000', subtitle: 'Rango residencial común' },
+      { key: '1001-1500', title: 'RD$ 1,001 a 1,500', subtitle: 'Planes intermedios' },
+      { key: 'gt-1500', title: 'Más de RD$ 1,500', subtitle: 'Planes altos o especiales' },
       { key: 'unknown', title: 'Sin monto', subtitle: 'Sin precio de plan registrado' },
     ];
     return this.buildGroups(definitions, (c) => this.amountGroupKey(c));
   }
 
-  previewClients(clients: WispHubClient[]): WispHubClient[] {
-    return clients.slice(0, 8);
+  previewClients(group: ClientGroup): WispHubClient[] {
+    return this.isGroupExpanded(group) ? group.clients : group.clients.slice(0, 8);
+  }
+
+  isGroupExpanded(group: ClientGroup): boolean {
+    return this.expandedGroups().has(`${this.viewMode}:${group.key}`);
+  }
+
+  toggleGroup(group: ClientGroup) {
+    const key = `${this.viewMode}:${group.key}`;
+    const next = new Set(this.expandedGroups());
+    if (next.has(key)) next.delete(key); else next.add(key);
+    this.expandedGroups.set(next);
   }
 
   groupShare(count: number): number {
@@ -972,9 +1001,9 @@ export class ClientsComponent implements OnInit, OnDestroy {
   billingCycleLabel(c: WispHubClient): string {
     const day = this.cutDay(c.fecha_corte);
     if (!day) return 'Sin corte';
-    if (day === 15) return 'Dia 15';
-    if (day >= 30) return 'Dia 30/31';
-    return `Dia ${day}`;
+    if (day === 15) return 'Día 15';
+    if (day >= 30) return 'Día 30/31';
+    return `Día ${day}`;
   }
 
   countStatus(status: string): number {
@@ -1100,7 +1129,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
       this.toast.error('Cliente sin IP asignada');
       return;
     }
-    if (!confirm(`Pausar encuesta para ${c.nombre}?\n\nEl cliente navega normal. Si no la llena, el sistema volvera a recordarle en unas horas.`)) return;
+    if (!confirm(`¿Pausar la encuesta para ${c.nombre}?\n\nEl cliente navega normal. Si no la llena, el sistema volverá a recordarle en unas horas.`)) return;
 
     this.surveyLoading.set(c.id_servicio);
     this.survey.clear(c.ip, c.id_servicio).subscribe({
@@ -1111,7 +1140,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
           const detail = r.snoozed > 0
             ? `${r.snoozed} encuesta(s) pausada(s) por ${r.reminderIntervalHours || 4}h`
             : 'sin encuestas pendientes';
-          this.toast.success(`Encuesta pausada: ${detail}${mtCleaned ? ', MikroTik limpio' : ''}`);
+          this.toast.success(`Encuesta pausada: ${detail}${mtCleaned ? '; aviso retirado del MikroTik' : ''}`);
         } else {
           this.toast.error(r.error || 'No se pudo quitar la encuesta');
         }
@@ -1261,13 +1290,15 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   async syncClients() {
     this.syncing.set(true);
-    this.syncMessage.set('Actualizando la cartera sin borrar datos locales...');
+    this.syncMessage.set('Actualizando la cartera desde WispHub sin borrar datos locales…');
     try {
       await this.syncService.syncAll();
       await this.loadLocal(true);
       this.syncMessage.set(`${this.allClients().length} clientes cargados`);
+      this.toast.success(`Cartera actualizada: ${this.allClients().length} clientes`);
     } catch (error: any) {
-      this.syncMessage.set('Error: ' + (error?.error?.detail || error?.message || 'Sin conexion'));
+      this.syncMessage.set('Error: ' + (error?.error?.detail || error?.message || 'Sin conexión'));
+      this.toast.error('No se pudo sincronizar: ' + (error?.error?.detail || error?.message || 'sin conexión con el servidor'));
     } finally {
       this.syncing.set(false);
     }
@@ -1282,6 +1313,34 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   planLabel(c: WispHubClient): string {
     return formatPlanName(c.plan_internet?.nombre);
+  }
+
+  planOptionLabel(plan: string): string {
+    const pretty = formatPlanName(plan);
+    return pretty === plan ? plan : `${pretty} (${plan})`;
+  }
+
+  statusLabel(estado: string | null | undefined): string {
+    const s = String(estado || '').trim();
+    if (!s) return 'Sin estado';
+    return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+  }
+
+  tierLabel(label: string): string {
+    return label.charAt(0).toUpperCase() + label.slice(1).toLowerCase();
+  }
+
+  cutDateLabel(value: string | null | undefined): string {
+    if (!value) return 'Sin corte';
+    const iso = String(value).match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (!iso) return String(value);
+    const date = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('es-DO', { day: 'numeric', month: 'short' });
+  }
+
+  ariaSort(col: string): 'ascending' | 'descending' | null {
+    if (this.sortCol !== col) return null;
+    return this.sortDir === 'asc' ? 'ascending' : 'descending';
   }
 
   contactLine(c: WispHubClient): string {
@@ -1309,19 +1368,19 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.exportSvc.exportCSV(this.filteredClients(), 'clientes', [
       { key: 'id_servicio', label: 'ID' },
       { key: 'nombre', label: 'Nombre' },
-      { key: 'telefono', label: 'Telefono' },
-      { key: 'email', label: 'Email' },
-      { key: 'cedula', label: 'Cedula' },
-      { key: 'direccion', label: 'Direccion' },
-      { key: 'plan_internet.nombre', label: 'Plan Internet' },
+      { key: 'telefono', label: 'Teléfono' },
+      { key: 'email', label: 'Correo' },
+      { key: 'cedula', label: 'Cédula' },
+      { key: 'direccion', label: 'Dirección' },
+      { key: 'plan_internet.nombre', label: 'Plan de internet' },
       { key: 'precio_plan', label: 'Precio' },
       { key: 'ip', label: 'IP' },
       { key: 'mac_cpe', label: 'MAC' },
       { key: 'estado', label: 'Estado' },
-      { key: 'estado_facturas', label: 'Estado Facturas' },
+      { key: 'estado_facturas', label: 'Estado de facturas' },
       { key: 'zona.nombre', label: 'Zona' },
-      { key: 'fecha_instalacion', label: 'Fecha Instalacion' },
-      { key: 'fecha_corte', label: 'Fecha Corte' },
+      { key: 'fecha_instalacion', label: 'Fecha de instalación' },
+      { key: 'fecha_corte', label: 'Fecha de corte' },
     ]);
   }
 
