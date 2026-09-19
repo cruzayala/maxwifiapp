@@ -305,7 +305,6 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       const el = this.mapEl?.nativeElement;
       if (!el) throw new Error('Contenedor del mapa no encontrado');
       const rect = el.getBoundingClientRect();
-      console.log('[mapa] container size:', rect.width, 'x', rect.height);
       if (rect.width === 0 || rect.height === 0) {
         el.style.minHeight = '600px';
       }
@@ -352,7 +351,6 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
 
     map.on('load', () => {
       if (!isCurrentMap()) return;
-      console.log('[mapa] map loaded with', isFallback ? 'raster fallback' : 'vector style');
       this.mapBooting.set(false);
       this.render();
     });
@@ -425,7 +423,6 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
           this.allClients.set(merged);
           this.stats.set(stats);
           this.lastUpdate.set(new Date().toLocaleTimeString('es-DO'));
-          console.log('[mapa] data cargada:', stats, 'clients:', merged.length);
           if (!silent) this.loading.set(false);
           if (this.map) this.render();
         }).catch(() => {
@@ -551,7 +548,6 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const renderClients = this.withVisualOffsets(filtered);
 
-    console.log('[mapa] rendering', renderClients.length, 'markers');
     for (const c of renderClients) {
       const color = this.colorFor(c);
       const label = (text: string) => '<strong style="color:#172535">' + text + ':</strong> ';
@@ -591,7 +587,6 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
         .addTo(this.map);
       this.markers.push(marker);
     }
-    console.log('[mapa] markers attached:', this.markers.length);
 
     // Primera vez con data: auto-encuadrar para que el usuario vea los pins de cerca
     if (!this.didAutoFit && filtered.length > 0) {
