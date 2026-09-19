@@ -174,7 +174,7 @@ app.use((req, res, next) => {
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 min
   max: 10, // 10 intentos por 15 min
-  message: { error: 'Demasiados intentos, intenta mas tarde' },
+  message: { error: 'Demasiados intentos, intenta más tarde' },
 });
 
 // ─── SYS INFO (egress IP del contenedor para whitelist MikroTik) ───
@@ -509,7 +509,7 @@ usersRouter.get('/', requireRole(['admin']), asyncHandler(async (req, res) => {
 usersRouter.post('/', requireRole(['super_admin']), asyncHandler(async (req, res) => {
   const { username, password, fullName, email, role } = req.body || {};
   if (!username || !password) return res.status(400).json({ error: 'username y password requeridos' });
-  if (password.length < 6) return res.status(400).json({ error: 'Clave minimo 6 caracteres' });
+  if (password.length < 6) return res.status(400).json({ error: 'Clave mínimo 6 caracteres' });
 
   const validRoles = ['super_admin', 'admin', 'tecnico', 'cobranza', 'viewer'];
   if (role && !validRoles.includes(role)) return res.status(400).json({ error: `Rol invalido. Validos: ${validRoles.join(', ')}` });
@@ -556,7 +556,7 @@ usersRouter.patch('/:id', requireRole(['admin']), asyncHandler(async (req, res) 
       return res.status(403).json({ error: 'Solo super_admin puede cambiar el rol' });
     }
     const validRoles = ['super_admin', 'admin', 'tecnico', 'cobranza', 'viewer'];
-    if (!validRoles.includes(req.body.role)) return res.status(400).json({ error: 'Rol invalido' });
+    if (!validRoles.includes(req.body.role)) return res.status(400).json({ error: 'Rol inválido' });
     data.role = req.body.role;
   }
   if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
@@ -862,7 +862,7 @@ dbRouter.put('/promises/:id', asyncHandler(async (req, res) => {
   const { validatePromise, changePromise } = require('./lib/client-record-service');
   const input = Object.fromEntries(['amount', 'promisedDate', 'notes', 'status'].filter(k => req.body?.[k] !== undefined).map(k => [k, k === 'promisedDate' ? String(req.body[k]).slice(0, 10) : req.body[k]]));
   const id = Number(req.params.id);
-  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Promesa invalida' });
+  if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Promesa inválida' });
   const p = await prisma.$transaction(tx => changePromise(tx, { id, data: validatePromise(input, true), actor: req.session.username }));
   res.json(p);
 }));
@@ -1001,7 +1001,7 @@ dbRouter.get('/tickets', asyncHandler(async (req, res) => {
 dbRouter.post('/tickets/sync', asyncHandler(async (req, res) => {
   if (!hasAnyRole(req.session, ['tecnico'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const tickets = req.body?.tickets;
-  if (!Array.isArray(tickets) || tickets.length > 10_000) return res.status(400).json({ error: 'tickets debe ser un arreglo valido' });
+  if (!Array.isArray(tickets) || tickets.length > 10_000) return res.status(400).json({ error: 'tickets debe ser un arreglo válido' });
   const normalized = tickets.map((ticket) => {
     const idTicket = Number(ticket.id_ticket ?? ticket.id);
     if (!Number.isInteger(idTicket) || idTicket <= 0) return null;
@@ -1045,7 +1045,7 @@ app.post('/auth/device-sessions', authMiddleware, requireRole(['admin']), asyncH
   const deviceId = String(req.body?.deviceId || '').trim();
   const deviceName = String(req.body?.deviceName || 'ONU Studio').trim().slice(0, 120);
   if (!/^[A-Za-z0-9_.:-]{8,120}$/.test(deviceId)) {
-    return res.status(400).json({ error: 'Identificador de dispositivo invalido' });
+    return res.status(400).json({ error: 'Identificador de dispositivo inválido' });
   }
   const user = await prisma.user.findUnique({ where: { id: req.session.userId } });
   if (!user?.isActive) return res.status(401).json({ error: 'Usuario inactivo' });
@@ -1065,10 +1065,10 @@ app.post('/auth/device-sessions', authMiddleware, requireRole(['admin']), asyncH
 app.post('/auth/device-sessions/refresh', authLimiter, asyncHandler(async (req, res) => {
   const deviceToken = String(req.body?.deviceToken || '');
   const deviceId = String(req.body?.deviceId || '').trim();
-  if (deviceToken.length < 40 || !deviceId) return res.status(401).json({ error: 'Sesion recordada invalida' });
+  if (deviceToken.length < 40 || !deviceId) return res.status(401).json({ error: 'Sesión recordada inválida' });
   const trusted = await prisma.trustedDeviceSession.findUnique({ where: { tokenHash: hashDeviceToken(deviceToken) } });
   if (!trusted || trusted.deviceId !== deviceId || trusted.revokedAt) {
-    return res.status(401).json({ error: 'Sesion recordada revocada' });
+    return res.status(401).json({ error: 'Sesión recordada revocada' });
   }
   const user = await prisma.user.findUnique({ where: { id: trusted.userId } });
   const passwordChanged = Boolean(user?.passwordChangedAt && (
@@ -1076,11 +1076,11 @@ app.post('/auth/device-sessions/refresh', authLimiter, asyncHandler(async (req, 
   ));
   if (!user?.isActive || passwordChanged) {
     await prisma.trustedDeviceSession.update({ where: { id: trusted.id }, data: { revokedAt: new Date() } });
-    return res.status(401).json({ error: 'Sesion recordada revocada' });
+    return res.status(401).json({ error: 'Sesión recordada revocada' });
   }
   if (!userHasRole({ role: user.role }, ['admin'])) {
     await prisma.trustedDeviceSession.update({ where: { id: trusted.id }, data: { revokedAt: new Date() } });
-    return res.status(401).json({ error: 'La instalacion requiere una cuenta administradora' });
+    return res.status(401).json({ error: 'La instalación requiere una cuenta administradora' });
   }
   const token = generateToken();
   await Promise.all([
@@ -1288,7 +1288,7 @@ apiRouter.use((req, res, next) => {
   if (req.method === 'GET' || req.method === 'HEAD') return next();
   const pathName = req.path.toLowerCase();
   if (pathName.includes('/registrar-pago/') || pathName.includes('/reportar-pago/')) {
-    return res.status(409).json({ error: 'Registra el pago desde Facturas para conservar su solicitud y verificacion.', code: 'USE_DURABLE_BILLING' });
+    return res.status(409).json({ error: 'Registra el pago desde Facturas para conservar su solicitud y verificación.', code: 'USE_DURABLE_BILLING' });
   }
   const requiredRole =
     pathName.includes('/ping/')
@@ -1794,7 +1794,7 @@ mtRouter.post('/queues', requireRole(['admin']), asyncHandler(async (req, res) =
 
 mtRouter.patch('/queues/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
   const id = String(req.params.id || '');
-  if (!/^\*[0-9a-f]+$/i.test(id)) return res.status(400).json({ error: 'ID de cola invalido' });
+  if (!/^\*[0-9a-f]+$/i.test(id)) return res.status(400).json({ error: 'ID de cola inválido' });
 
   let data;
   try {
@@ -1938,7 +1938,7 @@ mtRouter.get('/backups', asyncHandler(async (req, res) => {
 mtRouter.post('/backups', requireRole(['admin']), asyncHandler(async (req, res) => {
   requireMikrotikConfirmation(req, 'CREAR');
   const type = String(req.body?.type || 'backup');
-  if (!['backup', 'export'].includes(type)) return res.status(400).json({ error: 'Tipo de respaldo invalido' });
+  if (!['backup', 'export'].includes(type)) return res.status(400).json({ error: 'Tipo de respaldo inválido' });
   const name = sanitizeRouterFileName(req.body?.name);
   const file = await mtSerialize(async () => {
     const c = await getMtConnection();
@@ -1956,7 +1956,7 @@ mtRouter.post('/backups', requireRole(['admin']), asyncHandler(async (req, res) 
 mtRouter.delete('/backups/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
   requireMikrotikConfirmation(req, 'ELIMINAR');
   const id = String(req.params.id || '');
-  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de archivo invalido' });
+  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de archivo inválido' });
   const removed = await mtSerialize(async () => {
     const c = await getMtConnection();
     const files = await mtWrite(c, 10000, '/file/print');
@@ -1997,7 +1997,7 @@ mtRouter.patch('/firewall/:table/:id', requireRole(['admin']), asyncHandler(asyn
   const id = String(req.params.id || '');
   const pathName = FIREWALL_TABLES[table];
   if (!pathName || !isRouterId(id) || typeof req.body?.disabled !== 'boolean') {
-    return res.status(400).json({ error: 'Tabla, ID o estado de firewall invalido' });
+    return res.status(400).json({ error: 'Tabla, ID o estado de firewall inválido' });
   }
   const result = await mtSerialize(async () => {
     const c = await getMtConnection();
@@ -2029,7 +2029,7 @@ mtRouter.delete('/firewall/:table/:id', requireRole(['admin']), asyncHandler(asy
   const table = String(req.params.table || '');
   const id = String(req.params.id || '');
   const pathName = FIREWALL_TABLES[table];
-  if (!pathName || !isRouterId(id)) return res.status(400).json({ error: 'Tabla o ID de firewall invalido' });
+  if (!pathName || !isRouterId(id)) return res.status(400).json({ error: 'Tabla o ID de firewall inválido' });
   const result = await mtSerialize(async () => {
     const c = await getMtConnection();
     const rules = await mtWrite(c, 10000, `${pathName}/print`);
@@ -2260,7 +2260,7 @@ mtRouter.get('/ipam', asyncHandler(async (req, res) => {
 mtRouter.post('/ipam/leases/:id/make-static', requireRole(['admin']), asyncHandler(async (req, res) => {
   requireMikrotikConfirmation(req, 'FIJAR');
   const id = String(req.params.id || '');
-  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de concesion invalido' });
+  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de concesion inválido' });
   const result = await mtSerialize(async () => {
     const c = await getMtConnection();
     const leases = await mtWrite(c, 10000, '/ip/dhcp-server/lease/print');
@@ -2311,7 +2311,7 @@ mtRouter.post('/speed-templates', requireRole(['admin']), asyncHandler(async (re
 mtRouter.delete('/speed-templates/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
   requireMikrotikConfirmation(req, 'ELIMINAR');
   const id = String(req.params.id || '');
-  if (!/^[a-z0-9_-]{3,60}$/i.test(id)) return res.status(400).json({ error: 'ID de plantilla invalido' });
+  if (!/^[a-z0-9_-]{3,60}$/i.test(id)) return res.status(400).json({ error: 'ID de plantilla inválido' });
   const templates = await getSpeedTemplates();
   const before = templates.find((item) => item.id === id);
   if (!before) return res.status(404).json({ error: 'Plantilla no encontrada' });
@@ -2406,7 +2406,7 @@ mtRouter.post('/netwatch', requireRole(['admin']), asyncHandler(async (req, res)
 mtRouter.patch('/netwatch/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
   requireMikrotikConfirmation(req, 'APLICAR');
   const id = String(req.params.id || '');
-  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de sonda invalido' });
+  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de sonda inválido' });
   const data = sanitizeNetwatchMutation(req.body, { partial: true });
   const result = await mtSerialize(async () => {
     const c = await getMtConnection();
@@ -2429,7 +2429,7 @@ mtRouter.patch('/netwatch/:id', requireRole(['admin']), asyncHandler(async (req,
 mtRouter.delete('/netwatch/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
   requireMikrotikConfirmation(req, 'ELIMINAR');
   const id = String(req.params.id || '');
-  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de sonda invalido' });
+  if (!isRouterId(id)) return res.status(400).json({ error: 'ID de sonda inválido' });
   const result = await mtSerialize(async () => {
     const c = await getMtConnection();
     const entries = await mtWrite(c, 10000, '/tool/netwatch/print');
@@ -2989,7 +2989,7 @@ async function handleIpReservation(req, res) {
   const clientName = String(req.body?.clientName || '').trim().slice(0, 160) || null;
   const serial = cleanProvisioningSerial(req.body?.serial);
   const durationMinutes = Math.min(120, Math.max(5, Number(req.body?.durationMinutes) || 30));
-  if (!isValidIpv4(ip)) return res.status(400).json({ error: 'IP invalida' });
+  if (!isValidIpv4(ip)) return res.status(400).json({ error: 'IP inválida' });
 
   const requestedCidrs = req.body?.cidrs ? validateRequestedIpamCidrs(req.body.cidrs) : null;
   const report = await fetchLiveIpamReport(requestedCidrs ? { cidrs: requestedCidrs } : {});
@@ -3044,7 +3044,7 @@ async function handleIpReservationRelease(req, res) {
   const reservation = await prisma.ipReservation.findUnique({ where: { token: String(req.params.token) } });
   if (!reservation) return res.status(404).json({ error: 'Reserva no encontrada' });
   if (reservation.createdById !== req.session.userId && !userHasRole(req.session, ['admin'])) {
-    return res.status(403).json({ error: 'La reserva pertenece a otro tecnico' });
+    return res.status(403).json({ error: 'La reserva pertenece a otro técnico' });
   }
   const updated = await prisma.ipReservation.update({
     where: { token: reservation.token }, data: { status: 'released', releasedAt: new Date() },
@@ -3059,7 +3059,7 @@ provisioningRouter.post('/clients/:id/assign-ip', asyncHandler(async (req, res) 
   const token = String(req.body?.reservationToken || '').trim();
   const serial = cleanProvisioningSerial(req.body?.serial);
   if (!Number.isInteger(clientIdServicio) || clientIdServicio <= 0) {
-    return res.status(400).json({ error: 'Cliente invalido' });
+    return res.status(400).json({ error: 'Cliente inválido' });
   }
   if (!token || !serial) return res.status(400).json({ error: 'La reserva y el serial ONU son obligatorios' });
 
@@ -3072,10 +3072,10 @@ provisioningRouter.post('/clients/:id/assign-ip', asyncHandler(async (req, res) 
   ]);
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
   if (!reservation || reservation.status !== 'active' || reservation.expiresAt <= new Date()) {
-    return res.status(409).json({ error: 'La reserva de IP vencio o no es valida' });
+    return res.status(409).json({ error: 'La reserva de IP vencio o no es válida' });
   }
   if (reservation.createdById !== req.session.userId && !userHasRole(req.session, ['admin'])) {
-    return res.status(403).json({ error: 'La reserva pertenece a otro tecnico' });
+    return res.status(403).json({ error: 'La reserva pertenece a otro técnico' });
   }
   if (reservation.serial && normalizeSerial(reservation.serial) !== serial) {
     return res.status(409).json({ error: 'La reserva pertenece a otra ONU' });
@@ -3192,13 +3192,13 @@ provisioningRouter.get('/jobs', asyncHandler(async (req, res) => {
 
 provisioningRouter.get('/jobs/:id', asyncHandler(async (req, res) => {
   const job = await prisma.provisioningJob.findUnique({ where: { id: String(req.params.id) } });
-  if (!job) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!job) return res.status(404).json({ error: 'Instalación no encontrada' });
   res.json(provisioningJobDto(job));
 }));
 
 provisioningRouter.get('/jobs/:id/onu-inventory', asyncHandler(async (req, res) => {
   const job = await prisma.provisioningJob.findUnique({ where: { id: String(req.params.id) } });
-  if (!job) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!job) return res.status(404).json({ error: 'Instalación no encontrada' });
   const result = agentInventoryDto(job);
   if (!result) return res.status(404).json({ error: 'El expediente aun no tiene inventario del agente' });
   res.json(result);
@@ -3207,11 +3207,11 @@ provisioningRouter.get('/jobs/:id/onu-inventory', asyncHandler(async (req, res) 
 provisioningRouter.post('/jobs/:id/onu-inventory', asyncHandler(async (req, res) => {
   const id = String(req.params.id);
   const job = await prisma.provisioningJob.findUnique({ where: { id } });
-  if (!job) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!job) return res.status(404).json({ error: 'Instalación no encontrada' });
   if (!job.serial) return res.status(409).json({ error: 'El expediente no tiene serial ONU' });
   const phase = String(req.body?.phase || 'inspection').trim().toLowerCase();
   if (!['inspection', 'pre_provision', 'post_provision'].includes(phase)) {
-    return res.status(400).json({ error: 'Fase de inventario invalida' });
+    return res.status(400).json({ error: 'Fase de inventario inválida' });
   }
   const inventory = normalizeOnuAgentInventory(req.body?.inventory, job.serial, {
     phase,
@@ -3252,14 +3252,14 @@ async function provisioningCancellationContext(id) {
 
 provisioningRouter.get('/jobs/:id/cancellation-preview', requireRole(['admin']), asyncHandler(async (req, res) => {
   const context = await provisioningCancellationContext(String(req.params.id));
-  if (!context) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!context) return res.status(404).json({ error: 'Instalación no encontrada' });
   res.json({ job: provisioningJobDto(context.job), ...context.preview });
 }));
 
 provisioningRouter.post('/jobs/:id/cancel', requireRole(['admin']), asyncHandler(async (req, res) => {
   const id = String(req.params.id);
   const context = await provisioningCancellationContext(id);
-  if (!context) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!context) return res.status(404).json({ error: 'Instalación no encontrada' });
   if (!context.preview.allowed) {
     return res.status(409).json({
       error: context.preview.alreadyCancelled
@@ -3357,7 +3357,7 @@ provisioningRouter.post('/jobs/:id/retire-previous-onu', requireRole(['admin']),
   if (String(req.body?.confirmation || '').trim().toUpperCase() !== context.preview.requiredConfirmation) {
     return res.status(400).json({ error: `Escriba ${context.preview.requiredConfirmation} para confirmar` });
   }
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
   const [ponIndex, onuIdText] = context.previousOnu.onuIndex.split(':');
   const client = createOltClient();
@@ -3392,11 +3392,11 @@ provisioningRouter.post('/jobs', asyncHandler(async (req, res) => {
   let ip = input.ip == null ? null : String(input.ip).trim();
   let serial = cleanProvisioningSerial(input.serial);
   let idempotencyKey = String(input.idempotencyKey || crypto.randomUUID()).trim().slice(0, 120);
-  if (ip && !isValidIpv4(ip)) return res.status(400).json({ error: 'IP invalida' });
+  if (ip && !isValidIpv4(ip)) return res.status(400).json({ error: 'IP inválida' });
   if (!SERVICE_OPERATION_MODES.has(mode)) {
-    return res.status(400).json({ error: 'Modo de instalacion invalido' });
+    return res.status(400).json({ error: 'Modo de instalación inválido' });
   }
-  if (!['router', 'bridge'].includes(serviceMode)) return res.status(400).json({ error: 'Perfil de servicio invalido' });
+  if (!['router', 'bridge'].includes(serviceMode)) return res.status(400).json({ error: 'Perfil de servicio inválido' });
   if (serviceMode === 'bridge') ip = null;
   if (mode === 'new_client' && serviceMode === 'router' && !ip) return res.status(400).json({ error: 'El perfil Router requiere una IP reservada' });
   const existing = await prisma.provisioningJob.findUnique({ where: { idempotencyKey } });
@@ -3439,7 +3439,7 @@ provisioningRouter.post('/jobs', asyncHandler(async (req, res) => {
   if (mode === 'new_client' && serviceMode === 'router' && ip) {
     reservation = await prisma.ipReservation.findUnique({ where: { token: String(input.reservationToken || '') } });
     if (!reservation || reservation.ip !== ip || reservation.status !== 'active' || reservation.expiresAt <= new Date()) {
-      return res.status(409).json({ error: 'La IP requiere una reserva activa valida' });
+      return res.status(409).json({ error: 'La IP requiere una reserva activa válida' });
     }
   }
   if (reservation?.token) {
@@ -3501,10 +3501,10 @@ provisioningRouter.post('/jobs', asyncHandler(async (req, res) => {
 provisioningRouter.patch('/jobs/:id', asyncHandler(async (req, res) => {
   const id = String(req.params.id);
   const current = await prisma.provisioningJob.findUnique({ where: { id } });
-  if (!current) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!current) return res.status(404).json({ error: 'Instalación no encontrada' });
   const allowedStatuses = ['in_progress', 'waiting_optical', 'partial', 'failed', 'complete', 'cancelled'];
   const status = req.body?.status == null ? current.status : String(req.body.status);
-  if (!allowedStatuses.includes(status)) return res.status(400).json({ error: 'Estado invalido' });
+  if (!allowedStatuses.includes(status)) return res.status(400).json({ error: 'Estado inválido' });
   const stage = String(req.body?.stage || current.stage).trim().slice(0, 80);
   const cutoverStatus = req.body?.cutoverStatus == null ? current.cutoverStatus : String(req.body.cutoverStatus).trim().slice(0, 80);
   let steps = [];
@@ -3822,21 +3822,21 @@ async function handleClientProvisioning(req, res) {
   let reservation = null;
   if (jobId) {
     provisioningJob = await prisma.provisioningJob.findUnique({ where: { id: jobId } });
-    if (!provisioningJob) return res.status(404).json({ error: 'Instalacion no encontrada' });
-    if (provisioningJob.ip !== input.ip) return res.status(409).json({ error: 'La IP no coincide con la instalacion' });
+    if (!provisioningJob) return res.status(404).json({ error: 'Instalación no encontrada' });
+    if (provisioningJob.ip !== input.ip) return res.status(409).json({ error: 'La IP no coincide con la instalación' });
     reservation = provisioningJob.reservationToken
       ? await prisma.ipReservation.findUnique({ where: { token: provisioningJob.reservationToken } })
       : null;
     if (!reservation || reservation.ip !== input.ip || reservation.status !== 'active' || reservation.expiresAt <= new Date()) {
-      return res.status(409).json({ error: 'La reserva de IP de la instalacion vencio o no es valida' });
+      return res.status(409).json({ error: 'La reserva de IP de la instalación vencio o no es válida' });
     }
   } else if (req.body?.reservationToken) {
     reservation = await prisma.ipReservation.findUnique({ where: { token: String(req.body.reservationToken) } });
     if (!reservation || reservation.ip !== input.ip || reservation.status !== 'active' || reservation.expiresAt <= new Date()) {
-      return res.status(409).json({ error: 'La reserva de IP vencio o no es valida' });
+      return res.status(409).json({ error: 'La reserva de IP vencio o no es válida' });
     }
     if (reservation.createdById !== req.session.userId && !userHasRole(req.session, ['admin'])) {
-      return res.status(403).json({ error: 'La reserva pertenece a otro tecnico' });
+      return res.status(403).json({ error: 'La reserva pertenece a otro técnico' });
     }
   }
 
@@ -3983,7 +3983,7 @@ clientProvisioningRouter.post('/', asyncHandler(handleClientProvisioning));
 clientProvisioningRouter.post('/cleanup/:jobId', asyncHandler(async (req, res) => {
   const jobId = String(req.params.jobId || '');
   const job = await prisma.provisioningJob.findUnique({ where: { id: jobId } });
-  if (!job) return res.status(404).json({ error: 'Instalacion no encontrada' });
+  if (!job) return res.status(404).json({ error: 'Instalación no encontrada' });
 
   const requiredConfirmation = `LIMPIAR ${jobId.slice(0, 8).toUpperCase()}`;
   if (String(req.body?.confirmation || '').trim().toUpperCase() !== requiredConfirmation) {
@@ -4311,7 +4311,7 @@ nocRouter.get('/incidents', asyncHandler(async (req, res) => {
 
 nocRouter.get('/incidents/:id', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID de incidente invalido' });
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID de incidente inválido' });
   const incident = await prisma.networkIncident.findUnique({ where: { id }, include: { events: { orderBy: { createdAt: 'desc' } } } });
   if (!incident) return res.status(404).json({ error: 'Incidente no encontrado' });
   const clientIds = parseAffectedClientIds(incident.affectedClientIds);
@@ -4332,7 +4332,7 @@ nocRouter.post('/evaluate', asyncHandler(async (req, res) => {
 
 nocRouter.patch('/incidents/:id', asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID de incidente invalido' });
+  if (!Number.isInteger(id)) return res.status(400).json({ error: 'ID de incidente inválido' });
   const action = String(req.body?.action || '');
   const note = String(req.body?.note || '').trim().replace(/[\r\n\t]+/g, ' ').slice(0, 500);
   const assignedTo = String(req.body?.assignedTo || '').trim().replace(/[\r\n\t]+/g, ' ').slice(0, 80);
@@ -4347,7 +4347,7 @@ nocRouter.patch('/incidents/:id', asyncHandler(async (req, res) => {
     note: { data: {}, type: 'note', message: note },
   };
   const mutation = actions[action];
-  if (!mutation || (action === 'note' && !note)) return res.status(400).json({ error: 'Accion o nota invalida' });
+  if (!mutation || (action === 'note' && !note)) return res.status(400).json({ error: 'Acción o nota inválida' });
   const invalidTransition =
     (action === 'acknowledge' && existing.status !== 'open') ||
     (action === 'resolve' && existing.status === 'resolved') ||
@@ -4659,7 +4659,7 @@ networkAuditRouter.get('/clients', asyncHandler(async (req, res) => {
 
 networkAuditRouter.get('/clients/:id', asyncHandler(async (req, res) => {
   const idServicio = Number(req.params.id);
-  if (!Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente invalido' });
+  if (!Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente inválido' });
   const days = Math.min(NETWORK_AUDIT_RAW_DAYS, Math.max(1, Number(req.query.days || 7)));
   const cutoff = new Date(Date.now() - days * 86_400_000);
   const [client, samples, daily] = await Promise.all([
@@ -5721,7 +5721,7 @@ oltRouter.get('/onus', asyncHandler(async (req, res) => {
 oltRouter.get('/onus/:rack/:shelf/:pon/:onu/detail', asyncHandler(async (req, res) => {
   const numbers = ['rack', 'shelf', 'pon', 'onu'].map((key) => Number(req.params[key]));
   if (numbers.some((number) => !Number.isInteger(number) || number < 0 || number > 255)) {
-    return res.status(400).json({ error: 'ONU invalida' });
+    return res.status(400).json({ error: 'ONU inválida' });
   }
   const onuIndex = `${numbers[0]}/${numbers[1]}/${numbers[2]}:${numbers[3]}`;
   const client = createOltClient();
@@ -5771,7 +5771,7 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/detail', asyncHandler(async (req, re
 
 oltRouter.get('/onus/:rack/:shelf/:pon/:onu/service-diagnostics', asyncHandler(async (req, res) => {
   const onuIndex = `${Number(req.params.rack)}/${Number(req.params.shelf)}/${Number(req.params.pon)}:${Number(req.params.onu)}`;
-  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU invalida' }); }
+  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU inválida' }); }
   const onu = await prisma.oltOnu.findUnique({ where: { onuIndex } });
   if (!onu) return res.status(404).json({ error: 'ONU no encontrada' });
   const linkedClient = onu.clientIdServicio == null ? null : await prisma.client.findUnique({
@@ -5928,7 +5928,7 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/service-diagnostics', asyncHandler(a
 
 oltRouter.get('/onus/:rack/:shelf/:pon/:onu/optical-history', asyncHandler(async (req, res) => {
   const onuIndex = `${Number(req.params.rack)}/${Number(req.params.shelf)}/${Number(req.params.pon)}:${Number(req.params.onu)}`;
-  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU invalida' }); }
+  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU inválida' }); }
   const limit = Math.min(200, Math.max(5, Number(req.query.limit) || 30));
   const readings = await prisma.oltOpticalReading.findMany({ where: { onuIndex }, orderBy: { capturedAt: 'desc' }, take: limit });
   res.json(readings.reverse());
@@ -5955,9 +5955,9 @@ oltRouter.get('/clients/search', asyncHandler(async (req, res) => {
 
 oltRouter.patch('/onus/:rack/:shelf/:pon/:onu/client', requireRole(['admin']), asyncHandler(async (req, res) => {
   const onuIndex = `${Number(req.params.rack)}/${Number(req.params.shelf)}/${Number(req.params.pon)}:${Number(req.params.onu)}`;
-  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU invalida' }); }
+  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU inválida' }); }
   const idServicio = req.body?.idServicio == null ? null : Number(req.body.idServicio);
-  if (idServicio != null && !Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente invalido' });
+  if (idServicio != null && !Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente inválido' });
   const [onu, client] = await Promise.all([
     prisma.oltOnu.findUnique({ where: { onuIndex } }),
     idServicio == null ? null : prisma.client.findUnique({ where: { idServicio }, select: { idServicio: true, nombre: true, usuario: true, telefono: true, ip: true, snOnu: true } }),
@@ -6064,7 +6064,7 @@ oltRouter.get('/unconfigured/:serial/provisioning-options', requireRole(['admin'
 }));
 
 oltRouter.post('/unconfigured/:serial/provision/preview', requireRole(['admin']), asyncHandler(async (req, res) => {
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya hay una autorizacion ONU en curso' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya hay una autorización ONU en curso' });
   const serial = safeOltSerial(req.params.serial);
   const relocationContext = await manualPonRelocationContext(serial, req.body);
   const prepared = await prepareOltProvisioning(serial, req.body, relocationContext || {});
@@ -6100,7 +6100,7 @@ oltRouter.post('/unconfigured/:serial/provision', requireRole(['admin']), asyncH
   if (String(req.body?.confirmation || '').trim().toUpperCase() !== `AUTORIZAR ${serial}`) {
     return res.status(400).json({ error: `Escriba AUTORIZAR ${serial} para confirmar` });
   }
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya hay una autorizacion ONU en curso' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya hay una autorización ONU en curso' });
   if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
   oltMutationInProgress = true;
 
@@ -6412,7 +6412,7 @@ oltRouter.post('/onu-types/f670l/ensure', requireRole(['admin']), asyncHandler(a
     return res.status(400).json({ error: 'Escriba CREAR PERFIL F670L para confirmar' });
   }
   if (oltMutationInProgress || oltSyncInProgress || oltAutoAuthorizeInProgress) {
-    return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+    return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   }
   oltMutationInProgress = true;
   const client = createOltClient();
@@ -6436,10 +6436,10 @@ oltRouter.get('/profiles/plan-sync', requireRole(['admin']), asyncHandler(async 
 
 oltRouter.post('/profiles/plan-sync', requireRole(['admin']), asyncHandler(async (req, res) => {
   if (String(req.body?.confirmation || '').trim().toUpperCase() !== 'SINCRONIZAR PLANES') {
-    return res.status(400).json({ error: 'Confirmacion incorrecta' });
+    return res.status(400).json({ error: 'Confirmación incorrecta' });
   }
   if (oltMutationInProgress || oltSyncInProgress || oltAutoAuthorizeInProgress) {
-    return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+    return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   }
   const preview = await fetchOltPlanSyncPreview();
   if (!preview.plans.length) return res.status(409).json({ error: 'No hay velocidades comunes validas entre WispHub y MikroTik' });
@@ -6506,14 +6506,14 @@ oltRouter.post('/profiles/plan-sync', requireRole(['admin']), asyncHandler(async
 oltRouter.post('/profiles', requireRole(['admin']), asyncHandler(async (req, res) => {
   const name = safeOltLabel(req.body?.name, 'Nombre del perfil', 80);
   const vlan = Number(req.body?.vlan);
-  if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return res.status(400).json({ error: 'VLAN invalida' });
+  if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return res.status(400).json({ error: 'VLAN inválida' });
   const onuType = req.body?.onuType ? safeOltToken(req.body.onuType, 'Modelo ONU') : null;
   const vendorPrefix = req.body?.vendorPrefix ? safeOltToken(String(req.body.vendorPrefix).toUpperCase(), 'Prefijo de fabricante', { maxLength: 8, pattern: /^[A-Z0-9]{4,8}$/ }) : null;
   const tcontProfile = safeOltToken(req.body?.tcontProfile, 'Perfil de subida');
   const trafficProfile = safeOltToken(req.body?.trafficProfile, 'Perfil de bajada');
   const isDefault = req.body?.isDefault === true;
   const serviceMode = String(req.body?.serviceMode || 'router').toLowerCase();
-  if (!['router', 'bridge'].includes(serviceMode)) return res.status(400).json({ error: 'Modo Router/Bridge invalido' });
+  if (!['router', 'bridge'].includes(serviceMode)) return res.status(400).json({ error: 'Modo Router/Bridge inválido' });
   const lanPorts = [...new Set((Array.isArray(req.body?.lanPorts) ? req.body.lanPorts : [1]).map(Number))].sort();
   if (!lanPorts.length || lanPorts.some((port) => !Number.isInteger(port) || port < 1 || port > 4)) return res.status(400).json({ error: 'Puertos LAN invalidos' });
   const created = await prisma.$transaction(async (tx) => {
@@ -6538,7 +6538,7 @@ oltRouter.patch('/profiles/:id', requireRole(['admin']), asyncHandler(async (req
   if (req.body?.name != null) data.name = safeOltLabel(req.body.name, 'Nombre del perfil', 80);
   if (req.body?.vlan != null) {
     const vlan = Number(req.body.vlan);
-    if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return res.status(400).json({ error: 'VLAN invalida' });
+    if (!Number.isInteger(vlan) || vlan < 1 || vlan > 4094) return res.status(400).json({ error: 'VLAN inválida' });
     data.vlan = vlan;
   }
   if (req.body?.onuType !== undefined) data.onuType = req.body.onuType ? safeOltToken(req.body.onuType, 'Modelo ONU') : null;
@@ -6546,7 +6546,7 @@ oltRouter.patch('/profiles/:id', requireRole(['admin']), asyncHandler(async (req
   if (req.body?.trafficProfile != null) data.trafficProfile = safeOltToken(req.body.trafficProfile, 'Perfil de bajada');
   if (req.body?.serviceMode != null) {
     const serviceMode = String(req.body.serviceMode).toLowerCase();
-    if (!['router', 'bridge'].includes(serviceMode)) return res.status(400).json({ error: 'Modo Router/Bridge invalido' });
+    if (!['router', 'bridge'].includes(serviceMode)) return res.status(400).json({ error: 'Modo Router/Bridge inválido' });
     data.serviceMode = serviceMode;
     data.managementMode = serviceMode === 'bridge' ? 'none' : 'iphost';
     data.tr069Policy = serviceMode === 'bridge' ? 'disabled' : 'optional';
@@ -6589,12 +6589,12 @@ oltRouter.get('/topology', asyncHandler(async (_req, res) => {
 oltRouter.post('/topology/splitters', requireRole(['admin']), asyncHandler(async (req, res) => {
   const name = safeOltLabel(req.body?.name, 'Nombre del splitter', 80);
   const ponIndex = String(req.body?.ponIndex || '');
-  try { assertOnuIndex(`${ponIndex}:1`); } catch { return res.status(400).json({ error: 'Puerto PON invalido' }); }
+  try { assertOnuIndex(`${ponIndex}:1`); } catch { return res.status(400).json({ error: 'Puerto PON inválido' }); }
   const ratio = Number(req.body?.ratio || 16);
-  if (![2, 4, 8, 16, 32, 64, 128].includes(ratio)) return res.status(400).json({ error: 'Relacion de splitter invalida' });
+  if (![2, 4, 8, 16, 32, 64, 128].includes(ratio)) return res.status(400).json({ error: 'Relación de splitter inválida' });
   const splitterType = ['balanced', 'unbalanced'].includes(req.body?.splitterType) ? req.body.splitterType : 'balanced';
   const insertionLossDb = req.body?.insertionLossDb == null || req.body.insertionLossDb === '' ? null : Number(req.body.insertionLossDb);
-  if (insertionLossDb != null && (!Number.isFinite(insertionLossDb) || insertionLossDb < 0 || insertionLossDb > 40)) return res.status(400).json({ error: 'Perdida de insercion invalida' });
+  if (insertionLossDb != null && (!Number.isFinite(insertionLossDb) || insertionLossDb < 0 || insertionLossDb > 40)) return res.status(400).json({ error: 'Perdida de insercion inválida' });
   const created = await prisma.oltSplitter.create({ data: { name, ponIndex, ratio, splitterType, insertionLossDb, zone: req.body?.zone ? safeOltLabel(req.body.zone, 'Zona', 80) : null, notes: req.body?.notes ? safeOltLabel(req.body.notes, 'Notas', 500) : null } });
   await logActivity(req, { action: 'olt_splitter_created', entityType: 'olt', entityId: created.id, entityName: created.name, details: { ponIndex, ratio } });
   res.status(201).json(created);
@@ -6604,13 +6604,13 @@ oltRouter.post('/topology/naps', requireRole(['admin']), asyncHandler(async (req
   const code = safeOltToken(String(req.body?.code || '').toUpperCase(), 'Codigo NAP', { maxLength: 32, pattern: /^[A-Z0-9_.-]+$/ });
   const name = safeOltLabel(req.body?.name, 'Nombre de NAP', 80);
   const capacity = Number(req.body?.capacity || 16);
-  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 128) return res.status(400).json({ error: 'Capacidad NAP invalida' });
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 128) return res.status(400).json({ error: 'Capacidad NAP inválida' });
   const splitterId = req.body?.splitterId == null || req.body.splitterId === '' ? null : Number(req.body.splitterId);
   if (splitterId != null && (!Number.isInteger(splitterId) || !(await prisma.oltSplitter.findUnique({ where: { id: splitterId } })))) return res.status(400).json({ error: 'Splitter no encontrado' });
   const latitude = req.body?.latitude == null || req.body.latitude === '' ? null : Number(req.body.latitude);
   const longitude = req.body?.longitude == null || req.body.longitude === '' ? null : Number(req.body.longitude);
-  if (latitude != null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) return res.status(400).json({ error: 'Latitud invalida' });
-  if (longitude != null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)) return res.status(400).json({ error: 'Longitud invalida' });
+  if (latitude != null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) return res.status(400).json({ error: 'Latitud inválida' });
+  if (longitude != null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)) return res.status(400).json({ error: 'Longitud inválida' });
   const created = await prisma.$transaction(async (tx) => {
     const nap = await tx.oltNap.create({ data: { code, name, capacity, splitterId, latitude, longitude, zone: req.body?.zone ? safeOltLabel(req.body.zone, 'Zona', 80) : null, address: req.body?.address ? safeOltLabel(req.body.address, 'Direccion', 200) : null } });
     await tx.oltNapPort.createMany({ data: Array.from({ length: capacity }, (_, index) => ({ napId: nap.id, portNumber: index + 1 })) });
@@ -6625,17 +6625,17 @@ oltRouter.patch('/topology/ports/:id', requireRole(['admin']), asyncHandler(asyn
   const port = Number.isInteger(id) ? await prisma.oltNapPort.findUnique({ where: { id }, include: { nap: true } }) : null;
   if (!port) return res.status(404).json({ error: 'Puerto NAP no encontrado' });
   const status = String(req.body?.status || 'assigned');
-  if (!['available', 'reserved', 'assigned', 'damaged'].includes(status)) return res.status(400).json({ error: 'Estado de puerto invalido' });
+  if (!['available', 'reserved', 'assigned', 'damaged'].includes(status)) return res.status(400).json({ error: 'Estado de puerto inválido' });
   let data = { status, notes: req.body?.notes ? safeOltLabel(req.body.notes, 'Notas', 500) : port.notes };
   if (status === 'available') {
     data = { ...data, onuIndex: null, serial: null, clientIdServicio: null, assignedAt: null };
   } else if (status === 'assigned') {
     const onuIndex = String(req.body?.onuIndex || '');
-    try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU invalida' }); }
+    try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU inválida' }); }
     const onu = await prisma.oltOnu.findUnique({ where: { onuIndex } });
     if (!onu) return res.status(404).json({ error: 'ONU no encontrada en el inventario' });
     const clientIdServicio = req.body?.clientIdServicio == null ? onu.clientIdServicio : Number(req.body.clientIdServicio);
-    if (clientIdServicio != null && !Number.isInteger(clientIdServicio)) return res.status(400).json({ error: 'Cliente invalido' });
+    if (clientIdServicio != null && !Number.isInteger(clientIdServicio)) return res.status(400).json({ error: 'Cliente inválido' });
     data = { ...data, onuIndex, serial: onu.serial, clientIdServicio, assignedAt: new Date() };
   }
   const updated = await prisma.oltNapPort.update({ where: { id }, data });
@@ -6683,7 +6683,7 @@ function relocationPreviewDto(plan) {
 }
 
 async function retireStaleOnuLocations(req, res, onuIndex) {
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
   const client = createOltClient();
   oltMutationInProgress = true;
@@ -6792,8 +6792,8 @@ async function retireOnuCompletely(req, res, onuIndex) {
   const onu = await prisma.oltOnu.findUnique({ where: { onuIndex } });
   if (!onu) return res.status(404).json({ error: 'ONU no encontrada' });
   const expectedSerial = normalizeSerial(onu.serial);
-  if (!expectedSerial) return res.status(409).json({ error: 'La ONU no tiene un serial valido para verificar la baja' });
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+  if (!expectedSerial) return res.status(409).json({ error: 'La ONU no tiene un serial válido para verificar la baja' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
   oltMutationInProgress = true;
   const client = createOltClient();
@@ -6854,9 +6854,9 @@ async function retireOnuCompletely(req, res, onuIndex) {
 
 oltRouter.get('/onus/:rack/:shelf/:pon/:onu/operations/preview', requireRole(['admin']), asyncHandler(async (req, res) => {
   const onuIndex = `${Number(req.params.rack)}/${Number(req.params.shelf)}/${Number(req.params.pon)}:${Number(req.params.onu)}`;
-  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU invalida' }); }
+  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU inválida' }); }
   const action = String(req.query.action || 'reboot');
-  if (!['reboot', 'rename', 'retire-stale', 'retire-full'].includes(action)) return res.status(400).json({ error: 'Operacion no soportada por el conector validado' });
+  if (!['reboot', 'rename', 'retire-stale', 'retire-full'].includes(action)) return res.status(400).json({ error: 'Operación no soportada por el conector validado' });
   const onu = await prisma.oltOnu.findUnique({ where: { onuIndex } });
   if (!onu) return res.status(404).json({ error: 'ONU no encontrada' });
   if (action === 'retire-stale') {
@@ -6887,7 +6887,7 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/operations/preview', requireRole(['a
   }
   if (action === 'rename') {
     let newName;
-    try { newName = assertOnuName(req.query.name); } catch { return res.status(400).json({ error: 'Use hasta 32 letras, numeros, punto, guion o guion bajo' }); }
+    try { newName = assertOnuName(req.query.name); } catch { return res.status(400).json({ error: 'Use hasta 32 letras, números, punto, guion o guion bajo' }); }
     return res.json({
       action, onuIndex, title: 'Cambiar nombre ONU', oldName: onu.name, newName,
       impact: `Se cambiara el nombre en la OLT de ${onu.name || 'sin_nombre'} a ${newName}. El servicio no se interrumpira.`,
@@ -6900,23 +6900,23 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/operations/preview', requireRole(['a
 
 oltRouter.post('/onus/:rack/:shelf/:pon/:onu/operations', requireRole(['admin']), asyncHandler(async (req, res) => {
   const onuIndex = `${Number(req.params.rack)}/${Number(req.params.shelf)}/${Number(req.params.pon)}:${Number(req.params.onu)}`;
-  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU invalida' }); }
+  try { assertOnuIndex(onuIndex); } catch { return res.status(400).json({ error: 'ONU inválida' }); }
   const action = String(req.body?.action || '');
-  if (!['reboot', 'rename', 'retire-stale', 'retire-full'].includes(action)) return res.status(400).json({ error: 'Operacion no soportada por el conector validado' });
+  if (!['reboot', 'rename', 'retire-stale', 'retire-full'].includes(action)) return res.status(400).json({ error: 'Operación no soportada por el conector validado' });
   if (action === 'retire-stale') return retireStaleOnuLocations(req, res, onuIndex);
   if (action === 'retire-full') {
     const requiredConfirmation = `RETIRAR ${onuIndex}`;
-    if (String(req.body?.confirmation || '').trim().toUpperCase() !== requiredConfirmation) return res.status(400).json({ error: 'La confirmacion de baja no coincide' });
+    if (String(req.body?.confirmation || '').trim().toUpperCase() !== requiredConfirmation) return res.status(400).json({ error: 'La confirmación de baja no coincide' });
     return retireOnuCompletely(req, res, onuIndex);
   }
   const requiredConfirmation = `${action === 'rename' ? 'RENOMBRAR' : 'REINICIAR'} ${onuIndex}`;
   if (String(req.body?.confirmation || '').trim().toUpperCase() !== requiredConfirmation) return res.status(400).json({ error: `Escriba ${requiredConfirmation} para confirmar` });
   const onu = await prisma.oltOnu.findUnique({ where: { onuIndex } });
   if (!onu) return res.status(404).json({ error: 'ONU no encontrada' });
-  if (action === 'reboot' && !onu.online) return res.status(409).json({ error: 'La ONU no esta en linea' });
+  if (action === 'reboot' && !onu.online) return res.status(409).json({ error: 'La ONU no esta en línea' });
   let newName = null;
   if (action === 'rename') {
-    try { newName = assertOnuName(req.body?.name); } catch { return res.status(400).json({ error: 'Use hasta 32 letras, numeros, punto, guion o guion bajo' }); }
+    try { newName = assertOnuName(req.body?.name); } catch { return res.status(400).json({ error: 'Use hasta 32 letras, números, punto, guion o guion bajo' }); }
     if (newName === onu.name) return res.status(409).json({ error: 'La ONU ya tiene ese nombre' });
   }
   if (action === 'reboot') {
@@ -6924,7 +6924,7 @@ oltRouter.post('/onus/:rack/:shelf/:pon/:onu/operations', requireRole(['admin'])
     const recent = await prisma.activity.findFirst({ where: { action: 'olt_onu_rebooted', entityType: 'olt', entityId: onuIndex, createdAt: { gte: cooldownSince } } });
     if (recent) return res.status(429).json({ error: 'Espere 5 minutos antes de reiniciar esta ONU nuevamente' });
   }
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
   oltMutationInProgress = true;
   const client = createOltClient();
@@ -6954,7 +6954,7 @@ oltRouter.post('/onus/:rack/:shelf/:pon/:onu/operations', requireRole(['admin'])
 
 oltRouter.post('/onus/by-serial/:serial/retire-unlinked', requireRole(['admin']), asyncHandler(async (req, res) => {
   const serial = normalizeSerial(req.params.serial);
-  if (!serial) return res.status(400).json({ error: 'Serial ONU invalido' });
+  if (!serial) return res.status(400).json({ error: 'Serial ONU inválido' });
   const requiredConfirmation = `RETIRAR ${serial}`;
   if (String(req.body?.confirmation || '').trim().toUpperCase() !== requiredConfirmation) {
     return res.status(400).json({ error: `Escriba ${requiredConfirmation} para confirmar` });
@@ -6970,7 +6970,7 @@ oltRouter.post('/onus/by-serial/:serial/retire-unlinked', requireRole(['admin'])
       blocked: unsafe.map((onu) => ({ onuIndex: onu.onuIndex, online: onu.online, clientIdServicio: onu.clientIdServicio })),
     });
   }
-  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operacion OLT en curso' });
+  if (oltMutationInProgress) return res.status(409).json({ error: 'Ya existe una operación OLT en curso' });
   if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
   oltMutationInProgress = true;
   const client = createOltClient();
@@ -7047,7 +7047,7 @@ async function onuAgentAccessMiddleware(req, res, next) {
   if (token.length < 32) return res.status(401).json({ error: 'Agente ONU no autorizado' });
   const tokenHash = crypto.createHash('sha256').update(token, 'utf8').digest('hex');
   const agent = await prisma.tr069Agent.findUnique({ where: { tokenHash } }).catch(() => null);
-  if (!agent) return res.status(401).json({ error: 'Credencial del agente invalida', code: 'AGENT_TOKEN_INVALID' });
+  if (!agent) return res.status(401).json({ error: 'Credencial del agente inválida', code: 'AGENT_TOKEN_INVALID' });
   if (!agent.active) return res.status(401).json({ error: 'Credencial del agente revocada', code: 'AGENT_REVOKED' });
   req.onuAgent = agent;
   req.session = { userId: null, username: `agent:${agent.name}`, role: 'admin' };
@@ -7175,7 +7175,7 @@ function onuAgentDto(agent) {
 
 agentRouter.post('/agents/pair', requireRole(['admin']), asyncHandler(async (req, res) => {
   const name = String(req.body?.agentId || '').trim();
-  if (!/^[A-Za-z0-9_.:-]{4,100}$/.test(name)) return res.status(400).json({ error: 'Identificador de agente invalido' });
+  if (!/^[A-Za-z0-9_.:-]{4,100}$/.test(name)) return res.status(400).json({ error: 'Identificador de agente inválido' });
   const token = crypto.randomBytes(48).toString('base64url');
   const tokenHash = crypto.createHash('sha256').update(token, 'utf8').digest('hex');
   const tokenFingerprint = tokenHash.slice(0, 12).toUpperCase();
@@ -7265,7 +7265,7 @@ agentRouter.get('/tasks/:id', asyncHandler(async (req, res) => {
 
 agentRouter.post('/tasks', asyncHandler(async (req, res) => {
   const action = String(req.body?.action || '').trim().toLowerCase();
-  if (!ONU_AGENT_ACTIONS.has(action)) return res.status(400).json({ error: 'Accion de agente no valida' });
+  if (!ONU_AGENT_ACTIONS.has(action)) return res.status(400).json({ error: 'Acción de agente no válida' });
   const agent = await prisma.tr069Agent.findUnique({ where: { id: String(req.body?.agentId || '') } });
   if (!agent?.active) return res.status(404).json({ error: 'El agente seleccionado no existe o fue revocado' });
   const rawPayload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : {};
@@ -7394,7 +7394,7 @@ agentRouter.post('/agent/poll', asyncHandler(async (req, res) => {
 agentRouter.post('/agent/tasks/:id/progress', asyncHandler(async (req, res) => {
   const task = await prisma.onuAgentTask.findUnique({ where: { id: String(req.params.id) } });
   if (!task) return res.status(404).json({ error: 'Trabajo no encontrado' });
-  if (task.agentId !== req.onuAgent.id || task.status !== 'processing') return res.status(409).json({ error: 'Lease de trabajo invalido' });
+  if (task.agentId !== req.onuAgent.id || task.status !== 'processing') return res.status(409).json({ error: 'Lease de trabajo inválido' });
   const progress = Math.max(task.progress, Math.min(98, Math.max(1, Number(req.body?.progress) || task.progress)));
   const stage = String(req.body?.stage || task.stage).replace(/[^a-z0-9_-]/gi, '').slice(0, 60) || task.stage;
   const stageLabel = String(req.body?.stageLabel || task.stageLabel).replace(/\s+/g, ' ').trim().slice(0, 240) || task.stageLabel;
@@ -7479,7 +7479,7 @@ app.get('/android-api/download', authMiddleware, asyncHandler(async (_req, res) 
   if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'La APK aun no esta publicada' });
   const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
   const fileName = String(manifest.fileName || '');
-  if (!/^ISP-Max-Android-[a-zA-Z0-9.-]+\.apk$/.test(fileName) || path.basename(fileName) !== fileName) return res.status(500).json({ error: 'Manifiesto Android invalido' });
+  if (!/^ISP-Max-Android-[a-zA-Z0-9.-]+\.apk$/.test(fileName) || path.basename(fileName) !== fileName) return res.status(500).json({ error: 'Manifiesto Android inválido' });
   const apkPath = path.join(__dirname, 'agent-downloads', fileName);
   if (!fs.existsSync(apkPath)) return res.status(404).json({ error: 'La APK publicada no esta disponible' });
   res.setHeader('Cache-Control', 'private, no-store');
@@ -7598,7 +7598,7 @@ async function tr069IdentityHints(device) {
 
 tr069Router.post('/agents/pair', asyncHandler(async (req, res) => {
   const name = String(req.body?.agentId || '').trim();
-  if (!/^[A-Za-z0-9_.:-]{4,100}$/.test(name)) return res.status(400).json({ error: 'Identificador de agente invalido' });
+  if (!/^[A-Za-z0-9_.:-]{4,100}$/.test(name)) return res.status(400).json({ error: 'Identificador de agente inválido' });
   const version = String(req.body?.agentVersion || '').trim().slice(0, 40) || null;
   const token = crypto.randomBytes(48).toString('base64url');
   const tokenHash = crypto.createHash('sha256').update(token, 'utf8').digest('hex');
@@ -7660,7 +7660,7 @@ async function findTr069Onu(serial) {
 
 tr069Router.get('/devices/:serial', asyncHandler(async (req, res) => {
   const serial = normalizeTr069Serial(req.params.serial);
-  if (!serial) return res.status(400).json({ error: 'Serial invalido' });
+  if (!serial) return res.status(400).json({ error: 'Serial inválido' });
   const candidates = tr069SerialCandidates(serial);
   const device = await prisma.tr069Device.findFirst({
     where: { serial: { in: candidates } },
@@ -7672,7 +7672,7 @@ tr069Router.get('/devices/:serial', asyncHandler(async (req, res) => {
 
 tr069Router.patch('/devices/:serial', asyncHandler(async (req, res) => {
   const serial = normalizeTr069Serial(req.params.serial);
-  if (!serial) return res.status(400).json({ error: 'Serial invalido' });
+  if (!serial) return res.status(400).json({ error: 'Serial inválido' });
   const onu = await findTr069Onu(serial);
   if (!onu) return res.status(404).json({ error: 'La ONU no existe en el inventario OLT' });
   const enabled = req.body?.enabled === true;
@@ -7725,8 +7725,8 @@ tr069Router.get('/devices/:serial/tasks', asyncHandler(async (req, res) => {
 tr069Router.post('/devices/:serial/tasks', asyncHandler(async (req, res) => {
   const candidates = tr069SerialCandidates(req.params.serial);
   const device = await prisma.tr069Device.findFirst({ where: { serial: { in: candidates } } });
-  if (!device) return res.status(404).json({ error: 'Active primero la administracion TR-069 de esta ONU' });
-  if (!device.enabled) return res.status(409).json({ error: 'La administracion TR-069 esta desactivada para esta ONU' });
+  if (!device) return res.status(404).json({ error: 'Active primero la administración TR-069 de esta ONU' });
+  if (!device.enabled) return res.status(409).json({ error: 'La administración TR-069 esta desactivada para esta ONU' });
   let input;
   try { input = validateTr069TaskInput(req.body?.action, req.body?.payload, device.serial); }
   catch (error) { return res.status(400).json({ error: error.message }); }
@@ -7736,7 +7736,7 @@ tr069Router.post('/devices/:serial/tasks', asyncHandler(async (req, res) => {
   const capabilities = tr069ProfileForDevice(device.manufacturer, device.model, device.softwareVersion, safeTr069Json(device.capabilitiesJson, {}));
   const capability = capabilities.actions.find((item) => item.name === input.action);
   if (!capability?.executable) {
-    return res.status(423).json({ error: 'Esta accion esta visible pero bloqueada hasta certificar el modelo y firmware', capability });
+    return res.status(423).json({ error: 'Esta acción esta visible pero bloqueada hasta certificar el modelo y firmware', capability });
   }
   const activeDuplicate = await prisma.tr069Task.findFirst({
     where: { deviceId: device.id, action: input.action, status: { in: ['pending', 'processing'] } },
@@ -7746,7 +7746,7 @@ tr069Router.post('/devices/:serial/tasks', asyncHandler(async (req, res) => {
     return res.json(tr069TaskDto(activeDuplicate));
   }
   const scheduledAt = req.body?.scheduledAt ? new Date(req.body.scheduledAt) : null;
-  if (scheduledAt && Number.isNaN(scheduledAt.getTime())) return res.status(400).json({ error: 'Fecha programada invalida' });
+  if (scheduledAt && Number.isNaN(scheduledAt.getTime())) return res.status(400).json({ error: 'Fecha programada inválida' });
   const idempotencyKey = String(req.body?.idempotencyKey || `ui:${device.serial}:${input.action}:${crypto.randomUUID()}`).slice(0, 180);
   const task = await prisma.tr069Task.create({
     data: {
@@ -7865,7 +7865,7 @@ tr069Router.post('/agent/poll', asyncHandler(async (req, res) => {
 tr069Router.post('/agent/tasks/:id/progress', asyncHandler(async (req, res) => {
   const task = await prisma.tr069Task.findUnique({ where: { id: String(req.params.id) } });
   if (!task) return res.status(404).json({ error: 'Tarea no encontrada' });
-  if (task.claimedBy !== req.tr069Agent.name || task.status !== 'processing') return res.status(409).json({ error: 'Lease de tarea invalido' });
+  if (task.claimedBy !== req.tr069Agent.name || task.status !== 'processing') return res.status(409).json({ error: 'Lease de tarea inválido' });
   const stage = String(req.body?.stage || task.stage).replace(/[^a-z0-9_-]/gi, '').slice(0, 40) || task.stage;
   const progress = Math.max(task.progress, Math.min(95, Math.max(1, Number(req.body?.progress) || task.progress)));
   const updated = await prisma.tr069Task.update({
@@ -8332,7 +8332,7 @@ async function applyClientAction(idServicio, action, reason, actor = null) {
     const b = await removeFromAddressList(c, LIST_BLOQUEADOS, client.ip);
     mt = { wasIn: m.wasIn || b.wasIn };
   } else {
-    return { ok: false, error: 'Accion invalida' };
+    return { ok: false, error: 'Acción inválida' };
   }
 
   const newAction = action === 'clear' ? null : action;
@@ -8376,7 +8376,7 @@ clientActionsRouter.patch('/:id/alias', asyncHandler(async (req, res) => {
   if (!hasAnyRole(req.session, ['tecnico', 'cobranza'])) return res.status(403).json({ error: 'Permisos insuficientes' });
   const { validateAlias, changeAlias } = require('./lib/client-record-service');
   const idServicio = parseInt(req.params.id);
-  if (!/^\d+$/.test(req.params.id) || !Number.isSafeInteger(idServicio) || idServicio <= 0) return res.status(400).json({ error: 'Cliente invalido' });
+  if (!/^\d+$/.test(req.params.id) || !Number.isSafeInteger(idServicio) || idServicio <= 0) return res.status(400).json({ error: 'Cliente inválido' });
   const data = validateAlias(req.body);
   const updated = await prisma.$transaction(tx => changeAlias(tx, { id: idServicio, data, actor: req.session.username }));
   res.json(updated);
@@ -8420,7 +8420,7 @@ clientActionsRouter.get('/states', asyncHandler(async (req, res) => {
 // Inscripcion manual por cliente. No altera MikroTik ni el estado del servicio.
 clientActionsRouter.patch('/:id/payment-pilot', requireRole(['admin']), asyncHandler(async (req, res) => {
   const idServicio = parseInt(req.params.id, 10);
-  if (!Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente invalido' });
+  if (!Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente inválido' });
   const { enabled } = sanitizePaymentPilotToggle(req.body);
   const portalConfig = getPaymentPortalConfig();
   if (enabled && !portalConfig.ready) {
@@ -8490,7 +8490,7 @@ clientActionsRouter.post('/:id/moroso', requireAnyRole(['cobranza']), asyncHandl
 // Bloqueo total: solo admin+
 clientActionsRouter.post('/:id/block', requireRole(['admin']), asyncHandler(async (req, res) => {
   const idServicio = parseInt(req.params.id, 10);
-  if (!Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente invalido' });
+  if (!Number.isInteger(idServicio)) return res.status(400).json({ error: 'Cliente inválido' });
   const client = await prisma.client.findUnique({
     where: { idServicio },
     select: { paymentPilotEnabled: true },
@@ -9289,7 +9289,7 @@ app.post('/survey/submit', surveySubmitLimiter, asyncHandler(async (req, res) =>
   const fullName = (req.body?.fullName || '').toString().trim();
   const phone = (req.body?.phone || '').toString().trim();
   if (fullName.length < 3 || phone.length < 7) {
-    return res.status(400).json({ ok: false, error: 'Nombre y telefono son obligatorios' });
+    return res.status(400).json({ ok: false, error: 'Nombre y teléfono son obligatorios' });
   }
 
   // Si se envia token, REQUIERE coincidencia exacta (no fallback a IP)
@@ -9300,7 +9300,7 @@ app.post('/survey/submit', surveySubmitLimiter, asyncHandler(async (req, res) =>
       where: { publicToken: token, status: 'pending' },
     });
     if (!pending) {
-      return res.status(401).json({ ok: false, error: 'Token invalido o encuesta no encontrada' });
+      return res.status(401).json({ ok: false, error: 'Token inválido o encuesta no encontrada' });
     }
   } else {
     const pendingsForIp = await prisma.surveyResponse.findMany({
@@ -9357,7 +9357,7 @@ surveyRouter.post('/start', asyncHandler(async (req, res) => {
     return res.status(403).json({ ok: false, error: 'Solo admin puede activar NAT legacy de encuesta' });
   }
   if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    return res.status(400).json({ ok: false, error: 'IP invalida' });
+    return res.status(400).json({ ok: false, error: 'IP inválida' });
   }
   const submittedWhere = [{ clientIp: ip, status: 'submitted' }];
   if (idServicio) submittedWhere.push({ idServicio, status: 'submitted' });
@@ -9466,7 +9466,7 @@ surveyRouter.post('/start', asyncHandler(async (req, res) => {
 // Reenviar manualmente el recordatorio de WhatsApp para una encuesta pending
 surveyRouter.post('/resend/:id', asyncHandler(async (req, res) => {
   const id = parseInt(req.params.id);
-  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'id invalido' });
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: 'id inválido' });
   const survey = await prisma.surveyResponse.findUnique({ where: { id } });
   if (!survey) return res.status(404).json({ ok: false, error: 'No existe' });
   if (survey.status !== 'pending') return res.status(400).json({ ok: false, error: `Encuesta esta en estado ${survey.status}, no se puede reenviar` });
@@ -9515,7 +9515,7 @@ surveyRouter.post('/clear', asyncHandler(async (req, res) => {
     return res.status(400).json({ ok: false, error: 'IP o idServicio requerido' });
   }
   if (ip && !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) {
-    return res.status(400).json({ ok: false, error: 'IP invalida' });
+    return res.status(400).json({ ok: false, error: 'IP inválida' });
   }
 
   const pendingWhere = [];
@@ -10127,7 +10127,7 @@ syncRouter.get('/status', (req, res) => {
 });
 syncRouter.post('/run', asyncHandler(async (req, res) => {
   const result = await runSyncSafely('manual');
-  if (result.busy) return res.status(409).json({ error: 'Ya hay una sincronizacion en curso', ...result });
+  if (result.busy) return res.status(409).json({ error: 'Ya hay una sincronización en curso', ...result });
   res.json(result);
 }));
 app.use('/sync', syncRouter);
@@ -10251,7 +10251,7 @@ async function sendWhatsappRaw(rawPhone, text) {
     return { ok: false, error: 'WhatsApp no conectado', code: 'NOT_CONNECTED' };
   }
   const jid = normalizeJid(rawPhone);
-  if (!jid) return { ok: false, error: 'Telefono invalido', code: 'BAD_PHONE' };
+  if (!jid) return { ok: false, error: 'Teléfono inválido', code: 'BAD_PHONE' };
   try {
     await waSocket.sendMessage(jid, { text });
     return { ok: true, jid };
@@ -10642,7 +10642,7 @@ waRouter.post('/send-invoice/:idServicio', asyncHandler(async (req, res) => {
   const idServicio = parseInt(req.params.idServicio);
   const client = await prisma.client.findUnique({ where: { idServicio } });
   if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (!client.telefono) return res.status(400).json({ error: 'Cliente sin telefono' });
+  if (!client.telefono) return res.status(400).json({ error: 'Cliente sin teléfono' });
 
   let invoice = null;
   if (req.body?.invoiceId) {
@@ -11137,8 +11137,8 @@ equipTypeRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) 
 equipTypeRouter.put('/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
   const id = parseInt(req.params.id);
   const { name, category, unit, description } = req.body || {};
-  if (category !== undefined && !ALLOWED_EQUIP_CATEGORIES.includes(category)) return res.status(400).json({ error: 'category invalida' });
-  if (unit !== undefined && !ALLOWED_UNITS.includes(unit)) return res.status(400).json({ error: 'unit invalida' });
+  if (category !== undefined && !ALLOWED_EQUIP_CATEGORIES.includes(category)) return res.status(400).json({ error: 'category inválida' });
+  if (unit !== undefined && !ALLOWED_UNITS.includes(unit)) return res.status(400).json({ error: 'unit inválida' });
   const updated = await prisma.equipmentType.update({
     where: { id },
     data: {
