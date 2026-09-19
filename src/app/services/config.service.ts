@@ -25,7 +25,7 @@ export class ConfigService {
     'Hola {nombre}, le recordamos que su factura de internet con {empresa} vence el {fecha_corte}. Monto: RD$ {precio}. Gracias por su pago puntual.'
   );
   autoNotifOverdueMsg = signal(
-    'Hola {nombre}, su servicio de internet con {empresa} tiene un pago pendiente vencido hace {dias_vencido} dias. Monto: RD$ {precio}. Para evitar la suspension, por favor regularice a la brevedad.'
+    'Hola {nombre}, su servicio de internet con {empresa} tiene un pago pendiente vencido hace {dias_vencido} días. Monto: RD$ {precio}. Para evitar la suspensión, por favor regularice a la brevedad.'
   );
 
   constructor() {

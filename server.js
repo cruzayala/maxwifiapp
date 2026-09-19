@@ -10342,7 +10342,35 @@ const waRouter = express.Router();
 waRouter.use(authMiddleware);
 waRouter.use(requireAnyRole(['cobranza']));
 
-waRouter.get('/status', (req, res) => res.json({ status: waStatus, qr: waQR }));
+// El QR vincula la cuenta de WhatsApp del negocio: se dibuja aqui como SVG en vez de
+// enviarlo a un generador externo (antes se usaba api.qrserver.com desde el navegador).
+function renderQrSvgDataUrl(text) {
+  const QRCode = require('qrcode-terminal/vendor/QRCode');
+  const QRErrorCorrectLevel = require('qrcode-terminal/vendor/QRCode/QRErrorCorrectLevel');
+  const qr = new QRCode(-1, QRErrorCorrectLevel.M);
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  const margin = 4;
+  const size = count + margin * 2;
+  let path = '';
+  for (let row = 0; row < count; row++) {
+    for (let col = 0; col < count; col++) {
+      if (qr.isDark(row, col)) path += `M${col + margin} ${row + margin}h1v1h-1z`;
+    }
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">`
+    + `<rect width="${size}" height="${size}" fill="#fff"/><path fill="#000" d="${path}"/></svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+waRouter.get('/status', (req, res) => {
+  let qrImage = null;
+  if (waQR) {
+    try { qrImage = renderQrSvgDataUrl(waQR); } catch (e) { console.error('[wa] no se pudo dibujar el QR:', e.message); }
+  }
+  res.json({ status: waStatus, qr: waQR, qrImage });
+});
 
 // ─── TEMPLATES EDITABLES (WhatsappTemplate en BD) ───
 // Templates con placeholders {{var}} editables por el admin

@@ -6,6 +6,7 @@ import { WispHubClient } from '../../models/client.model';
 import { ToastService } from '../../services/toast.service';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
+import { DomSanitizer, SafeUrl } from '@angular/platform-browser';
 import { ConfigService } from '../../services/config.service';
 import {
   LucideInfo,
@@ -342,7 +343,8 @@ export class WhatsappComponent implements OnInit, OnDestroy {
   private cfg = inject(ConfigService);
 
   waStatus = signal<string>('disconnected');
-  qrImage = signal<string>('');
+  qrImage = signal<SafeUrl | null>(null);
+  private sanitizer = inject(DomSanitizer);
   clientsWithPhone = signal<WispHubClient[]>([]);
   morososWithPhone = signal<WispHubClient[]>([]);
   history = signal<any[]>([]);
@@ -412,10 +414,10 @@ export class WhatsappComponent implements OnInit, OnDestroy {
     this.http.get<any>('/wa/status').subscribe({
       next: (res) => {
         this.waStatus.set(res.status);
-        if (res.qr) {
-          // Generate QR image URL from the QR string
-          this.qrImage.set(`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(res.qr)}`);
-        }
+        // El servidor dibuja el QR; nunca se envía a servicios externos porque da acceso a la cuenta.
+        // Angular bloquea SVG en data: por defecto; solo se confía en el SVG base64 que genera nuestro servidor.
+        const qr = typeof res.qrImage === 'string' && res.qrImage.startsWith('data:image/svg+xml;base64,') ? res.qrImage : '';
+        this.qrImage.set(qr ? this.sanitizer.bypassSecurityTrustUrl(qr) : null);
       },
       error: () => this.waStatus.set('disconnected')
     });
@@ -510,7 +512,7 @@ export class WhatsappComponent implements OnInit, OnDestroy {
 
     const contacts = morosos.map(c => ({
       phone: c.telefono,
-      message: this.bulkMessage.replace('{nombre}', c.nombre).replace('{precio}', c.precio_plan)
+      message: this.bulkMessage.replaceAll('{nombre}', c.nombre || '').replaceAll('{precio}', String(c.precio_plan ?? ''))
     }));
 
     this.http.post<any>('/wa/send-bulk', { contacts }).subscribe({
