@@ -193,7 +193,8 @@ interface RenderMapClient extends MapClient {
     .map-legend i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
     @media (max-width: 640px) {
       .page { padding: 10px 12px 16px; height: calc(100vh - 64px); }
-      .filters { width: 100%; }
+      .filters { width: 100%; min-width: 0; box-sizing: border-box; }
+      .filters > * { min-width: 0; max-width: 100%; }
       .search-input { flex: 1 1 100%; }
       .search-input input { width: 100%; }
       .filters select { flex: 1 1 40%; }

@@ -335,7 +335,8 @@ const CATEGORIES = [
     @media (max-width: 768px) {
       .page { padding: 16px; }
       .filters { width: 100%; }
-      .filter { flex: 1 1 140px; }
+      .filter { flex: 1 1 140px; min-width: 0; }
+      .filters select, .filters input { width: 100%; min-width: 0; box-sizing: border-box; }
       .form-row.two-col { grid-template-columns: 1fr; }
     }
   `]
