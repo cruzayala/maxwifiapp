@@ -8070,20 +8070,24 @@ async function ensureSurveySoftPortalNat(c) {
   });
 }
 
+// Version sin serializar: solo debe llamarse desde dentro de mtSerialize.
+// (Llamar a ensureFilterRule desde otro mtSerialize encadena la tarea detras de si misma y nunca termina.)
+async function ensureFilterRuleUnserialized(c, comment, params, options) {
+  const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
+  if (existing) return { action: 'exists', id: existing['.id'] };
+  const args = ['/ip/firewall/filter/add', `=comment=${comment}`];
+  for (const [k, v] of Object.entries(params)) args.push(`=${k}=${v}`);
+  if (options?.placeAtTop) {
+    const all = await mtWrite(c, null, '/ip/firewall/filter/print');
+    const firstId = all[0]?.['.id'];
+    if (firstId) args.push(`=place-before=${firstId}`);
+  }
+  const res = await mtWrite(c, null, ...args);
+  return { action: 'created', id: res[0]?.ret || null };
+}
+
 async function ensureFilterRule(c, comment, params, options) {
-  return mtSerialize(async () => {
-    const existing = await findRuleByComment(c, '/ip/firewall/filter', comment);
-    if (existing) return { action: 'exists', id: existing['.id'] };
-    const args = ['/ip/firewall/filter/add', `=comment=${comment}`];
-    for (const [k, v] of Object.entries(params)) args.push(`=${k}=${v}`);
-    if (options?.placeAtTop) {
-      const all = await mtWrite(c, null, '/ip/firewall/filter/print');
-      const firstId = all[0]?.['.id'];
-      if (firstId) args.push(`=place-before=${firstId}`);
-    }
-    const res = await mtWrite(c, null, ...args);
-    return { action: 'created', id: res[0]?.ret || null };
-  });
+  return mtSerialize(() => ensureFilterRuleUnserialized(c, comment, params, options));
 }
 
 async function resolveCaptiveTarget() {
@@ -8147,7 +8151,7 @@ async function ensureCaptiveFilterRule(c, comment, params, options) {
       }
       return { action: 'exists', id: existing['.id'] };
     }
-    return ensureFilterRule(c, comment, params, options);
+    return ensureFilterRuleUnserialized(c, comment, params, options);
   });
 }
 
@@ -8727,11 +8731,11 @@ h1{font-size:clamp(28px,5vw,44px);line-height:1.04;margin:18px 0 10px;letter-spa
 </main></body></html>`;
 }
 
+// IP del visitante segun el proxy de confianza (app.set('trust proxy', 1)).
+// No se usa el primer valor de X-Forwarded-For: lo escribe el propio visitante y permitia
+// hacerse pasar por la IP de otro cliente para ver sus datos o responder su encuesta.
 function detectClientIp(req) {
-  const xff = req.headers['x-forwarded-for'];
-  if (xff) return String(xff).split(',')[0].trim();
-  if (req.headers['x-real-ip']) return String(req.headers['x-real-ip']).trim();
-  return (req.ip || '').replace(/^::ffff:/, '');
+  return String(req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
 }
 
 function isPendingInvoiceStatus(status) {
@@ -8768,7 +8772,10 @@ async function findLatestPendingInvoiceForClient(idServicio) {
 }
 
 async function renderCaptive(req, res) {
-  const ip = (req.query?.ip || detectClientIp(req)).toString();
+  // ?ip= solo lo puede usar el personal con sesion (vista previa desde el panel).
+  // Sin sesion se ignora: antes cualquiera podia ver nombre, plan y deuda de un cliente por su IP.
+  const staffSession = req.query?.ip ? await getSession(req.headers['x-auth-token']) : null;
+  const ip = (staffSession && req.query.ip ? req.query.ip : detectClientIp(req)).toString();
   const client = await prisma.client.findFirst({ where: { ip } });
   let mode = 'info';
   if (client?.crmAction === 'block') mode = 'bloqueado';
@@ -9269,7 +9276,14 @@ async function renderSurveyPortal(req, res) {
 app.get('/survey/portal', asyncHandler(renderSurveyPortal));
 
 // Cliente envia el form
-app.post('/survey/submit', asyncHandler(async (req, res) => {
+// Formulario publico: limitar envios por IP para evitar abuso.
+const surveySubmitLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { ok: false, error: 'Demasiados intentos. Espere unos minutos e intente de nuevo.' },
+});
+
+app.post('/survey/submit', surveySubmitLimiter, asyncHandler(async (req, res) => {
   const ip = detectClientIp(req);
   const token = (req.body?.token || '').toString().trim();
   const fullName = (req.body?.fullName || '').toString().trim();
