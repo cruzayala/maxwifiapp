@@ -2745,6 +2745,86 @@ mtRouter.post('/ping', asyncHandler(async (req, res) => {
   res.json(result);
 }));
 
+// Prueba del enlace MikroTik -> equipo del cliente.
+// Mide lo que el router entrega a ese cliente: limite configurado en su cola,
+// trafico real durante una ventana, respuesta del equipo (ping) y si esta presente en la red.
+// Es de solo lectura: no cambia colas ni genera trafico artificial.
+mtRouter.post('/link-test', asyncHandler(async (req, res) => {
+  const seconds = Math.min(Math.max(parseInt(req.body?.seconds) || 8, 3), 20);
+  const idServicio = parseInt(req.body?.idServicio);
+  let client = null;
+  if (Number.isFinite(idServicio)) {
+    client = await prisma.client.findUnique({ where: { idServicio } });
+    if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+  }
+  const ip = String(client?.ip || req.body?.ip || '').trim();
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+    return res.status(400).json({ error: 'El cliente no tiene una IP válida para probar' });
+  }
+
+  const connection = await getMtConnection();
+  const readQueue = async () => {
+    const queues = await mtWrite(connection, 10_000, '/queue/simple/print', '=stats=');
+    const queue = queues.find((q) => String(q.target || '').split('/')[0] === ip) || null;
+    const bytes = String(queue?.bytes || '0/0').split('/');
+    const rate = String(queue?.rate || '0/0').split('/');
+    return {
+      queue,
+      at: Date.now(),
+      uploadBytes: parseInt(bytes[0] || '0') || 0,
+      downloadBytes: parseInt(bytes[1] || '0') || 0,
+      uploadBps: parseInt(rate[0] || '0') || 0,
+      downloadBps: parseInt(rate[1] || '0') || 0,
+    };
+  };
+
+  const first = await readQueue();
+  if (!first.queue) {
+    return res.status(404).json({ error: `No hay una cola en el MikroTik para la IP ${ip}. Revise que el cliente tenga su cola creada.` });
+  }
+  // El ping ocupa la cola de comandos ~5 s; se hace mientras transcurre la ventana de medicion.
+  const pingRows = await mtWrite(connection, 9_000, '/ping', `=address=${ip}`, '=count=5');
+  const remaining = seconds * 1000 - (Date.now() - first.at);
+  if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  const second = await readQueue();
+
+  const arp = await mtWrite(connection, 8_000, '/ip/arp/print').catch(() => []);
+  const arpEntry = arp.find((row) => row.address === ip) || null;
+
+  const elapsedSeconds = Math.max(1, (second.at - first.at) / 1000);
+  const delta = (a, b) => (b >= a ? ((b - a) * 8) / elapsedSeconds : 0);
+  const limits = String(second.queue?.['max-limit'] || '0/0').split('/');
+
+  res.json({
+    ip,
+    client: client ? { idServicio: client.idServicio, nombre: client.nombre, plan: client.planInternetName, estado: client.estado } : null,
+    queue: {
+      name: second.queue?.name || null,
+      target: second.queue?.target || null,
+      disabled: second.queue?.disabled === 'true' || second.queue?.disabled === true,
+      maxUploadBps: parseInt(limits[0] || '0') || 0,
+      maxDownloadBps: parseInt(limits[1] || '0') || 0,
+      comment: second.queue?.comment || null,
+    },
+    traffic: {
+      seconds: Math.round(elapsedSeconds),
+      avgUploadBps: Math.round(delta(first.uploadBytes, second.uploadBytes)),
+      avgDownloadBps: Math.round(delta(first.downloadBytes, second.downloadBytes)),
+      instantUploadBps: second.uploadBps,
+      instantDownloadBps: second.downloadBps,
+      uploadBytes: Math.max(0, second.uploadBytes - first.uploadBytes),
+      downloadBytes: Math.max(0, second.downloadBytes - first.downloadBytes),
+    },
+    ping: { address: ip, count: 5, ...parsePingSummary(pingRows) },
+    presence: {
+      inArp: Boolean(arpEntry) && arpEntry.invalid !== 'true',
+      macAddress: arpEntry?.['mac-address'] || null,
+      interface: arpEntry?.interface || null,
+    },
+    readAt: new Date().toISOString(),
+  });
+}));
+
 // Trafico WAN (interfaz upstream) en tiempo real para detectar saturacion del backhaul
 mtRouter.get('/wan-traffic', asyncHandler(async (req, res) => {
   const wanIface = process.env.MIKROTIK_WAN_IFACE || 'sfp2';

@@ -11,6 +11,7 @@ import { DecimalPipe } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
+import { LinkTestComponent } from './link-test';
 import { SpeedHistoryComponent } from './speed-history';
 import { PLAN_OK_PCT, PlanComparison, PlanLevel, compareToPlan, parsePlanSpeed, planLevelLabel } from './speed-utils';
 
@@ -18,23 +19,26 @@ import { PLAN_OK_PCT, PlanComparison, PlanLevel, compareToPlan, parsePlanSpeed, 
   selector: 'app-bandwidth',
   standalone: true,
   imports: [
-    NavbarComponent, FormsModule, DecimalPipe, PlanLabelPipe, SpeedHistoryComponent,
+    NavbarComponent, FormsModule, DecimalPipe, PlanLabelPipe, SpeedHistoryComponent, LinkTestComponent,
     LucideActivity, LucideArrowDown, LucideArrowUp, LucideAudioWaveform, LucideInfo, LucidePlay,
   ],
   template: `
     <app-navbar pageTitle="Prueba de velocidad" />
 
     <div class="page">
+      <app-link-test [clients]="clients()" />
+
       <div class="info-banner">
         <svg lucideInfo size="20" aria-hidden="true"></svg>
         <div>
-          <strong>Cómo funciona</strong>
-          <p>La prueba mide la velocidad de <b>este dispositivo</b> (PC, celular o tableta). Para medir la de un cliente, hágala conectado a su red, en su casa. Cada resultado queda guardado en el historial.</p>
+          <strong>Dos pruebas distintas</strong>
+          <p>Arriba, <b>desde el MikroTik</b>: qué velocidad le permite el router a un cliente, cuánta usa y si su equipo responde; se puede hacer desde la oficina.
+             Abajo, <b>desde este dispositivo</b> (PC, celular o tableta) hacia internet: mide la salida real, y para que valga por un cliente hay que hacerla conectado a la red de su casa. Cada resultado queda en el historial.</p>
         </div>
       </div>
 
       <section class="card test-card">
-        <h3>Nueva prueba</h3>
+        <h3>Prueba de internet desde este dispositivo</h3>
 
         <div class="client-selector">
           <label for="bw-client">Cliente (opcional)</label>
