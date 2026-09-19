@@ -856,7 +856,12 @@ interface InvoiceBreakdown {
     }
     @media (max-width: 480px) {
       .finance-head h2 { font-size: 18px; }
-      .summary-grid, .finance-insights { grid-template-columns: 1fr; }
+      /* Dos columnas como en Clientes: con una sola había que bajar seis tarjetas antes de ver las facturas. */
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .summary-grid .kpi-icon { display: none; }
+      .summary-grid .summary-card { grid-template-columns: minmax(0, 1fr); }
+      .summary-grid .summary-card strong { font-size: 18px; }
+      .finance-insights { grid-template-columns: 1fr; }
       .finance-insights > div { border-right: 0; border-bottom: 1px solid #e8edf1; }
       .finance-insights > div:last-child { border-bottom: 0; }
       .summary-card { min-height: 82px; }

@@ -666,8 +666,6 @@ interface ClientGroup {
       .advanced-filters { grid-template-columns: 1fr; }
       .btn { width: 100%; justify-content: center; padding-inline: 10px; }
       .data-table { min-width: 980px; }
-      .data-table th.col-actions, .data-table td:last-child { position: sticky; right: 0; z-index: 2; background: #fff; box-shadow: -6px 0 10px -8px rgba(20, 33, 45, .25); }
-      .data-table th.col-actions { background: #f7f9fa; }
       .view-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .view-strip button { justify-content: flex-start; padding: 0 10px; }
       .cards-grid, .group-layout { grid-template-columns: 1fr; }

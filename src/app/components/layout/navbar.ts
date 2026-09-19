@@ -129,7 +129,8 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
     }
 
     @media (max-width: 480px) {
-      .page-title { display: none; }
+      /* El buscador se oculta en móvil (styles.scss); el título debe seguir visible. */
+      .page-title { min-width: 0; flex: 1; }
       .search-box input { width: 100%; }
       .search-box { flex: 1; }
       .navbar-right { flex: 1; }
