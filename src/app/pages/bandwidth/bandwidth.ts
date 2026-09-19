@@ -8,15 +8,17 @@ import { ToastService } from '../../services/toast.service';
 import { DbService } from '../../services/db.service';
 import { FormsModule } from '@angular/forms';
 import { DecimalPipe } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
+import { SpeedHistoryComponent } from './speed-history';
+import { PLAN_OK_PCT, PlanComparison, PlanLevel, compareToPlan, parsePlanSpeed, planLevelLabel } from './speed-utils';
 
 @Component({
   selector: 'app-bandwidth',
   standalone: true,
   imports: [
-    NavbarComponent, FormsModule, DecimalPipe, RouterLink, PlanLabelPipe,
+    NavbarComponent, FormsModule, DecimalPipe, PlanLabelPipe, SpeedHistoryComponent,
     LucideActivity, LucideArrowDown, LucideArrowUp, LucideAudioWaveform, LucideInfo, LucidePlay,
   ],
   template: `
@@ -39,7 +41,7 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
           <div class="client-picker">
             <input type="search" class="form-input" placeholder="Buscar cliente por nombre o IP" aria-label="Buscar cliente"
               [ngModel]="clientSearch()" (ngModelChange)="clientSearch.set($event)" [disabled]="testing()" />
-            <select id="bw-client" [(ngModel)]="selectedClientId" class="form-input" [disabled]="testing()">
+            <select id="bw-client" [ngModel]="selectedClientId()" (ngModelChange)="selectedClientId.set($event)" class="form-input" [disabled]="testing()">
               <option [ngValue]="0">Sin cliente (prueba general)</option>
               @for (c of clientOptions(); track c.id_servicio) {
                 <option [ngValue]="c.id_servicio">{{ c.nombre }} · {{ c.plan_internet?.nombre | planLabel }}</option>
@@ -97,6 +99,37 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
               <span>{{ history().length ? 'Iniciar otra prueba' : 'Iniciar prueba' }}</span>
             }
           </button>
+
+          @if (!testing() && lastResult(); as res) {
+            <div class="verdict" [class]="'verdict ' + lastVerdict().level" aria-live="polite">
+              @if (lastVerdict().plan; as plan) {
+                <div class="verdict-head">
+                  <span class="verdict-badge">{{ levelLabel(lastVerdict().level) }}</span>
+                  <strong>{{ res.clientName }}: la descarga llegó al {{ lastVerdict().pct | number:'1.0-0' }} % del plan</strong>
+                </div>
+                <div class="verdict-bars">
+                  <div>
+                    <span>Descarga <b>{{ res.downloadMbps | number:'1.1-1' }}</b> de {{ plan.down | number:'1.0-1' }} Mbps</span>
+                    <div class="vbar"><i [style.width.%]="Math.min(100, lastVerdict().pct || 0)"></i><em [style.left.%]="okPct"></em></div>
+                  </div>
+                  <div>
+                    <span>Subida <b>{{ res.uploadMbps | number:'1.1-1' }}</b> de {{ plan.up | number:'1.0-1' }} Mbps</span>
+                    <div class="vbar"><i [style.width.%]="Math.min(100, lastVerdict().upPct || 0)"></i><em [style.left.%]="okPct"></em></div>
+                  </div>
+                </div>
+                <p>
+                  @if (lastVerdict().level === 'ok') { El cliente recibe la velocidad contratada. }
+                  @else { Por debajo del {{ okPct }} % del plan. Repita la prueba con cable y con los demás equipos desconectados; si sigue baja, revise la señal de la ONU y la cola del cliente. }
+                </p>
+              } @else if (res.clientId) {
+                <p>No se pudo leer la velocidad del plan de {{ res.clientName }} para compararla. Revise el nombre del plan en su ficha.</p>
+              } @else {
+                <p>Prueba general guardada. Para compararla con un plan, elija el cliente antes de iniciar la prueba.</p>
+              }
+            </div>
+          } @else if (!testing() && selectedPlan(); as plan) {
+            <p class="plan-hint">Plan del cliente: <b>{{ plan.down | number:'1.0-1' }} Mbps de bajada / {{ plan.up | number:'1.0-1' }} Mbps de subida</b>. Al terminar verá si cumple.</p>
+          }
         </div>
       </section>
 
@@ -124,57 +157,7 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
         </section>
       }
 
-      <section class="card">
-        <div class="card-head">
-          <h3>Historial de pruebas</h3>
-          @if (history().length) { <span class="count">{{ history().length > 50 ? 'Últimas 50 de ' + history().length : history().length + (history().length === 1 ? ' prueba' : ' pruebas') }}</span> }
-        </div>
-
-        @if (history().length === 0) {
-          <div class="empty-msg">
-            <strong>Todavía no hay pruebas guardadas</strong>
-            <span>Pulse «Iniciar prueba» para hacer la primera.</span>
-          </div>
-        } @else {
-          <p class="legend">
-            <span><i class="lg good"></i>20 Mbps o más</span>
-            <span><i class="lg warning"></i>5 a 20 Mbps</span>
-            <span><i class="lg bad"></i>menos de 5 Mbps</span>
-          </p>
-          <div class="table-container">
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Cliente</th>
-                  <th>Descarga</th>
-                  <th>Subida</th>
-                  <th>Ping</th>
-                  <th>Jitter</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (h of history().slice(0, 50); track h.timestamp) {
-                  <tr>
-                    <td>{{ formatDate(h.timestamp) }}</td>
-                    <td>
-                      @if (h.clientId) {
-                        <a [routerLink]="['/clients', h.clientId]" class="client-link">{{ h.clientName }}</a>
-                      } @else {
-                        <span class="muted">Prueba general</span>
-                      }
-                    </td>
-                    <td class="speed-cell" [class]="'speed-cell ' + getSpeedClass(h.downloadMbps)">{{ h.downloadMbps | number:'1.1-1' }} Mbps</td>
-                    <td class="speed-cell" [class]="'speed-cell ' + getSpeedClass(h.uploadMbps)">{{ h.uploadMbps | number:'1.1-1' }} Mbps</td>
-                    <td class="mono">{{ h.pingMs | number:'1.0-0' }} ms</td>
-                    <td class="mono">{{ h.jitterMs | number:'1.1-1' }} ms</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-      </section>
+      <app-speed-history [history]="history()" [planById]="planById()" />
     </div>
   `,
   styles: [`
@@ -192,9 +175,6 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
 
     .card { background: white; border: 1px solid #dfe5ea; border-radius: 8px; padding: 20px; margin-bottom: 18px; }
     .card h3, .capacity-section h3 { margin: 0 0 14px; font-size: 16px; font-weight: 700; color: #172535; }
-    .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .card-head h3 { margin: 0; }
-    .count { color: #667582; font-size: 12px; }
 
     .client-selector { margin-bottom: 18px; }
     .client-selector label { display: block; font-size: 12px; font-weight: 600; color: #334250; margin-bottom: 6px; }
@@ -249,27 +229,23 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
     .cap-metric { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; color: #667582; }
     .cap-metric strong { color: #172535; font-size: 13px; }
 
-    .legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 0 0 10px; font-size: 12px; color: #667582; }
-    .legend span { display: inline-flex; align-items: center; gap: 6px; }
-    .lg { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-    .lg.good { background: #13875a; } .lg.warning { background: #b36b12; } .lg.bad { background: #b42318; }
-
-    .table-container { overflow-x: auto; }
-    .data-table { width: 100%; min-width: 620px; border-collapse: collapse; }
-    .data-table th { text-align: left; font-size: 11px; font-weight: 700; color: #667582; text-transform: uppercase; padding: 10px 12px; border-bottom: 1px solid #dfe5ea; background: #f8fafc; white-space: nowrap; }
-    .data-table td { padding: 10px 12px; font-size: 13px; color: #334250; border-bottom: 1px solid #edf0f3; white-space: nowrap; }
-    .data-table tbody tr:hover td { background: #f8fafc; }
-
-    .speed-cell { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-weight: 700; }
-    .speed-cell.good { color: #13875a; }
-    .speed-cell.warning { color: #b36b12; }
-    .speed-cell.bad { color: #b42318; }
-    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; }
-    .client-link { color: #1267dd; text-decoration: none; font-weight: 600; }
-    .client-link:hover { text-decoration: underline; }
-    .muted { color: #8792a0; }
-    .empty-msg { display: grid; gap: 4px; text-align: center; padding: 36px 16px; color: #667582; font-size: 13px; }
-    .empty-msg strong { color: #172535; font-size: 14px; }
+    .verdict { margin-top: 14px; padding: 14px 16px; border-radius: 8px; border: 1px solid #dfe5ea; background: #f8fafc; }
+    .verdict p { margin: 8px 0 0; font-size: 13px; line-height: 1.5; color: #334250; }
+    .verdict.none p { margin: 0; }
+    .verdict-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .verdict-head strong { font-size: 14px; color: #172535; }
+    .verdict-badge { padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 800; background: #eef1f4; color: #52606d; }
+    .verdict.ok { background: #e9f8f1; border-color: #bfe5d2; } .verdict.ok .verdict-badge { background: #13875a; color: #fff; }
+    .verdict.low { background: #fff6e8; border-color: #efd3a8; } .verdict.low .verdict-badge { background: #b36b12; color: #fff; }
+    .verdict.bad { background: #fff0ef; border-color: #f6cfcb; } .verdict.bad .verdict-badge { background: #b42318; color: #fff; }
+    .verdict-bars { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; font-size: 12px; color: #667582; }
+    .verdict-bars b { color: #172535; }
+    .vbar { position: relative; height: 8px; margin-top: 5px; border-radius: 4px; background: rgba(23,37,53,.1); }
+    .vbar i { display: block; height: 100%; border-radius: 4px; background: #1267dd; }
+    .verdict.ok .vbar i { background: #13875a; } .verdict.low .vbar i { background: #b36b12; } .verdict.bad .vbar i { background: #b42318; }
+    .vbar em { position: absolute; top: -3px; bottom: -3px; width: 2px; background: #172535; opacity: .45; }
+    .plan-hint { margin: 12px 0 0; font-size: 12px; color: #667582; text-align: center; }
+    .plan-hint b { color: #172535; }
 
     @media (max-width: 720px) {
       .page { padding: 16px 12px 32px; }
@@ -277,6 +253,7 @@ import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
       .gauge-row { grid-template-columns: 1fr 1fr; gap: 8px; }
       .gauge-value { font-size: 22px; }
       .card { padding: 16px 14px; }
+      .verdict-bars { grid-template-columns: 1fr; }
     }
     @media (prefers-reduced-motion: reduce) {
       .gauge.active, .btn-spinner { animation: none; }
@@ -289,10 +266,15 @@ export class BandwidthComponent implements OnInit {
   private toast = inject(ToastService);
   private serverDb = inject(DbService);
 
+  private route = inject(ActivatedRoute);
+
   Math = Math;
+  readonly okPct = PLAN_OK_PCT;
 
   clients = signal<WispHubClient[]>([]);
-  selectedClientId = 0;
+  /** Plan actual de cada cliente (todos los estados) para comparar el historial. */
+  planById = signal<Map<number, string>>(new Map());
+  selectedClientId = signal(0);
   clientSearch = signal('');
   /** Lista del selector filtrada por la búsqueda; el cliente ya elegido se mantiene visible. */
   clientOptions = computed(() => {
@@ -300,7 +282,7 @@ export class BandwidthComponent implements OnInit {
     const all = this.clients();
     if (!term) return all;
     return all.filter(c =>
-      c.id_servicio === this.selectedClientId ||
+      c.id_servicio === this.selectedClientId() ||
       (c.nombre || '').toLowerCase().includes(term) ||
       (c.ip || '').includes(term));
   });
@@ -316,11 +298,26 @@ export class BandwidthComponent implements OnInit {
   currentJitter = signal(0);
 
   history = signal<SpeedResult[]>([]);
+  /** Última prueba hecha en esta pantalla, para el veredicto frente al plan. */
+  lastResult = signal<SpeedResult | null>(null);
+  lastVerdict = computed<PlanComparison>(() => {
+    const res = this.lastResult();
+    if (!res) return compareToPlan(0, 0, null);
+    return compareToPlan(res.downloadMbps, res.uploadMbps, res.clientId ? this.planById().get(res.clientId) : null);
+  });
+  selectedPlan = computed(() => {
+    const id = this.selectedClientId();
+    return id ? parsePlanSpeed(this.planById().get(id)) : null;
+  });
   planCapacity = signal<Array<{ name: string; count: number; estimatedBandwidth: number; pct: number }>>([]);
 
   async ngOnInit() {
     const clients = await this.db.getClients();
     this.clients.set(clients.filter(c => c.estado?.toLowerCase() === 'activo'));
+    this.planById.set(new Map(clients.filter(c => c.plan_internet?.nombre).map(c => [c.id_servicio, c.plan_internet!.nombre])));
+    // Enlace directo: /bandwidth?cliente=ID deja el cliente elegido.
+    const preset = Number(this.route.snapshot.queryParamMap.get('cliente'));
+    if (preset && this.clients().some(c => c.id_servicio === preset)) this.selectedClientId.set(preset);
     try {
       const records = await firstValueFrom(this.serverDb.getSpeedTests(undefined, 500));
       this.history.set(records.map(record => ({
@@ -364,6 +361,7 @@ export class BandwidthComponent implements OnInit {
 
   async startTest() {
     this.testing.set(true);
+    this.lastResult.set(null);
     this.currentDown.set(0);
     this.currentUp.set(0);
     this.currentPing.set(0);
@@ -386,8 +384,8 @@ export class BandwidthComponent implements OnInit {
       this.currentJitter.set(result.jitterMs);
 
       // Save to history
-      if (this.selectedClientId) {
-        const c = this.clients().find(x => x.id_servicio === this.selectedClientId);
+      if (this.selectedClientId()) {
+        const c = this.clients().find(x => x.id_servicio === this.selectedClientId());
         if (c) {
           result.clientId = c.id_servicio;
           result.clientName = c.nombre;
@@ -405,6 +403,7 @@ export class BandwidthComponent implements OnInit {
       }));
       result.timestamp = saved.createdAt || result.timestamp;
       this.history.update(history => [result, ...history].slice(0, 500));
+      this.lastResult.set(result);
 
       this.toast.success(`Prueba completada: bajada ${result.downloadMbps.toFixed(1)} Mbps, subida ${result.uploadMbps.toFixed(1)} Mbps`);
     } catch (e: any) {
@@ -418,14 +417,5 @@ export class BandwidthComponent implements OnInit {
     this.progress.set(0);
   }
 
-  formatDate(iso: string): string {
-    const d = new Date(iso);
-    return d.toLocaleString('es-DO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  }
-
-  getSpeedClass(mbps: number): string {
-    if (mbps >= 20) return 'good';
-    if (mbps >= 5) return 'warning';
-    return 'bad';
-  }
+  levelLabel(level: PlanLevel): string { return planLevelLabel(level); }
 }
