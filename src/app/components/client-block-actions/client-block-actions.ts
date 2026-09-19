@@ -15,14 +15,16 @@ import { ToastService } from '../../services/toast.service';
       >
         {{ busy() === 'moroso' ? '...' : 'Moroso' }}
       </button>
-      <button
-        type="button"
-        class="btn-ac btn-danger"
-        [disabled]="busy() !== null"
-        (click)="run('block')"
-      >
-        {{ busy() === 'block' ? '...' : 'Desactivar' }}
-      </button>
+      @if (paymentPilotEnabled()) {
+        <button
+          type="button"
+          class="btn-ac btn-danger"
+          [disabled]="busy() !== null || crmAction() === 'block'"
+          (click)="run('block')"
+        >
+          {{ busy() === 'block' ? '...' : 'Desactivar con portal' }}
+        </button>
+      }
       @if (crmAction() === 'moroso' || crmAction() === 'block') {
         <button
           type="button"
@@ -56,6 +58,7 @@ export class ClientBlockActionsComponent {
   idServicio = input.required<number>();
   clientName = input.required<string>();
   crmAction = input<string | null | undefined>(null);
+  paymentPilotEnabled = input(false);
 
   changed = output<{ action: ClientAction; result: unknown }>();
 
@@ -68,7 +71,7 @@ export class ClientBlockActionsComponent {
     if (reason === null) return;
 
     this.busy.set(action);
-    this.svc.apply(this.idServicio(), action, reason || def).subscribe({
+    this.svc.apply(this.idServicio(), action, reason || def, action === 'block').subscribe({
       next: (res) => {
         this.busy.set(null);
         if (res.ok) {

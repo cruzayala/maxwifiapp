@@ -3,6 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { ConfigService } from './config.service';
 import { LocalDbService } from './local-db.service';
 import { ToastService } from './toast.service';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class NotificationSchedulerService {
@@ -11,53 +12,61 @@ export class NotificationSchedulerService {
   private db = inject(LocalDbService);
   private toast = inject(ToastService);
 
-  private readonly LAST_RUN_KEY = 'wishub_notif_last_run';
-  private readonly SENT_LOG_KEY = 'wishub_notif_sent';
   private intervalId: any;
+  private lastRun: Date | null = null;
+  private sentLog: Record<string, string> = {};
+  private stateLoaded = false;
 
   start() {
     this.stop();
     // Check every 30 minutes if we need to send
     this.intervalId = setInterval(() => this.checkAndRun(), 30 * 60 * 1000);
     // Run once on start
-    setTimeout(() => this.checkAndRun(), 5000);
+    setTimeout(() => void this.checkAndRun(), 5000);
   }
 
   stop() {
     if (this.intervalId) clearInterval(this.intervalId);
   }
 
-  private getLastRun(): Date | null {
-    const ts = localStorage.getItem(this.LAST_RUN_KEY);
-    return ts ? new Date(ts) : null;
+  private async loadState() {
+    if (this.stateLoaded) return;
+    const state = await firstValueFrom(this.http.get<any>('/db/notification-state'));
+    this.lastRun = state?.lastRunAt ? new Date(state.lastRunAt) : null;
+    this.sentLog = {};
+    for (const row of state?.sent || []) {
+      const key = `${row.type}_${String(row.phone || '').replace(/\D/g, '')}`;
+      if (!this.sentLog[key]) this.sentLog[key] = row.sentAt;
+    }
+    this.stateLoaded = true;
   }
 
-  private setLastRun() {
-    localStorage.setItem(this.LAST_RUN_KEY, new Date().toISOString());
+  private async setLastRun() {
+    const state = await firstValueFrom(this.http.post<any>('/db/notification-state/run', {}));
+    this.lastRun = new Date(state.lastRunAt);
   }
 
-  private getSentLog(): Record<string, string> {
-    try { return JSON.parse(localStorage.getItem(this.SENT_LOG_KEY) || '{}'); }
-    catch { return {}; }
-  }
-
-  private markSent(phone: string, type: 'reminder' | 'overdue') {
-    const log = this.getSentLog();
-    log[`${type}_${phone}`] = new Date().toISOString();
-    localStorage.setItem(this.SENT_LOG_KEY, JSON.stringify(log));
+  private async markSent(phone: string, type: 'reminder' | 'overdue', idServicio?: number) {
+    const row = await firstValueFrom(this.http.post<any>('/db/notification-sent', { phone, type, idServicio }));
+    this.sentLog[`${type}_${String(phone).replace(/\D/g, '')}`] = row.sentAt;
   }
 
   private wasSentRecently(phone: string, type: 'reminder' | 'overdue', maxDays: number): boolean {
-    const log = this.getSentLog();
-    const key = `${type}_${phone}`;
-    if (!log[key]) return false;
-    const days = (Date.now() - new Date(log[key]).getTime()) / (1000 * 60 * 60 * 24);
+    const key = `${type}_${String(phone).replace(/\D/g, '')}`;
+    if (!this.sentLog[key]) return false;
+    const days = (Date.now() - new Date(this.sentLog[key]).getTime()) / (1000 * 60 * 60 * 24);
     return days < maxDays;
   }
 
   async checkAndRun() {
     const cfg = this.config.getNotifConfig();
     if (!cfg.enabled) return;
+
+    try {
+      await this.loadState();
+    } catch {
+      return;
+    }
 
     // Check WhatsApp status
     try {
@@ -72,10 +81,9 @@ export class NotificationSchedulerService {
     if (currentHour !== cfg.scheduleHour) return;
 
     // Prevent running twice the same day
-    const lastRun = this.getLastRun();
-    if (lastRun && lastRun.toDateString() === now.toDateString()) return;
+    if (this.lastRun && this.lastRun.toDateString() === now.toDateString()) return;
 
-    this.setLastRun();
+    await this.setLastRun();
     await this.runJob();
   }
 
@@ -102,6 +110,7 @@ export class NotificationSchedulerService {
           if (!this.wasSentRecently(c.telefono, 'reminder', 7)) {
             reminders.push({
               phone: c.telefono,
+              idServicio: c.id_servicio,
               message: this.buildMessage(cfg.reminderMsg, c, Math.abs(daysToCorte)),
               client: c.nombre,
             });
@@ -115,6 +124,7 @@ export class NotificationSchedulerService {
           if (!this.wasSentRecently(c.telefono, 'overdue', cfg.overdueInterval)) {
             overdue.push({
               phone: c.telefono,
+              idServicio: c.id_servicio,
               message: this.buildMessage(cfg.overdueMsg, c, Math.abs(daysToCorte)),
               client: c.nombre,
               type: 'overdue',
@@ -130,10 +140,10 @@ export class NotificationSchedulerService {
     try {
       const response = await this.http.post<any>('/wa/send-bulk', { contacts: all }).toPromise();
       const sent = response?.results?.filter((r: any) => r.status === 'sent') || [];
-      sent.forEach((r: any) => {
+      await Promise.all(sent.map(async (r: any) => {
         const item = all.find(x => x.phone === r.phone);
-        if (item) this.markSent(item.phone, item.type === 'overdue' ? 'overdue' : 'reminder');
-      });
+        if (item) await this.markSent(item.phone, item.type === 'overdue' ? 'overdue' : 'reminder', item.idServicio);
+      }));
       this.toast.success(`${sent.length} notificaciones automaticas enviadas`);
     } catch (e) {
       console.error('Auto-notif error', e);
@@ -161,7 +171,8 @@ export class NotificationSchedulerService {
 
   async runNow() {
     this.toast.info('Ejecutando envio automatico ahora...');
+    await this.loadState();
     await this.runJob();
-    this.setLastRun();
+    await this.setLastRun();
   }
 }

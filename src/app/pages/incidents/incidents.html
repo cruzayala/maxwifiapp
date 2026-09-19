@@ -1,0 +1,105 @@
+<app-navbar pageTitle="Centro NOC" />
+
+<main class="noc-page" [class.drawer-open]="selected()">
+  <header class="noc-toolbar">
+    <div>
+      <span class="eyebrow"><i></i> Operacion de red</span>
+      <h1>Incidentes</h1>
+      <p>Ultima lectura {{ lastUpdated() ? formatDate(lastUpdated()!.toISOString()) : '-' }}</p>
+    </div>
+    <div class="toolbar-actions">
+      <span class="evaluator-state" [class.off]="!summary()?.evaluator?.enabled">
+        <i></i>{{ summary()?.evaluator?.enabled ? 'Deteccion activa' : 'Deteccion pausada' }}
+      </span>
+      <button class="icon-btn" type="button" (click)="load()" title="Actualizar" aria-label="Actualizar"><svg lucideRefreshCw size="18" aria-hidden="true"></svg></button>
+      <button class="primary-btn" type="button" (click)="evaluate()" [disabled]="evaluating()">
+        <svg lucideActivity size="17" [class.spinning]="evaluating()" aria-hidden="true"></svg>{{ evaluating() ? 'Evaluando' : 'Evaluar ahora' }}
+      </button>
+    </div>
+  </header>
+
+  @if (error()) {
+    <div class="error-banner" role="alert"><svg lucideAlertTriangle size="18" aria-hidden="true"></svg><span>{{ error() }}</span><button type="button" (click)="load()">Reintentar</button></div>
+  }
+
+  <section class="kpi-row" aria-label="Resumen de incidentes">
+    <div class="kpi active"><span><svg lucideAlertTriangle size="19" aria-hidden="true"></svg></span><p>Activos<strong>{{ summary()?.active || 0 }}</strong><small>{{ summary()?.open || 0 }} sin reconocer</small></p></div>
+    <div class="kpi critical"><span><svg lucideShieldCheck size="19" aria-hidden="true"></svg></span><p>Criticos<strong>{{ summary()?.critical || 0 }}</strong><small>Requieren prioridad</small></p></div>
+    <div class="kpi affected"><span><svg lucideUsers size="19" aria-hidden="true"></svg></span><p>Clientes afectados<strong>{{ summary()?.affectedClients || 0 }}</strong><small>En incidentes activos</small></p></div>
+    <div class="kpi daily"><span><svg lucideClock3 size="19" aria-hidden="true"></svg></span><p>Ultimas 24 horas<strong>{{ summary()?.last24h || 0 }}</strong><small>Detectados en el periodo</small></p></div>
+  </section>
+
+  <section class="filter-bar" aria-label="Filtros de incidentes">
+    <label class="search"><svg lucideSearch size="17" aria-hidden="true"></svg><input type="search" [ngModel]="search()" (ngModelChange)="search.set($event)" (keyup.enter)="applyFilters()" placeholder="Buscar zona, interfaz o responsable" /></label>
+    <select [ngModel]="status()" (ngModelChange)="status.set($event); applyFilters()" aria-label="Estado">
+      <option value="active">Activos</option><option value="open">Abiertos</option><option value="acknowledged">Reconocidos</option><option value="resolved">Resueltos</option><option value="all">Todos</option>
+    </select>
+    <select [ngModel]="severity()" (ngModelChange)="severity.set($event); applyFilters()" aria-label="Severidad">
+      <option value="">Toda severidad</option><option value="critical">Critico</option><option value="high">Alto</option><option value="medium">Medio</option><option value="low">Bajo</option>
+    </select>
+    <button class="filter-apply" type="button" (click)="applyFilters()">Aplicar</button>
+    <button class="filter-clear" type="button" (click)="clearFilters()">Limpiar</button>
+  </section>
+
+  <section class="incident-panel">
+    @if (loading()) {
+      <div class="loading-list">@for (row of [1,2,3,4,5]; track row) { <div><i></i><span></span><span></span></div> }</div>
+    } @else if (incidents().length === 0) {
+      <div class="empty-state"><svg lucideCircleCheck size="30" aria-hidden="true"></svg><strong>Sin incidentes en esta vista</strong><span>La red no presenta coincidencias para los filtros actuales.</span></div>
+    } @else {
+      <div class="incident-table-wrap">
+        <table class="incident-table">
+          <thead><tr><th>Severidad</th><th>Incidente</th><th>Alcance</th><th>Afectados</th><th>Responsable</th><th>Estado</th><th>Detectado</th><th></th></tr></thead>
+          <tbody>
+            @for (incident of incidents(); track incident.id) {
+              <tr tabindex="0" (click)="open(incident)" (keydown.enter)="open(incident)">
+                <td><span [class]="'severity ' + incident.severity"><i></i>{{ severityLabel(incident.severity) }}</span></td>
+                <td><div class="incident-title"><strong>{{ incident.title }}</strong><span>{{ incident.description }}</span></div></td>
+                <td><div class="scope"><small>{{ scopeLabel(incident.scopeType) }}</small><strong>{{ incident.scopeLabel }}</strong></div></td>
+                <td><span class="affected-count">{{ incident.affectedClients }}</span></td>
+                <td>{{ incident.assignedTo || 'Sin asignar' }}</td>
+                <td><span [class]="'status ' + incident.status">{{ statusLabel(incident.status) }}</span></td>
+                <td><div class="date-cell"><strong>{{ age(incident.detectedAt) }}</strong><span>{{ formatDate(incident.detectedAt) }}</span></div></td>
+                <td><svg lucideChevronRight size="18" aria-hidden="true"></svg></td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <footer class="pagination"><span>{{ total() }} incidentes</span><div><button type="button" (click)="changePage(-1)" [disabled]="page() === 1" aria-label="Pagina anterior"><svg lucideChevronLeft size="17"></svg></button><strong>{{ page() }} / {{ totalPages() }}</strong><button type="button" (click)="changePage(1)" [disabled]="page() === totalPages()" aria-label="Pagina siguiente"><svg lucideChevronRight size="17"></svg></button></div></footer>
+    }
+  </section>
+
+  @if (selected(); as incident) {
+    <div class="drawer-layer">
+      <button class="backdrop" type="button" (click)="close()" aria-label="Cerrar detalle"></button>
+      <aside class="incident-drawer" aria-label="Detalle del incidente">
+        <header><div><span [class]="'severity ' + incident.severity"><i></i>{{ severityLabel(incident.severity) }}</span><h2>{{ incident.title }}</h2><p>{{ incident.description }}</p></div><button class="icon-btn" type="button" (click)="close()" aria-label="Cerrar"><svg lucideX size="19"></svg></button></header>
+        <div class="drawer-body">
+          <section class="detail-grid">
+            <div><small>Estado</small><strong>{{ statusLabel(incident.status) }}</strong></div><div><small>Responsable</small><strong>{{ incident.assignedTo || 'Sin asignar' }}</strong></div>
+            <div><small>Alcance</small><strong>{{ scopeLabel(incident.scopeType) }} · {{ incident.scopeLabel }}</strong></div><div><small>Afectados</small><strong>{{ incident.affectedClients }} clientes</strong></div>
+            <div><small>Detectado</small><strong>{{ formatDate(incident.detectedAt) }}</strong></div><div><small>Ultima presencia</small><strong>{{ formatDate(incident.lastSeenAt) }}</strong></div>
+          </section>
+
+          <section class="drawer-section"><div class="section-title"><h3><svg lucideUsers size="17"></svg>Clientes afectados</h3><span>{{ incident.clients?.length || incident.affectedClients }}</span></div>
+            @if (!incident.clients) { <div class="mini-loading">Cargando clientes...</div> }
+            @else if (!incident.clients.length) { <div class="compact-empty">Sin clientes asociados.</div> }
+            @else { <div class="client-list">@for (client of incident.clients; track client.idServicio) { <a [routerLink]="['/clients', client.idServicio]"><p><strong>{{ displayName(client) }}</strong><small>{{ client.usuario || 'Sin usuario' }}</small></p><p class="mono"><strong>{{ client.ip || 'Sin IP' }}</strong><small>{{ client.zonaNombre || '-' }}</small></p></a> }</div> }
+          </section>
+
+          <section class="drawer-section"><div class="section-title"><h3><svg lucideMessageSquare size="17"></svg>Cronologia</h3><button type="button" (click)="addNote()">Agregar nota</button></div>
+            @if (!incident.events?.length) { <div class="compact-empty">Sin eventos registrados.</div> }
+            @else { <div class="timeline">@for (event of incident.events; track event.id) { <div><i [class]="event.type"></i><p><strong>{{ event.message }}</strong><small>{{ event.createdBy || 'system' }} · {{ formatDate(event.createdAt) }}</small></p></div> }</div> }
+          </section>
+        </div>
+        <footer>
+          <button type="button" class="secondary" (click)="assign()" [disabled]="actionLoading()"><svg lucideUserRoundCheck size="17"></svg>Asignar</button>
+          @if (incident.status === 'open') { <button type="button" class="secondary" (click)="acknowledge()" [disabled]="actionLoading()"><svg lucideShieldCheck size="17"></svg>Reconocer</button> }
+          @if (incident.status !== 'resolved') { <button type="button" class="resolve" (click)="resolve()" [disabled]="actionLoading()"><svg lucideCircleCheck size="17"></svg>Resolver</button> }
+          @else { <button type="button" class="secondary" (click)="reopen()" [disabled]="actionLoading()"><svg lucideRotateCcw size="17"></svg>Reabrir</button> }
+        </footer>
+      </aside>
+    </div>
+  }
+</main>

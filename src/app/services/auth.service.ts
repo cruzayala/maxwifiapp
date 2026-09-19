@@ -99,4 +99,9 @@ export class AuthService {
     const userLevel = hierarchy[u.role] || 0;
     return roles.some(r => userLevel >= (hierarchy[r] || 99));
   }
+
+  hasAnyRole(roles: UserRole[]): boolean {
+    const role = this.currentUser()?.role;
+    return !!role && (role === 'super_admin' || role === 'admin' || roles.includes(role));
+  }
 }

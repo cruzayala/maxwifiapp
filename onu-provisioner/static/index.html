@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ONU Studio | ISP Max</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css?v=1.13.0">
+</head>
+<body data-wizard-step="1" data-service-operation="new_client">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">O</span>
+      <div><strong>ONU Studio</strong><span>ISP Max</span></div>
+    </div>
+    <div class="topbar-health">
+      <div class="health-item" id="agentState"><span class="status-dot"></span><span>Local</span><strong id="agentReady">Comprobando</strong></div>
+      <div class="health-item cloud-health"><span class="status-dot"></span><span>Railway</span><strong id="cloudStatus">Sin conectar</strong></div>
+      <div class="health-item admin-health"><span>Permisos</span><strong id="adminReady">Pendiente</strong></div>
+      <button class="topbar-settings" id="openAgentSettings" type="button" title="Configuración del agente" aria-label="Configuración del agente">⚙</button>
+      <span class="agent-version" id="agentVersion">v--</span>
+    </div>
+  </header>
+
+  <main class="guided-app">
+    <div class="guided-shell">
+      <section class="guided-content">
+        <header class="step-heading">
+          <div>
+            <span class="step-kicker" id="stepEyebrow">Consola local de aprovisionamiento</span>
+            <h1 id="stepTitle">Centro de control ONU</h1>
+            <p id="stepDescription">Detecta el equipo y completa cada etapa sin abandonar esta consola.</p>
+            <p class="device-summary" id="deviceSummary">Huawei / Novatech EG8141A5 · 192.168.100.1</p>
+          </div>
+          <nav class="wizard-stepper" aria-label="Proceso de aprovisionamiento">
+            <button type="button" data-wizard-target="1"><span>1</span><b>Detectar</b></button>
+            <button type="button" data-wizard-target="2"><span>2</span><b>Cliente</b></button>
+            <button type="button" data-wizard-target="3"><span>3</span><b>Internet</b></button>
+            <button type="button" data-wizard-target="4"><span>4</span><b>WiFi</b></button>
+            <button type="button" data-wizard-target="5"><span>5</span><b>Revisar</b></button>
+          </nav>
+        </header>
+
+        <form class="configuration" id="provisionForm" novalidate>
+          <section class="step-panel" data-wizard-panel="1">
+            <section class="discovery-panel scanning" id="discoveryPanel" aria-live="polite">
+              <div class="device-visual" aria-hidden="true">
+                <img src="/assets/onu-ethernet.png" alt="">
+              </div>
+              <div class="discovery-copy">
+                <div class="discovery-heading">
+                  <div><span class="state-line"><i></i><strong id="discoveryTitle">Buscando una ONU conectada</strong></span><small id="discoveryBadge">Escaneando</small></div>
+                </div>
+                <p id="discoveryAction">Conecta la ONU por Ethernet; el agente actualizará el estado automáticamente.</p>
+                <dl class="discovery-facts">
+                  <div><dt>Equipo</dt><dd id="discoveryModel">Pendiente</dd></div>
+                  <div><dt>Adaptador</dt><dd id="discoveryAdapter">—</dd></div>
+                  <div><dt>IP objetivo</dt><dd id="discoveryHost">—</dd></div>
+                  <div><dt>Respuesta</dt><dd id="discoveryLatency">—</dd></div>
+                  <div><dt>Número de serie</dt><dd id="discoverySerial">Leyendo...</dd></div>
+                </dl>
+                <div class="discovery-actions">
+                  <button class="button primary" id="checkButton" data-step-action="1" type="button">Preparar red y comprobar</button>
+                  <button class="button secondary" id="scanNow" type="button">Detectar ahora</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="work-intent" aria-label="Trabajo que se realizará">
+              <div class="intent-heading"><strong>¿Qué deseas hacer con esta ONU?</strong><span id="intentNote">Se crearán WispHub, MikroTik y una reserva de IP.</span></div>
+              <div class="intent-options">
+                <button type="button" data-operation-shortcut="new_client" aria-pressed="true"><span>01</span><b>Cliente nuevo</b><small>Crear servicio</small></button>
+                <button type="button" data-operation-shortcut="restore_same_onu" aria-pressed="false"><span>02</span><b>Restaurar</b><small>Misma ONU</small></button>
+                <button type="button" data-operation-shortcut="replace_onu" aria-pressed="false"><span>03</span><b>Cambiar ONU</b><small>Equipo nuevo</small></button>
+                <button type="button" data-operation-shortcut="migrate_pon" aria-pressed="false"><span>04</span><b>Mover de PON</b><small>Misma ONU</small></button>
+              </div>
+              <p class="inline-note success-note">La siguiente ONU comienza con una sesión limpia; la conexión con ISP Max permanece activa.</p>
+            </section>
+
+            <details class="technical-drawer">
+              <summary>Ajustes de red local y credenciales técnicas</summary>
+              <div class="field-grid local-grid">
+                <label class="field wide"><span>Tarjeta Ethernet</span><select id="adapterIndex" required></select></label>
+                <label class="field"><span>IP local</span><input id="localAddress" inputmode="decimal" value="192.168.100.10" required></label>
+                <label class="field compact"><span>Prefijo</span><input id="prefixLength" type="number" min="8" max="30" value="24" required></label>
+                <label class="field"><span>IP de la ONU</span><input id="deviceHost" inputmode="text" value="192.168.100.1" required></label>
+                <label class="field"><span>Modelo</span><select id="deviceModel"><option value="EG8141A5">Huawei EG8141A5</option><option value="F670L">ZTE F670L</option></select></label>
+                <label class="field"><span>Usuario técnico</span><input id="deviceUsername" value="telecomadmin"></label>
+                <label class="field"><span>Contraseña local</span><input id="devicePassword" type="password" autocomplete="new-password" placeholder="Usar la guardada en el agente"></label>
+              </div>
+              <label class="startup-option" title="Mantiene el agente disponible en el puerto local 8765"><input id="startupEnabled" type="checkbox"><span><b>Iniciar con Windows</b><small id="startupNote">Consultando estado</small></span></label>
+            </details>
+
+            <section class="onu-inventory" id="onuInventory" hidden aria-live="polite">
+              <header class="inventory-heading"><div><strong>Lectura directa del equipo</strong><p id="inventoryCollectedAt">Esperando autenticación local</p></div><span class="inventory-status" id="inventoryStatus">Pendiente</span></header>
+              <div class="inventory-summary">
+                <div><span>Serial C320</span><strong id="inventorySerial">—</strong></div>
+                <div><span>Serial firmware</span><strong id="inventoryRawSerial">—</strong></div>
+                <div><span>Estado GPON</span><strong id="inventoryPonState">—</strong></div>
+                <div><span>Hardware / firmware</span><strong id="inventoryFirmware">—</strong></div>
+                <div><span>MAC base</span><strong id="inventoryMac">—</strong></div>
+                <div><span>Recursos</span><strong id="inventoryResources">—</strong></div>
+              </div>
+              <p class="inventory-alert" id="inventoryAlert" hidden></p>
+              <div class="inventory-sections">
+                <section><div class="inventory-section-title"><div><span>Internet actual</span><strong id="inventoryWanState">Sin perfiles</strong></div><button class="button secondary compact-button" id="useCurrentWan" type="button" disabled>Usar valores</button></div><dl class="inventory-facts" id="inventoryWan"></dl></section>
+                <section><div class="inventory-section-title"><div><span>Óptica GPON</span><strong id="inventoryOpticalState">Sin lectura</strong></div></div><dl class="inventory-facts" id="inventoryOptical"></dl></section>
+                <section><div class="inventory-section-title"><div><span>Puertos LAN</span><strong id="inventoryLanState">Sin lectura</strong></div></div><div class="port-strip" id="inventoryPorts"></div></section>
+                <section><div class="inventory-section-title"><div><span>WiFi actual</span><strong id="inventoryWifiState">Sin radios</strong></div><button class="button secondary compact-button" id="useCurrentWifi" type="button" disabled>Usar SSID</button></div><dl class="inventory-facts" id="inventoryWifi"></dl></section>
+              </div>
+              <details class="inventory-technical"><summary>Detalles técnicos completos</summary><dl class="inventory-facts" id="inventoryTechnical"></dl></details>
+            </section>
+          </section>
+
+          <section class="step-panel form-section" data-wizard-panel="3">
+            <div class="flow-modal-bar"><div><span>Etapa 3 de 5</span><strong>Internet y puertos</strong></div><small>Los cambios se validan antes de escribir</small></div>
+            <div class="section-heading"><div><h2>Perfil de Internet</h2><p>IPoE Router con dirección estática</p></div><button class="button secondary compact-button" id="useCurrentWanTop" type="button">Usar configuración detectada</button></div>
+            <div class="row-form wan-form">
+              <label><span>Modo</span><select disabled><option>IPoE Router</option></select></label>
+              <label><span>VLAN</span><input id="vlanId" type="number" min="1" max="4094" value="101" required><small class="verified-label">Verificado</small></label>
+              <label><span>Prioridad (802.1p)</span><select id="priority"><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option></select></label>
+              <label><span>IP WAN</span><input id="wanIp" inputmode="decimal" value="192.168.16.245" required><small class="verified-label">Reservada</small></label>
+              <label><span>Máscara de subred</span><input id="subnetMask" inputmode="decimal" value="255.255.255.0" required></label>
+              <label><span>Gateway</span><input id="gateway" inputmode="decimal" value="192.168.16.1" required></label>
+              <label><span>DNS primario</span><input id="primaryDns" inputmode="decimal" value="8.8.8.8" required></label>
+              <label><span>DNS secundario</span><input id="secondaryDns" inputmode="decimal" placeholder="Opcional"></label>
+              <label><span>MTU</span><input id="mtu" type="number" min="576" max="1540" value="1500"></label>
+            </div>
+            <div class="subsection-title"><div><strong>Asociación de interfaces</strong><span>Puertos disponibles para el servicio</span></div></div>
+            <div class="toggle-row interface-toggles">
+              <label class="toggle"><input id="bindLan1" type="checkbox" checked><span></span><b>LAN1</b></label>
+              <label class="toggle"><input id="bindLan2" type="checkbox" checked><span></span><b>LAN2</b></label>
+              <label class="toggle"><input id="bindLan3" type="checkbox" checked><span></span><b>LAN3</b></label>
+              <label class="toggle"><input id="bindLan4" type="checkbox" checked><span></span><b>LAN4</b></label>
+              <label class="toggle"><input id="bindSsid1" type="checkbox" checked><span></span><b>SSID1</b></label>
+              <label class="toggle"><input id="natEnabled" type="checkbox" checked><span></span><b>NAT</b></label>
+            </div>
+            <div class="compatibility-panel"><div><span>Perfil existente</span><strong id="wanCompatibilityName">Se comprobará al leer la ONU</strong></div><div><span>Estado</span><strong class="text-success" id="wanCompatibilityStatus">Pendiente de lectura</strong></div><label class="toggle"><input id="replaceConflictingWan" type="checkbox"><span></span><b>Limpiar WAN y crear la nueva</b></label></div>
+          </section>
+
+          <section class="step-panel form-section" data-wizard-panel="4">
+            <div class="flow-modal-bar"><div><span>Etapa 4 de 5</span><strong>WiFi y administracion</strong></div><small>Credenciales protegidas en el agente</small></div>
+            <div class="section-heading"><div><h2>Red WiFi</h2><p>WPA2-PSK con cifrado AES</p></div><button class="button secondary compact-button" id="useCurrentWifiTop" type="button">Usar configuración detectada</button></div>
+            <div class="row-form wifi-form">
+              <label class="toggle-row-field"><span>WiFi activo</span><span class="toggle"><input id="wifiEnabled" type="checkbox" checked><span></span></span></label>
+              <label><span>Nombre WiFi (SSID)</span><input id="ssid" maxlength="32" value="test" required></label>
+              <label class="password-row"><span>Clave WiFi</span><input id="wifiPassword" type="password" minlength="8" maxlength="64" value="12345678" required><button class="button secondary compact-button" id="generateWifi" type="button">Generar clave segura</button></label>
+              <label><span>Máximo de equipos</span><input id="maxClients" type="number" min="1" max="32" value="32"></label>
+              <label class="toggle-row-field"><span>SSID visible</span><span class="toggle"><input id="broadcast" type="checkbox" checked><span></span></span></label>
+              <label class="toggle-row-field"><span>WMM</span><span class="toggle"><input id="wmmEnabled" type="checkbox" checked><span></span></span></label>
+              <label class="toggle-row-field"><span>WPS</span><span class="toggle"><input id="wpsEnabled" type="checkbox"><span></span></span></label>
+              <label><span>Seguridad</span><input value="WPA2-PSK / AES" disabled></label>
+            </div>
+            <div class="subsection-title"><div><strong>TR-069 (ACS)</strong><span id="tr069CredentialStatus">Credenciales del agente pendientes</span></div><label class="toggle"><input id="tr069Enabled" type="checkbox" checked><span></span><b>ACS activo</b></label></div>
+            <div class="row-form tr069-form">
+              <label><span>URL del ACS</span><input id="tr069AcsUrl" type="url" value="http://10.254.250.2:7547/" required></label>
+              <label><span>Usuario ACS</span><input id="tr069Username" value="ispmax-cpe" required></label>
+              <label><span>Reporte</span><select id="tr069Interval"><option value="300">5 min</option><option value="900" selected>15 min</option><option value="1800">30 min</option><option value="3600">60 min</option></select></label>
+            </div>
+            <details class="technical-drawer compact-drawer"><summary>Credenciales TR-069 protegidas</summary><div class="field-grid three"><label class="field"><span>Clave ACS</span><input id="tr069Password" type="password" autocomplete="new-password" placeholder="Usar la guardada"></label><label class="field"><span>Usuario de solicitud</span><input id="tr069ConnectionUsername" value="ispmax-connection-request"></label><label class="field"><span>Clave de solicitud</span><input id="tr069ConnectionPassword" type="password" autocomplete="new-password" placeholder="Usar la guardada"></label></div></details>
+            <div class="subsection-title"><div><strong>Acceso remoto</strong><span>Administración HTTP restringida desde MikroTik</span></div><label class="toggle"><input id="remoteEnabled" type="checkbox" checked><span></span><b>HTTP WAN</b></label></div>
+            <div class="row-form remote-form"><label><span>Origen autorizado</span><input id="remoteSource" value="192.168.16.1/32" required></label><label><span>URL resultante</span><output id="remoteUrl">http://192.168.16.245</output></label></div>
+            <p class="locked-protocols">Telnet, SSH y FTP permanecen desactivados.</p>
+          </section>
+
+          <section class="step-panel form-section review-section" data-wizard-panel="5" id="reviewPanel">
+            <div class="flow-modal-bar"><div><span>Etapa 5 de 5</span><strong>Confirmacion final</strong></div><small>Respaldo y lectura posterior obligatorios</small></div>
+            <div class="section-heading"><div><h2>Resumen de la instalación</h2><p>Valores que el agente aplicará y verificará</p></div><span class="risk-badge">Riesgo bajo</span></div>
+            <div class="review-table">
+              <div><span>Operación</span><strong id="reviewOperation">Cliente nuevo</strong><b>Verificado</b></div>
+              <div><span>Cliente</span><strong id="reviewClient">Configuración local</strong><b>Verificado</b></div>
+              <div><span>ONU</span><strong id="reviewOnu">EG8141A5 · 192.168.100.1</strong><b>Verificado</b></div>
+              <div><span>Internet</span><strong id="reviewWan">192.168.16.245 · VLAN 101</strong><b>Reservado</b></div>
+              <div><span>WiFi</span><strong id="reviewWifi">test</strong><b>Verificado</b></div>
+              <div><span>Acceso remoto</span><strong id="reviewRemote">192.168.16.1/32</strong><b>Restringido</b></div>
+              <div><span>Sincronización</span><strong id="reviewCloud">Solo configuración local</strong><b>Preparado</b></div>
+            </div>
+            <div class="review-columns">
+              <section class="protection-panel"><h3>Protecciones</h3><label class="toggle"><input id="createBackups" type="checkbox" checked><span></span><b>Crear respaldo antes y después</b></label><label class="toggle"><input id="saveConfiguration" type="checkbox" checked><span></span><b>Guardar sin reiniciar</b></label><div class="protection-row"><span>Verificar cada valor después de aplicar</span><strong>Siempre activo</strong></div><p class="inline-note success-note">WispHub, facturas, IP, plan y MikroTik no se eliminarán.</p></section>
+              <section class="execution-preview"><h3>Vista previa de ejecución</h3><ol><li>Respaldo</li><li>Puertos LAN</li><li>WAN</li><li>TR-069</li><li>WiFi</li><li>ACL HTTP</li><li>Guardado</li><li>Verificación</li></ol></section>
+            </div>
+          </section>
+
+          <section class="completion-panel" id="completionPanel" hidden>
+            <div class="completion-banner"><div><span>Operación completada</span><h2>ONU configurada y verificada</h2><p>Los valores fueron escritos, leídos nuevamente y sincronizados.</p></div><strong id="completionElapsed">Completado</strong></div>
+            <div class="completion-summary"><div><span>Serial</span><strong id="completionSerial">—</strong></div><div><span>Cliente</span><strong id="completionClient">—</strong></div><div><span>Trabajo</span><strong id="completionJob">—</strong></div></div>
+            <section class="verification-table"><h3>Verificación posterior</h3><div><span>Respaldo previo</span><strong>Guardado</strong></div><div><span>Puertos LAN</span><strong>Aplicados</strong></div><div><span>WAN / VLAN</span><strong>Confirmada</strong></div><div><span>TR-069</span><strong>Confirmado</strong></div><div><span>WiFi</span><strong>Confirmado</strong></div><div><span>HTTP ACL</span><strong>Confirmado</strong></div><div><span>Configuración permanente</span><strong>Guardada</strong></div><div><span>Respaldo final</span><strong>Guardado</strong></div></section>
+            <section class="sync-table"><h3>Sincronización</h3><div><span>WispHub</span><strong>Servicio vinculado</strong></div><div><span>MikroTik</span><strong>IP y plan verificados</strong></div><div><span>Railway</span><strong>Expediente actualizado</strong></div><div><span>OLT</span><strong>Esperando señal óptica</strong></div><div><span>GenieACS</span><strong>Esperando primer Inform</strong></div></section>
+            <div class="completion-actions"><button class="button secondary" id="downloadReport" type="button">Descargar informe</button><button class="button secondary" id="viewHistory" type="button">Ver historial</button></div>
+          </section>
+        </form>
+
+        <section class="cloud-panel step-panel" data-wizard-panel="2" aria-label="Expediente de instalación en ISP Max">
+          <div class="flow-modal-bar"><div><span>Etapa 2 de 5</span><strong>Cliente y coordinacion</strong></div><small>Railway, WispHub, MikroTik e IPAM</small></div>
+          <fieldset class="operation-chooser" aria-label="Tipo de operación">
+            <legend>Tipo de operación</legend>
+            <label class="operation-option active" data-operation-card="new_client"><input type="radio" name="serviceOperation" value="new_client" checked><span>01</span><strong>Cliente nuevo</strong><small>Crea servicio</small></label>
+            <label class="operation-option" data-operation-card="restore_same_onu"><input type="radio" name="serviceOperation" value="restore_same_onu"><span>02</span><strong>Restaurar</strong><small>Misma ONU</small></label>
+            <label class="operation-option" data-operation-card="replace_onu"><input type="radio" name="serviceOperation" value="replace_onu"><span>03</span><strong>Cambiar ONU</strong><small>Equipo nuevo</small></label>
+            <label class="operation-option" data-operation-card="migrate_pon"><input type="radio" name="serviceOperation" value="migrate_pon"><span>04</span><strong>Mover de PON</strong><small>Misma ONU</small></label>
+          </fieldset>
+          <fieldset class="service-mode-chooser" aria-label="Perfil de servicio"><legend>Perfil de la ONU</legend><label class="active"><input type="radio" name="serviceMode" value="router" checked><strong>Router</strong><small>WAN, NAT, WiFi y TR-069</small></label><label><input type="radio" name="serviceMode" value="bridge"><strong>Bridge</strong><small>VLAN y entrega Ethernet, sin IP</small></label></fieldset>
+          <div class="cloud-session-card" id="cloudSessionCard" data-state="disconnected"><div><span id="cloudSessionEyebrow">Conexión segura</span><strong id="cloudSessionTitle">Conectar con ISP Max</strong><small id="cloudSessionMeta">La contraseña no se guardará.</small></div><button class="button secondary" id="cloudLogout" type="button" hidden>Cerrar sesión</button></div>
+          <div class="cloud-connect-row" id="cloudLoginForm"><label class="field cloud-url"><span>Servidor ISP Max</span><input id="cloudUrl" placeholder="https://tu-entorno.example.com"></label><label class="field"><span>Usuario administrador</span><input id="cloudUsername" autocomplete="username"></label><label class="field"><span>Clave</span><input id="cloudPassword" type="password" autocomplete="current-password"></label><button class="button secondary" id="cloudConnect" type="button">Autorizar esta PC</button></div>
+          <div class="preservation-strip" id="preservationStrip" hidden><div><strong>Servicio protegido</strong><span>Solo se modifica la ONU</span></div><ul><li>WispHub</li><li>Facturas</li><li>IP y plan</li><li>MikroTik</li></ul></div>
+          <div class="existing-client-picker" id="existingClientPicker" hidden><label class="field"><span>Buscar cliente existente</span><span class="client-search"><input id="existingClientSearch" maxlength="160" placeholder="Nombre, usuario, IP o teléfono"><button id="searchExistingClient" type="button">Buscar</button></span></label><div class="client-search-results" id="existingClientResults" hidden></div><div class="selected-client" id="selectedExistingClient" hidden></div></div>
+          <div class="cloud-grid">
+            <label class="field" id="clientNameField"><span>Cliente</span><input id="cloudClientName" maxlength="160" placeholder="Nombre del servicio"></label>
+            <label class="field"><span>Serial ONU</span><input id="cloudSerial" maxlength="32" readonly placeholder="Se leerá de la ONU"><small id="cloudSerialNote">Lectura automática pendiente</small></label>
+            <label class="field"><span>Zona WispHub</span><select id="cloudZone"><option value="">Seleccionar</option></select></label>
+            <label class="field"><span>Plan WispHub</span><select id="cloudPlan"><option value="">Seleccionar</option></select></label>
+            <label class="field"><span>Subida Mbps</span><input id="cloudUpload" type="number" min="0.1" step="0.1"></label>
+            <label class="field"><span>Bajada Mbps</span><input id="cloudDownload" type="number" min="0.1" step="0.1"></label>
+            <label class="field"><span>Segmento</span><select id="cloudNetwork"><option value="">Conecta para cargar</option></select></label>
+            <label class="field"><span>IP disponible</span><span class="ip-choice"><input id="cloudIp" readonly placeholder="Elegir del inventario"><button id="openCloudIpPicker" type="button">Ver disponibles</button></span></label>
+            <label class="field" id="targetPonField" hidden><span>PON de destino</span><input id="targetPonIndex" maxlength="20" inputmode="numeric" placeholder="Ej. 1/1/14"></label>
+            <label class="field operation-reason" id="operationReasonField" hidden><span>Motivo técnico</span><input id="operationReason" maxlength="240" placeholder="Ej. ONU reseteada o cambio por avería"></label>
+          </div>
+          <p class="inline-note success-note" id="cloudNote">La clave de ISP Max permanece solo en memoria mientras ONU Studio está abierto.</p>
+          <button class="button primary cloud-reserve" id="cloudReserve" type="button" disabled>Preparar cliente y reservar IP</button>
+        </section>
+      </section>
+
+      <aside class="equipment-sidebar" aria-label="Resumen del equipo">
+        <section class="equipment-summary">
+          <h2>Resumen del equipo</h2>
+          <dl class="summary-list">
+            <div><dt>Número de serie</dt><dd id="summarySerial">—</dd></div>
+            <div><dt>Modelo</dt><dd id="summaryModel">EG8141A5</dd></div>
+            <div><dt>Versión de firmware</dt><dd id="summaryFirmware">—</dd></div>
+            <div><dt>Estado óptico (PON)</dt><dd class="text-warning" id="summaryOptical">Sin lectura</dd></div>
+            <div><dt>WAN / IP / VLAN</dt><dd id="summaryWan">— / — / —</dd></div>
+            <div><dt>WiFi</dt><dd id="summaryWifi">—</dd></div>
+            <div><dt>TR-069 (ACS)</dt><dd id="summaryTr069">Pendiente</dd></div>
+            <div><dt>Última verificación</dt><dd id="summaryVerified">—</dd></div>
+          </dl>
+          <button class="button reset-button" id="resetDeviceSession" type="button" hidden>Preparar otra ONU</button>
+          <p class="reset-note">Limpia cliente, IP, WiFi y serial; conserva la sesión de ISP Max.</p>
+        </section>
+        <section class="coordination-summary">
+          <h3>Coordinación ISP Max</h3>
+          <div><span>WispHub</span><strong id="cloudWisphubState">Pendiente</strong></div>
+          <div><span>MikroTik</span><strong id="cloudMikrotikState">Pendiente</strong></div>
+          <div><span>OLT</span><strong id="cloudOltState">Disponible</strong></div>
+          <div><span>IPAM</span><strong id="cloudIpamState">Pendiente</strong></div>
+        </section>
+        <section class="capability-summary">
+          <h3>Capacidades del firmware</h3>
+          <div><span>WiFi</span><strong id="capabilityWifi">Preparado</strong></div>
+          <div><span>TR-069</span><strong id="capabilityTr069">Preparado</strong></div>
+          <div><span>HTTP ACL</span><strong id="capabilityAcl">Preparado</strong></div>
+        </section>
+        <section class="impact-summary">
+          <div><span>Impacto previsto</span><strong>30-60 segundos</strong></div>
+          <div><span>Riesgo</span><strong class="text-success">Bajo</strong></div>
+          <div><span>Reversible</span><strong class="text-success">Sí</strong></div>
+        </section>
+        <section class="backup-summary">
+          <h3>Respaldo</h3>
+          <div><span>Respaldo previo</span><strong>Guardado</strong></div>
+          <div><span>Respaldo final</span><strong>Guardado</strong></div>
+          <div><span>Total de respaldos</span><strong>2</strong></div>
+          <div><span>Última verificación</span><strong>Ahora</strong></div>
+        </section>
+        <section class="operation-panel">
+          <div class="operation-header"><div><span>Registro de eventos</span><h2 id="jobTitle">Listo para comenzar</h2></div><span class="job-badge idle" id="jobBadge">En espera</span></div>
+          <div class="progress-summary"><strong id="progressStage">En espera</strong><span id="progressPercent">0%</span></div><div class="progress-track"><span id="progressBar"></span></div>
+          <ol class="timeline" id="timeline"><li class="empty-state">No hay una ejecución activa.</li></ol>
+          <div class="result-box" id="resultBox" hidden></div>
+        </section>
+        <div class="technical-meta" aria-hidden="true"><span id="adapterReady">Sin seleccionar</span><span id="wanReady">192.168.16.245</span></div>
+      </aside>
+    </div>
+
+    <footer class="wizard-footer">
+      <button class="button secondary" id="wizardBack" type="button">Atrás</button>
+      <div><span id="wizardHint">Paso 1 de 5</span><strong id="wizardFooterTitle">Confirma la ONU detectada</strong></div>
+      <button class="button primary" id="wizardNext" type="button">Continuar</button>
+      <button class="button primary provision-action" id="provisionButton" data-step-action="5" type="button">Aprovisionar ONU</button>
+    </footer>
+
+    <section class="history-section" id="historySection">
+      <div class="history-heading"><div><span>Auditoría local</span><h2>Últimas configuraciones</h2></div><button class="icon-button" id="refreshHistory" title="Actualizar historial" aria-label="Actualizar historial">Actualizar</button></div>
+      <div class="history-table-wrap"><table><thead><tr><th>Fecha</th><th>Operación</th><th>ONU</th><th>WAN</th><th>WiFi</th><th>Resultado</th></tr></thead><tbody id="historyBody"><tr><td colspan="6" class="table-empty">Cargando historial…</td></tr></tbody></table></div>
+    </section>
+  </main>
+
+  <div class="ip-modal-backdrop" id="cloudIpBackdrop" hidden></div>
+  <section class="ip-modal" id="cloudIpModal" role="dialog" aria-modal="true" aria-labelledby="cloudIpTitle" hidden>
+    <header><div><span>Inventario ISP Max</span><h2 id="cloudIpTitle">Elegir IP disponible</h2><p>Selecciona el segmento y una dirección verificada.</p></div><button class="icon-button" id="closeCloudIpPicker" type="button" aria-label="Cerrar">Cerrar</button></header>
+    <div class="ip-modal-filters"><label class="field"><span>Segmento</span><select id="cloudIpNetwork"><option value="">Todos los segmentos</option></select></label><label class="field"><span>Buscar IP</span><input id="cloudIpSearch" type="search" placeholder="Ej. 192.168.16.24"></label></div>
+    <p class="ip-modal-note" id="cloudIpNote">Conecta ONU Studio con ISP Max para consultar las direcciones.</p>
+    <div class="ip-modal-list" id="cloudIpList"><div class="ip-modal-empty">Sin inventario cargado.</div></div>
+    <footer><div><span>Seleccionada</span><strong id="cloudIpSelected">Ninguna</strong></div><button class="button primary" id="confirmCloudIp" type="button" disabled>Usar esta IP</button></footer>
+  </section>
+
+  <div class="ip-modal-backdrop" id="agentSettingsBackdrop" hidden></div>
+  <section class="agent-settings-modal" id="agentSettingsModal" role="dialog" aria-modal="true" aria-labelledby="agentSettingsTitle" hidden>
+    <header><div><span>Configuración local</span><h2 id="agentSettingsTitle">Agente y rangos IP</h2><p>Instalación persistente, protección de credenciales y segmentos de esta PC.</p></div><button class="icon-button" id="closeAgentSettings" type="button" aria-label="Cerrar">Cerrar</button></header>
+    <section class="installation-card">
+      <div class="installation-icon" aria-hidden="true">PC</div>
+      <div><span>Instalación de Windows</span><strong id="installationTitle">Comprobando ONU Studio</strong><small id="installationPath">Consultando ubicación y arranque automático</small></div>
+      <div class="installation-security"><span>Credenciales</span><strong id="credentialProtection">Windows DPAPI</strong><small>Solo este usuario de Windows puede abrirlas</small></div>
+      <span class="installation-badge" id="installationBadge">Revisando</span>
+    </section>
+    <div class="settings-section-heading"><div><strong>Rangos de clientes</strong><span>Hasta 16 segmentos definidos exclusivamente en esta PC.</span></div></div>
+    <div class="range-list" id="networkRangeList"></div>
+    <button class="button secondary" id="addNetworkRange" type="button">Agregar rango</button>
+    <footer><span id="rangeSettingsStatus">Hasta 16 segmentos y 65,536 direcciones.</span><button class="button primary" id="saveNetworkRanges" type="button">Guardar rangos</button></footer>
+  </section>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="/wizard-utils.js?v=1.13.0"></script>
+  <script src="/app.js?v=1.13.0"></script>
+</body>
+</html>

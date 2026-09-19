@@ -1,8 +1,12 @@
-import { Injectable, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject, signal } from '@angular/core';
+import { Observable, tap } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class ConfigService {
   private readonly STORAGE_KEY = 'wishub_config';
+  private readonly http = inject(HttpClient);
+  loaded = signal(false);
 
   companyName = signal('MaxWiFi RD');
   companySlogan = signal('Servicio de Internet');
@@ -29,29 +33,35 @@ export class ConfigService {
   }
 
   load() {
-    try {
-      const raw = localStorage.getItem(this.STORAGE_KEY);
-      if (raw) {
-        const c = JSON.parse(raw);
-        if (c.companyName) this.companyName.set(c.companyName);
-        if (c.companySlogan) this.companySlogan.set(c.companySlogan);
-        if (c.companyPhone) this.companyPhone.set(c.companyPhone);
-        if (c.companyAddress) this.companyAddress.set(c.companyAddress);
-        if (c.rnc) this.rnc.set(c.rnc);
-        if (c.defaultPaperSize) this.defaultPaperSize.set(c.defaultPaperSize);
-        if (c.autoNotifEnabled !== undefined) this.autoNotifEnabled.set(c.autoNotifEnabled);
-        if (c.autoNotifReminderDays) this.autoNotifReminderDays.set(c.autoNotifReminderDays);
-        if (c.autoNotifOverdueEnabled !== undefined) this.autoNotifOverdueEnabled.set(c.autoNotifOverdueEnabled);
-        if (c.autoNotifOverdueInterval) this.autoNotifOverdueInterval.set(c.autoNotifOverdueInterval);
-        if (c.autoNotifScheduleHour !== undefined) this.autoNotifScheduleHour.set(c.autoNotifScheduleHour);
-        if (c.autoNotifReminderMsg) this.autoNotifReminderMsg.set(c.autoNotifReminderMsg);
-        if (c.autoNotifOverdueMsg) this.autoNotifOverdueMsg.set(c.autoNotifOverdueMsg);
-      }
-    } catch {}
+    this.http.get<Record<string, string>>('/db/settings').subscribe({
+      next: (settings) => {
+        if (Object.keys(settings).length) {
+          this.apply(settings);
+          this.removeLegacyBrowserConfig();
+          this.loaded.set(true);
+          return;
+        }
+        const legacy = this.readLegacyBrowserConfig();
+        if (legacy) {
+          this.apply(legacy);
+          this.save().subscribe({ next: () => this.removeLegacyBrowserConfig() });
+        }
+        this.loaded.set(true);
+      },
+      error: () => {
+        const legacy = this.readLegacyBrowserConfig();
+        if (legacy) this.apply(legacy);
+        this.loaded.set(true);
+      },
+    });
   }
 
-  save() {
-    localStorage.setItem(this.STORAGE_KEY, JSON.stringify({
+  save(): Observable<unknown> {
+    return this.http.put('/db/settings', this.snapshot()).pipe(tap(() => this.removeLegacyBrowserConfig()));
+  }
+
+  private snapshot() {
+    return {
       companyName: this.companyName(),
       companySlogan: this.companySlogan(),
       companyPhone: this.companyPhone(),
@@ -65,7 +75,34 @@ export class ConfigService {
       autoNotifScheduleHour: this.autoNotifScheduleHour(),
       autoNotifReminderMsg: this.autoNotifReminderMsg(),
       autoNotifOverdueMsg: this.autoNotifOverdueMsg(),
-    }));
+    };
+  }
+
+  private apply(c: Record<string, unknown>) {
+    if (c['companyName']) this.companyName.set(String(c['companyName']));
+    if (c['companySlogan']) this.companySlogan.set(String(c['companySlogan']));
+    if (c['companyPhone']) this.companyPhone.set(String(c['companyPhone']));
+    if (c['companyAddress']) this.companyAddress.set(String(c['companyAddress']));
+    if (c['rnc']) this.rnc.set(String(c['rnc']));
+    if (c['defaultPaperSize'] === '58mm' || c['defaultPaperSize'] === '80mm') this.defaultPaperSize.set(c['defaultPaperSize']);
+    if (c['autoNotifEnabled'] !== undefined) this.autoNotifEnabled.set(String(c['autoNotifEnabled']) === 'true');
+    if (c['autoNotifReminderDays']) this.autoNotifReminderDays.set(Number(c['autoNotifReminderDays']));
+    if (c['autoNotifOverdueEnabled'] !== undefined) this.autoNotifOverdueEnabled.set(String(c['autoNotifOverdueEnabled']) === 'true');
+    if (c['autoNotifOverdueInterval']) this.autoNotifOverdueInterval.set(Number(c['autoNotifOverdueInterval']));
+    if (c['autoNotifScheduleHour'] !== undefined) this.autoNotifScheduleHour.set(Number(c['autoNotifScheduleHour']));
+    if (c['autoNotifReminderMsg']) this.autoNotifReminderMsg.set(String(c['autoNotifReminderMsg']));
+    if (c['autoNotifOverdueMsg']) this.autoNotifOverdueMsg.set(String(c['autoNotifOverdueMsg']));
+  }
+
+  private readLegacyBrowserConfig(): Record<string, unknown> | null {
+    try {
+      const raw = localStorage.getItem(this.STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  private removeLegacyBrowserConfig() {
+    try { localStorage.removeItem(this.STORAGE_KEY); } catch {}
   }
 
   getNotifConfig() {

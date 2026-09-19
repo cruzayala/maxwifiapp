@@ -1,0 +1,107 @@
+<section class="model-catalog">
+  <header class="catalog-heading">
+    <div>
+      <span class="eyebrow">Biblioteca de hardware</span>
+      <h2>Tipos de ONU</h2>
+      <p>Cada modelo define como se autoriza en la OLT y que canal administra cada funcion.</p>
+    </div>
+    <div class="catalog-actions">
+      <button class="secondary-action" type="button" (click)="reconcile()" [disabled]="reconciling()">
+        <svg lucideRefreshCw size="15" [class.spinning]="reconciling()"></svg>{{ reconciling() ? 'Asociando...' : 'Asociar inventario' }}
+      </button>
+      <button class="primary-action" type="button" (click)="openNew()"><svg lucidePlus size="15"></svg>Nuevo tipo</button>
+    </div>
+  </header>
+
+  <div class="catalog-summary">
+    <div><span>Modelos activos</span><strong>{{ activeCount() }}</strong></div>
+    <div><span>Certificados</span><strong>{{ certifiedCount() }}</strong></div>
+    <div><span>ONU asociadas</span><strong>{{ assignedCount() }}</strong></div>
+  </div>
+
+  @if (loading()) {
+    <div class="catalog-loading"><svg lucideRefreshCw size="18" class="spinning"></svg>Leyendo perfiles...</div>
+  } @else {
+    <div class="model-grid">
+      @for (profile of profiles(); track profile.id) {
+        <article class="model-card" [class.archived]="!profile.active">
+          <header>
+            <div class="model-icon"><svg lucideCpu size="18"></svg></div>
+            <div><span>{{ profile.manufacturer }}</span><strong>{{ profile.model }}</strong><small>{{ profile.firmwarePattern }}</small></div>
+            <span class="cert-state" [class.verified]="profile.certificationStatus === 'verified'">{{ statusLabel(profile.certificationStatus) }}</span>
+          </header>
+          <dl>
+            <div><dt>OLT</dt><dd>{{ profile.oltVendor }} {{ profile.oltModel }}</dd></div>
+            <div><dt>Tipo autorizado</dt><dd class="mono">{{ profile.oltOnuType }}</dd></div>
+            <div><dt>Serial</dt><dd class="mono">{{ profile.serialPrefixes.join(', ') || 'Sin prefijo' }}</dd></div>
+            <div><dt>Gestion</dt><dd>{{ profile.omciMode === 'baseline' ? 'OMCI base' : profile.omciMode }}{{ profile.tr069ProfileKey ? ' + TR-069' : '' }}</dd></div>
+          </dl>
+          <div class="capability-meter">
+            <span><b>{{ verifiedCapabilities(profile) }}</b>/{{ profile.capabilities.length }} verificadas</span>
+            <span><b>{{ profile.deviceCount }}</b> equipos</span>
+            <span>v{{ profile.version }}</span>
+          </div>
+          <footer>
+            <button type="button" class="edit-action" (click)="openEdit(profile)"><svg lucidePencil size="14"></svg>Editar</button>
+            <button type="button" class="archive-action" (click)="toggle(profile)">{{ profile.active ? 'Archivar' : 'Activar' }}</button>
+          </footer>
+        </article>
+      } @empty {
+        <div class="catalog-empty"><svg lucideCpu size="24"></svg><strong>Sin tipos de ONU</strong><span>Cree el primer perfil de hardware.</span></div>
+      }
+    </div>
+  }
+</section>
+
+@if (editorOpen()) {
+  <button class="catalog-backdrop" type="button" aria-label="Cerrar editor" (click)="closeEditor()"></button>
+  <section class="catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="model-editor-title">
+    <header>
+      <div><span>{{ editingId() ? 'Versionar perfil' : 'Nuevo perfil' }}</span><h2 id="model-editor-title">Tipo de ONU</h2><p>Hardware, compatibilidad OLT y canales de administracion.</p></div>
+      <button class="icon-action" type="button" (click)="closeEditor()" [disabled]="saving()" aria-label="Cerrar"><svg lucideX size="19"></svg></button>
+    </header>
+    <form (ngSubmit)="save()">
+      <div class="editor-scroll">
+        <section class="form-section">
+          <div class="section-title"><svg lucideCpu size="16"></svg><div><strong>Identidad del equipo</strong><span>Datos utilizados para seleccionar el perfil automaticamente.</span></div></div>
+          <div class="form-grid">
+            <label><span>Fabricante</span><input required [(ngModel)]="draft.manufacturer" name="manufacturer" placeholder="ZTE" /></label>
+            <label><span>Modelo</span><input required class="mono" [(ngModel)]="draft.model" name="model" placeholder="F670L" /></label>
+            <label><span>Firmware</span><input required class="mono" [(ngModel)]="draft.firmwarePattern" name="firmware" placeholder="V7.1*" /></label>
+            <label><span>Prefijos de serial</span><input class="mono" [(ngModel)]="draft.serialPrefixesText" name="prefixes" placeholder="ZXIC, ZTEG" /></label>
+            <label><span>Tipo PON</span><select [(ngModel)]="draft.ponType" name="ponType"><option>GPON</option><option>EPON</option><option>XGPON</option><option>XGSPON</option></select></label>
+            <label><span>Estado</span><select [(ngModel)]="draft.certificationStatus" name="certification"><option value="detected">Detectado</option><option value="verified">Verificado</option><option value="failed">Con fallo</option><option value="blocked">Bloqueado</option></select></label>
+          </div>
+        </section>
+
+        <section class="form-section">
+          <div class="section-title"><svg lucideShieldCheck size="16"></svg><div><strong>Compatibilidad y red</strong><span>El tipo OLT es independiente del nombre y la IP de cada cliente.</span></div></div>
+          <div class="form-grid">
+            <label><span>Fabricante OLT</span><input required [(ngModel)]="draft.oltVendor" name="oltVendor" /></label>
+            <label><span>Modelo OLT</span><input required class="mono" [(ngModel)]="draft.oltModel" name="oltModel" /></label>
+            <label><span>Tipo ONU en OLT</span><input required class="mono" [(ngModel)]="draft.oltOnuType" name="oltOnuType" placeholder="F670L" /></label>
+            <label><span>VLAN predeterminada</span><input required type="number" min="1" max="4094" [(ngModel)]="draft.vlan" name="vlan" /></label>
+            <label><span>Modo OMCI</span><select [(ngModel)]="draft.omciMode" name="omciMode"><option value="baseline">Base</option><option value="extended">Extendido</option><option value="vendor">Propietario</option></select></label>
+            <label><span>Perfil TR-069</span><input class="mono" [(ngModel)]="draft.tr069ProfileKey" name="tr069Profile" placeholder="Opcional" /></label>
+            <label class="check-field wide"><input type="checkbox" [(ngModel)]="draft.extendedOmci" name="extendedOmci" /><span>La OLT y este firmware soportan OMCI extendido</span></label>
+            <label class="wide"><span>Notas</span><textarea [(ngModel)]="draft.notes" name="notes" rows="2"></textarea></label>
+          </div>
+        </section>
+
+        <section class="form-section capability-section">
+          <div class="section-title"><svg lucideCircleCheck size="16"></svg><div><strong>Matriz de capacidades</strong><span>Una funcion bloqueada nunca se ejecutara aunque aparezca en el equipo.</span></div></div>
+          <div class="capability-list">
+            @for (capability of draft.capabilities; track capability.action + capability.channel; let index = $index) {
+              <div>
+                <span><strong>{{ actionLabel(capability.action) }}</strong><small>{{ capability.action }}</small></span>
+                <select [(ngModel)]="capability.channel" [name]="'channel-' + index">@for (channel of channels; track channel) { <option [value]="channel">{{ channel }}</option> }</select>
+                <select [(ngModel)]="capability.status" [name]="'status-' + index">@for (status of statuses; track status) { <option [value]="status">{{ statusLabel(status) }}</option> }</select>
+              </div>
+            }
+          </div>
+        </section>
+      </div>
+      <footer><button class="secondary-action" type="button" (click)="closeEditor()" [disabled]="saving()">Cancelar</button><button class="primary-action" type="submit" [disabled]="saving()"><svg lucideRefreshCw size="15" [class.spinning]="saving()"></svg>{{ saving() ? 'Guardando...' : 'Guardar perfil' }}</button></footer>
+    </form>
+  </section>
+}

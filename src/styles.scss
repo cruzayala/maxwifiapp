@@ -297,3 +297,191 @@ button, a, .nav-item, input, select, textarea {
   .login-card { padding: 28px 20px !important; }
   .brand h1 { font-size: 22px !important; }
 }
+// MikroTik queue editor is rendered as a page-level dialog.
+.modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(17, 24, 39, .48); }
+.queue-modal { width: min(520px, 100%); border: 1px solid #cad2dd; border-radius: 8px; background: #fff; box-shadow: 0 20px 55px rgba(15, 23, 42, .2); overflow: hidden; }
+.queue-modal > header { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 17px; border-bottom: 1px solid #e5e9ef; }
+.queue-modal header > div { display: flex; align-items: center; gap: 10px; }
+.queue-modal h2 { margin: 0; color: #172033; font-size: 14px; font-weight: 720; }
+.queue-modal header p { margin: 2px 0 0; color: #7a8799; font-size: 11px; }
+.modal-body { display: grid; gap: 13px; padding: 17px; }
+.modal-body label { display: grid; gap: 6px; }
+.modal-body label > span { color: #536176; font-size: 10px; font-weight: 700; }
+.modal-body input[type="text"],
+.modal-body input[type="number"],
+.modal-body textarea { width: 100%; box-sizing: border-box; border: 1px solid #d4dbe5; border-radius: 6px; outline: 0; color: #2d3a4f; font-size: 12px; }
+.modal-body input[type="text"],
+.modal-body input[type="number"] { height: 37px; padding: 0 10px; }
+.modal-body textarea { padding: 9px 10px; resize: vertical; }
+.modal-body input:focus,
+.modal-body textarea:focus { border-color: #6d8299; box-shadow: 0 0 0 2px rgba(109,130,153,.12); }
+.limit-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.unit-input { position: relative; }
+.unit-input input { padding-right: 48px !important; }
+.unit-input em { position: absolute; right: 10px; top: 11px; color: #7a8798; font-size: 10px; font-style: normal; }
+.switch-row { grid-template-columns: auto 1fr !important; align-items: center; padding: 10px; border: 1px solid #e0e5ec; border-radius: 6px; background: #f8fafb; }
+.switch-row input { width: 16px; height: 16px; accent-color: #2d6172; }
+.switch-row > span { display: flex; flex-direction: column; }
+.switch-row strong { color: #344158; font-size: 11px; }
+.switch-row small { margin-top: 1px; color: #7e899a; font-size: 9px; }
+.queue-modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 17px; border-top: 1px solid #e5e9ef; background: #f8fafb; }
+.queue-modal .save-button { color: #fff; border-color: #1f5e68; background: #1f6b72; }
+.queue-modal .save-button:hover { background: #195b61; }
+.queue-modal .save-button:disabled { opacity: .55; cursor: not-allowed; }
+
+@media (max-width: 540px) {
+  .queue-modal > footer { flex-direction: column-reverse; }
+  .queue-modal > footer button { width: 100%; }
+  .limit-grid { grid-template-columns: 1fr; }
+}
+
+/* MikroTik advanced control surfaces. */
+.mt-control-bar {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 11px 12px;
+  border: 1px solid #d9e0e8;
+  border-radius: 7px;
+  background: #f7f9fb;
+}
+.mt-control-summary { display: flex; align-items: baseline; gap: 6px; min-width: 132px; }
+.mt-control-summary strong { color: #203047; font-size: 20px; }
+.mt-control-summary span { color: #718096; font-size: 10px; }
+.mt-control-bar label,
+.mt-form-band label { display: grid; gap: 5px; }
+.mt-control-bar label > span,
+.mt-form-band label > span { color: #667389; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.mt-control-bar select,
+.mt-control-bar input,
+.mt-form-band select,
+.mt-form-band input {
+  height: 34px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid #d2dae4;
+  border-radius: 6px;
+  background: #fff;
+  color: #344158;
+  font-size: 11px;
+  outline: 0;
+}
+.mt-control-bar select:focus,
+.mt-control-bar input:focus,
+.mt-form-band select:focus,
+.mt-form-band input:focus { border-color: #6f8799; box-shadow: 0 0 0 2px rgba(61, 103, 119, .1); }
+.mt-control-bar details { margin-left: auto; }
+.mt-control-bar summary { color: #43546b; font-size: 11px; font-weight: 700; cursor: pointer; }
+.mt-inline-form { display: flex; gap: 6px; margin-top: 7px; }
+.mt-inline-form input[type="number"] { width: 86px; }
+.check-col { width: 32px; padding-right: 4px !important; text-align: center !important; }
+.check-col input { width: 14px; height: 14px; accent-color: #286975; }
+.danger-icon { color: #b33b3b !important; }
+.danger-icon:hover { border-color: #e1aaaa !important; background: #fff5f5 !important; }
+
+.mt-mini-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 10px;
+  border: 1px solid #dce2ea;
+  border-radius: 7px;
+  background: #fff;
+}
+.mt-mini-kpis > div { display: flex; align-items: center; justify-content: space-between; min-height: 54px; padding: 0 15px; border-right: 1px solid #e6eaf0; }
+.mt-mini-kpis > div:last-child { border-right: 0; }
+.mt-mini-kpis span { color: #6b778b; font-size: 10px; }
+.mt-mini-kpis strong { color: #253247; font-size: 19px; }
+.mt-mini-kpis .danger strong { color: #b43d3d; }
+
+.mt-network-band {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 10px;
+}
+.mt-network-band > div { padding: 11px 12px; border: 1px solid #dce2ea; border-radius: 7px; background: #fff; }
+.mt-network-band header { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #526077; font-size: 10px; }
+.mt-network-band header strong { color: #26364c; font-size: 11px; }
+.mt-network-band i { display: block; height: 5px; margin: 9px 0 6px; overflow: hidden; border-radius: 4px; background: #e8edf1; }
+.mt-network-band b { display: block; height: 100%; background: #2d7881; }
+.mt-network-band small { color: #7a8798; font-size: 9px; }
+
+.mt-form-band {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) 130px 100px 100px minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 9px;
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #d9e0e8;
+  border-radius: 7px;
+  background: #f7f9fb;
+}
+.mt-form-band .wide { min-width: 0; }
+.mt-form-band .action-button { height: 34px; }
+.backup-form { grid-template-columns: minmax(220px, 1fr) 170px auto; }
+.mikrotik-page .data-panel table { min-width: 760px; }
+
+@media (max-width: 900px) {
+  .mt-control-bar { align-items: stretch; flex-wrap: wrap; }
+  .mt-control-bar details { width: 100%; margin-left: 0; }
+  .mt-form-band { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mt-form-band .wide { grid-column: 1 / -1; }
+  .mt-mini-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mt-mini-kpis > div:nth-child(2) { border-right: 0; }
+  .mt-mini-kpis > div:nth-child(-n+2) { border-bottom: 1px solid #e6eaf0; }
+  .mt-network-band { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .mt-control-bar { flex-direction: column; }
+  .mt-control-bar label,
+  .mt-control-bar select,
+  .mt-control-bar .action-button { width: 100%; }
+  .mt-inline-form { display: grid; grid-template-columns: 1fr 1fr; }
+  .mt-inline-form input:first-child { grid-column: 1 / -1; }
+  .mt-inline-form input[type="number"] { width: 100%; }
+  .mt-form-band,
+  .backup-form { grid-template-columns: 1fr; }
+  .mt-form-band .wide { grid-column: auto; }
+  .mt-mini-kpis { grid-template-columns: 1fr; }
+  .mt-mini-kpis > div { border-right: 0; border-bottom: 1px solid #e6eaf0; }
+  .mt-mini-kpis > div:last-child { border-bottom: 0; }
+}
+
+/* OLT commercial plan reconciliation is shared here to keep the page bundle lean. */
+.plan-sync-loading { min-height: 72px; margin-bottom: 14px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid #dfe4e8; background: #f8fafb; color: #687781; font-size: 11px; }
+.plan-sync-panel { margin-bottom: 16px; border: 1px solid #cbd9df; background: #fff; }
+.plan-sync-panel > header { min-height: 68px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #f3f7f8; border-bottom: 1px solid #dce4e8; }
+.plan-sync-panel > header > div:first-child { display: grid; gap: 3px; }
+.plan-sync-panel > header strong { color: #263740; font-size: 13px; }
+.plan-sync-panel > header span { color: #6b7983; font-size: 10px; }
+.plan-sync-summary { display: flex; gap: 6px; }
+.plan-sync-summary span { min-width: 68px; padding: 7px 9px; display: grid; text-align: center; border: 1px solid #d7dfe3; background: #fff; }
+.plan-sync-summary b { color: #30414b; font-size: 15px; }
+.plan-sync-summary .ready { border-color: #a9d7c5; background: #f0faf6; }
+.plan-sync-summary .ready b { color: #15704f; }
+.plan-sync-summary .warning { border-color: #eccb8e; background: #fff8e9; }
+.plan-sync-summary .warning b { color: #955508; }
+.plan-sync-panel .table-wrap { border: 0; border-radius: 0; }
+.plan-sync-confirm { padding: 12px 14px; display: flex; align-items: end; justify-content: flex-end; gap: 10px; border-top: 1px solid #dfe4e8; background: #fafbfc; }
+.plan-sync-confirm label { width: min(310px, 100%); display: grid; gap: 5px; }
+.plan-sync-confirm label span { color: #64737d; font-size: 9px; font-weight: 750; text-transform: uppercase; }
+.plan-sync-confirm input { height: 38px; border: 1px solid #cfd7dd; border-radius: 6px; padding: 0 10px; }
+
+@media (max-width: 760px) {
+  .plan-sync-panel > header { align-items: stretch; flex-direction: column; }
+  .plan-sync-summary span { flex: 1; min-width: 0; }
+  .plan-sync-confirm { align-items: stretch; flex-direction: column; }
+  .plan-sync-confirm label, .plan-sync-confirm button { width: 100%; }
+}
+/* Shared OLT wizard profile state; kept global to stay outside the OLT component budget. */
+.olt-page .detected-model-profile { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, .8fr) auto; align-items: center; gap: 12px; margin-bottom: 12px; border: 1px solid #bcdccc; border-radius: 6px; padding: 10px 12px; background: #f2faf6; }
+.olt-page .detected-model-profile div { display: grid; min-width: 0; }
+.olt-page .detected-model-profile span { color: #6d7d76; font-size: 8px; font-weight: 750; text-transform: uppercase; }
+.olt-page .detected-model-profile strong { overflow: hidden; margin-top: 2px; color: #1f4437; font-size: 11px; text-overflow: ellipsis; }
+.olt-page .detected-model-profile small { overflow: hidden; margin-top: 2px; color: #71827b; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.olt-page .detected-model-profile > b { border-radius: 3px; padding: 4px 7px; background: #fff0d8; color: #966018; font-size: 8px; }
+.olt-page .detected-model-profile > b.verified { background: #dcefe6; color: #176e51; }
+.olt-page .unknown-model-profile { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; border: 1px solid #ead1a9; border-radius: 6px; padding: 9px 11px; background: #fff8ec; color: #805a24; font-size: 9px; }

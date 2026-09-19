@@ -11,16 +11,21 @@ services:
 
     healthCheckPath: /health
 
+    disk:
+      name: isp-max-data
+      mountPath: /data
+      sizeGB: 1
+
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 7400
       - key: DATABASE_URL
-        value: file:/tmp/data.db
+        value: file:/data/data.db
       - key: WISPHUB_API_KEY
         sync: false
-      - key: ACCESS_PIN
+      - key: ADMIN_PASSWORD
         sync: false
       - key: MIKROTIK_HOST
         sync: false

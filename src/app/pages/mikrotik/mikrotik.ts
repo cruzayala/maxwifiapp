@@ -1,399 +1,748 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
-import { NavbarComponent } from '../../components/layout/navbar';
-import { MikrotikService, MtTraffic, MtConsumer, MtQueue } from '../../services/mikrotik.service';
-import { ToastService } from '../../services/toast.service';
+import { Component, OnDestroy, OnInit, ViewEncapsulation, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { catchError, finalize, forkJoin, of } from 'rxjs';
+import {
+  LucideActivity,
+  LucideArrowDownToLine,
+  LucideArrowUpFromLine,
+  LucideCable,
+  LucideChevronLeft,
+  LucideChevronRight,
+  LucideCircleAlert,
+  LucideCircleCheck,
+  LucideCircleGauge,
+  LucideCpu,
+  LucideCopy,
+  LucideDatabase,
+  LucideHardDrive,
+  LucideNetwork,
+  LucidePencil,
+  LucideRadioTower,
+  LucideRefreshCw,
+  LucideRouter,
+  LucideSave,
+  LucideSearch,
+  LucideServer,
+  LucideShieldAlert,
+  LucideShieldCheck,
+  LucideSlidersHorizontal,
+  LucideSquareTerminal,
+  LucideTrash2,
+  LucideUsers,
+  LucideWifi,
+  LucideWifiOff,
+  LucideX,
+  LucideZap,
+} from '@lucide/angular';
+import { NavbarComponent } from '../../components/layout/navbar';
+import { AuthService } from '../../services/auth.service';
+import {
+  MikrotikService,
+  MtBackup,
+  MtFirewallResponse,
+  MtFirewallRule,
+  MtFirewallTable,
+  MtIpamResponse,
+  MtLiveClient,
+  MtLiveResponse,
+  MtNetwatch,
+  MtSecurityAudit,
+  MtStatus,
+  MtSpeedTemplate,
+  MtSystem,
+  MtSyncState,
+  MtTraffic,
+  MtUnknownDevice,
+  MtUnknownResponse,
+} from '../../services/mikrotik.service';
+import { ToastService } from '../../services/toast.service';
+
+type MikrotikTab = 'overview' | 'reconciliation' | 'unknown' | 'interfaces' | 'firewall' | 'ipam' | 'netwatch' | 'backups' | 'security';
+type UnknownFilter = 'all' | 'high' | 'unmanaged' | 'infrastructure';
+type SyncFilter = 'all' | 'differences' | 'online' | 'offline' | 'disabled';
+type IpamFilter = 'all' | 'available' | 'client' | 'occupied' | 'conflict';
+
+interface WanTraffic {
+  ifaceName: string;
+  rxBps: number;
+  txBps: number;
+  rxPps: number;
+  txPps: number;
+  maxBps: number;
+  timestamp: number;
+}
 
 @Component({
   selector: 'app-mikrotik',
   standalone: true,
-  imports: [NavbarComponent, FormsModule],
-  template: `
-    <app-navbar pageTitle="MikroTik" />
-
-    <div class="page">
-      <!-- STATUS BAR -->
-      <div class="status-card" [class.connected]="status().connected">
-        <div class="status-left">
-          <div class="status-dot" [class.green]="status().connected" [class.red]="!status().connected"></div>
-          <div>
-            <strong>MikroTik {{ status().connected ? 'Conectado' : 'Desconectado' }}</strong>
-            <div class="status-host">{{ status().host || 'No configurado' }}</div>
-          </div>
-        </div>
-        @if (system()) {
-          <div class="status-info">
-            <span><strong>{{ system()!.resource['board-name'] }}</strong></span>
-            <span>v{{ system()!.resource.version }}</span>
-            <span>CPU {{ system()!.resource['cpu-load'] }}%</span>
-            <span>Up {{ system()!.resource.uptime }}</span>
-          </div>
-        }
-      </div>
-
-      @if (status().error) {
-        <div class="error-card">
-          <strong>Error:</strong> {{ status().error }}
-        </div>
-      }
-
-      @if (status().connected) {
-        <!-- TABS -->
-        <div class="tabs">
-          <button [class.active]="activeTab() === 'top'" (click)="changeTab('top')">Top Consumers</button>
-          <button [class.active]="activeTab() === 'traffic'" (click)="changeTab('traffic')">Interfaces</button>
-          <button [class.active]="activeTab() === 'queues'" (click)="changeTab('queues')">Queues ({{ queues().length }})</button>
-          <button [class.active]="activeTab() === 'sessions'" (click)="changeTab('sessions')">Sesiones</button>
-          <button [class.active]="activeTab() === 'tools'" (click)="changeTab('tools')">Herramientas</button>
-        </div>
-
-        <!-- TOP CONSUMERS -->
-        @if (activeTab() === 'top') {
-          <div class="card">
-            <div class="card-head">
-              <h3>Top {{ consumers().length }} clientes que mas consumen</h3>
-              <button class="btn-refresh" (click)="loadConsumers()">Refrescar</button>
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Cliente</th>
-                  <th>IP</th>
-                  <th>Plan</th>
-                  <th>Subida</th>
-                  <th>Descarga</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (c of consumers(); track c.name; let idx = $index) {
-                  <tr>
-                    <td data-label="#" class="rank">{{ idx + 1 }}</td>
-                    <td data-label="Cliente" class="bold">{{ c.name }}</td>
-                    <td data-label="IP" class="mono">{{ c.target }}</td>
-                    <td data-label="Plan">{{ formatLimit(c.maxLimit) }}</td>
-                    <td data-label="Subida" class="mono">{{ formatBytes(c.uploadBytes) }}</td>
-                    <td data-label="Descarga" class="mono">{{ formatBytes(c.downloadBytes) }}</td>
-                    <td data-label="Total" class="mono total">{{ formatBytes(c.totalBytes) }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-
-        <!-- TRAFFIC -->
-        @if (activeTab() === 'traffic') {
-          <div class="card">
-            <div class="card-head">
-              <h3>Trafico de Interfaces ({{ traffic().length }})</h3>
-              <button class="btn-refresh" (click)="loadTraffic()">Refrescar</button>
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Interface</th>
-                  <th>Tipo</th>
-                  <th>Estado</th>
-                  <th>MAC</th>
-                  <th>RX</th>
-                  <th>TX</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (t of traffic(); track t.name) {
-                  <tr>
-                    <td data-label="Interface" class="bold">{{ t.name }}</td>
-                    <td data-label="Tipo">{{ t.type }}</td>
-                    <td data-label="Estado">
-                      <span class="badge" [class]="t.running ? 'badge-up' : 'badge-down'">
-                        {{ t.running ? 'UP' : 'DOWN' }}
-                      </span>
-                    </td>
-                    <td data-label="MAC" class="mono small">{{ t.macAddress }}</td>
-                    <td data-label="RX" class="mono">{{ formatBytes(t.rxBytes) }}</td>
-                    <td data-label="TX" class="mono">{{ formatBytes(t.txBytes) }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-
-        <!-- QUEUES -->
-        @if (activeTab() === 'queues') {
-          <div class="card">
-            <div class="card-head">
-              <h3>Simple Queues - Limites de banda por cliente</h3>
-              <input type="text" placeholder="Buscar cliente..." [(ngModel)]="queueSearch" class="search-mini" />
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>IP Target</th>
-                  <th>Limite</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (q of filteredQueues(); track q.id) {
-                  <tr>
-                    <td data-label="Nombre" class="bold">{{ q.name }}</td>
-                    <td data-label="IP" class="mono">{{ q.target }}</td>
-                    <td data-label="Limite" class="bold">{{ formatLimit(q.maxLimit) }}</td>
-                    <td data-label="Estado">
-                      <span class="badge" [class]="q.disabled ? 'badge-disabled' : 'badge-active'">
-                        {{ q.disabled ? 'Deshabilitada' : 'Activa' }}
-                      </span>
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        }
-
-        <!-- SESSIONS -->
-        @if (activeTab() === 'sessions') {
-          <div class="card">
-            <h3>Sesiones Activas</h3>
-            @if ((sessions()?.pppoe?.length ?? 0) === 0 && (sessions()?.hotspot?.length ?? 0) === 0) {
-              <p class="empty">No hay sesiones PPPoE ni Hotspot activas</p>
-            }
-            @if (sessions()?.pppoe?.length) {
-              <h4>PPPoE ({{ sessions()!.pppoe.length }})</h4>
-              <table class="data-table">
-                <thead><tr><th>Usuario</th><th>IP</th><th>Uptime</th></tr></thead>
-                <tbody>
-                  @for (p of sessions()!.pppoe; track p['.id']) {
-                    <tr>
-                      <td>{{ p.name }}</td>
-                      <td class="mono">{{ p.address }}</td>
-                      <td>{{ p.uptime }}</td>
-                    </tr>
-                  }
-                </tbody>
-              </table>
-            }
-          </div>
-        }
-
-        <!-- TOOLS -->
-        @if (activeTab() === 'tools') {
-          <div class="card">
-            <h3>Ping desde MikroTik</h3>
-            <div class="ping-form">
-              <input type="text" [(ngModel)]="pingTarget" placeholder="192.168.10.43 o google.com" class="form-input" />
-              <button class="btn btn-primary" (click)="runPing()" [disabled]="pinging()">
-                {{ pinging() ? 'Pingeando...' : 'Ping' }}
-              </button>
-            </div>
-            @if (pingResult().length) {
-              <div class="ping-result">
-                @for (r of pingResult(); track $index) {
-                  <div class="ping-line">
-                    <span class="ping-host">{{ r.host || pingTarget }}</span>
-                    @if (r['received'] !== undefined) {
-                      <span>recv {{ r.received }} time {{ r.time }} TTL {{ r.ttl }}</span>
-                    } @else {
-                      <span>{{ r.status || 'timeout' }}</span>
-                    }
-                  </div>
-                }
-              </div>
-            }
-          </div>
-        }
-      } @else {
-        <div class="empty-state">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-          <h3>MikroTik no conectado</h3>
-          <p>Configura las credenciales en .env y reinicia el servidor</p>
-        </div>
-      }
-    </div>
-  `,
-  styles: [`
-    .page { padding: 24px 32px; }
-
-    .status-card {
-      background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-      padding: 20px 24px; margin-bottom: 16px; display: flex;
-      align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
-    }
-    .status-card.connected { border-left: 4px solid #22c55e; }
-    .status-left { display: flex; align-items: center; gap: 14px; }
-    .status-dot { width: 14px; height: 14px; border-radius: 50%; }
-    .status-dot.green { background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.2); animation: pulse 2s infinite; }
-    .status-dot.red { background: #ef4444; }
-    @keyframes pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); } 50% { box-shadow: 0 0 0 6px rgba(34,197,94,0); } }
-    .status-host { font-size: 12px; color: #64748b; font-family: 'Courier New', monospace; }
-    .status-info { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: #475569; }
-
-    .error-card { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; padding: 12px 16px; border-radius: 10px; margin-bottom: 16px; }
-
-    .tabs {
-      display: flex; gap: 4px; margin-bottom: 16px;
-      background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 4px; overflow-x: auto;
-    }
-    .tabs button {
-      padding: 10px 16px; border: none; background: none;
-      color: #64748b; font-size: 13px; font-weight: 500; cursor: pointer;
-      border-radius: 8px; transition: all 0.2s; white-space: nowrap;
-    }
-    .tabs button:hover { background: #f1f5f9; }
-    .tabs button.active { background: #6366f1; color: white; }
-
-    .card { background: white; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; }
-    .card-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid #f1f5f9; flex-wrap: wrap; gap: 12px; }
-    .card h3 { margin: 0; font-size: 15px; font-weight: 600; color: #0f172a; }
-    .card h4 { margin: 16px 0 8px; padding: 0 20px; font-size: 14px; color: #475569; }
-
-    .btn-refresh { padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; font-size: 12px; color: #6366f1; cursor: pointer; font-weight: 500; }
-    .btn-refresh:hover { background: #6366f1; color: white; border-color: #6366f1; }
-
-    .search-mini { padding: 6px 12px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 13px; outline: none; width: 200px; }
-    .search-mini:focus { border-color: #6366f1; }
-
-    .data-table { width: 100%; border-collapse: collapse; }
-    .data-table th { text-align: left; font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; padding: 10px 16px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
-    .data-table td { padding: 10px 16px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; }
-    .rank { font-weight: 800; color: #6366f1; }
-    .bold { font-weight: 600; color: #0f172a; }
-    .mono { font-family: 'Courier New', monospace; font-size: 12px; }
-    .small { font-size: 11px; }
-    .total { color: #6366f1; font-weight: 700; }
-
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-    .badge-up { background: #dcfce7; color: #16a34a; }
-    .badge-down { background: #fee2e2; color: #dc2626; }
-    .badge-active { background: #dcfce7; color: #16a34a; }
-    .badge-disabled { background: #f1f5f9; color: #64748b; }
-
-    .ping-form { display: flex; gap: 8px; margin-bottom: 12px; padding: 16px 20px; }
-    .form-input { flex: 1; padding: 10px 14px; border: 1px solid #e2e8f0; border-radius: 8px; font-size: 14px; outline: none; }
-    .form-input:focus { border-color: #6366f1; }
-    .btn { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500; }
-    .btn-primary { background: #6366f1; color: white; }
-    .btn-primary:hover { background: #4f46e5; }
-    .btn-primary:disabled { opacity: 0.6; }
-
-    .ping-result { padding: 0 20px 16px; font-family: 'Courier New', monospace; font-size: 12px; background: #0f172a; color: #4ade80; padding: 12px 20px; }
-    .ping-line { padding: 2px 0; }
-    .ping-host { color: #60a5fa; }
-
-    .empty { text-align: center; color: #94a3b8; padding: 30px; }
-    .empty-state { display: flex; flex-direction: column; align-items: center; padding: 60px; gap: 12px; }
-    .empty-state h3 { color: #475569; margin: 0; }
-    .empty-state p { color: #94a3b8; margin: 0; }
-  `]
+  imports: [
+    NavbarComponent,
+    FormsModule,
+    RouterLink,
+    LucideActivity,
+    LucideArrowDownToLine,
+    LucideArrowUpFromLine,
+    LucideCable,
+    LucideChevronLeft,
+    LucideChevronRight,
+    LucideCircleAlert,
+    LucideCircleCheck,
+    LucideCircleGauge,
+    LucideCpu,
+    LucideCopy,
+    LucideDatabase,
+    LucideHardDrive,
+    LucideNetwork,
+    LucidePencil,
+    LucideRadioTower,
+    LucideRefreshCw,
+    LucideRouter,
+    LucideSave,
+    LucideSearch,
+    LucideServer,
+    LucideShieldAlert,
+    LucideShieldCheck,
+    LucideSlidersHorizontal,
+    LucideSquareTerminal,
+    LucideTrash2,
+    LucideUsers,
+    LucideWifi,
+    LucideWifiOff,
+    LucideX,
+    LucideZap,
+  ],
+  templateUrl: './mikrotik.html',
+  styleUrl: './mikrotik.scss',
+  encapsulation: ViewEncapsulation.None,
 })
 export class MikrotikComponent implements OnInit, OnDestroy {
-  private mt = inject(MikrotikService);
-  private toast = inject(ToastService);
+  readonly Math = Math;
+  readonly pageSize = 50;
+  private readonly mt = inject(MikrotikService);
+  private readonly toast = inject(ToastService);
+  private readonly auth = inject(AuthService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
 
-  status = signal<any>({ configured: false, connected: false, host: '' });
-  system = signal<any>(null);
+  status = signal<MtStatus>({ configured: false, connected: false, host: '' });
+  system = signal<MtSystem | null>(null);
+  wan = signal<WanTraffic | null>(null);
+  live = signal<MtLiveResponse | null>(null);
+  unknown = signal<MtUnknownResponse | null>(null);
+  security = signal<MtSecurityAudit | null>(null);
   traffic = signal<MtTraffic[]>([]);
-  queues = signal<MtQueue[]>([]);
-  consumers = signal<MtConsumer[]>([]);
   sessions = signal<{ pppoe: any[]; hotspot: any[] } | null>(null);
+  backups = signal<MtBackup[]>([]);
+  firewall = signal<MtFirewallResponse | null>(null);
+  ipam = signal<MtIpamResponse | null>(null);
+  speedTemplates = signal<MtSpeedTemplate[]>([]);
+  netwatch = signal<MtNetwatch[]>([]);
+
+  activeTab = signal<MikrotikTab>('overview');
+  loading = signal(true);
+  refreshing = signal(false);
+  unknownLoading = signal(false);
+  securityLoading = signal(false);
+  controlLoading = signal(false);
+  controlSaving = signal(false);
+  queueSaving = signal(false);
+  pinging = signal(false);
+  errorMessage = signal('');
+  lastUpdate = signal<Date | null>(null);
+
+  clientQuery = signal('');
+  syncFilter = signal<SyncFilter>('all');
+  clientPage = signal(1);
+  unknownQuery = signal('');
+  unknownFilter = signal<UnknownFilter>('all');
+  unknownPage = signal(1);
+  firewallTable = signal<MtFirewallTable>('filter');
+  ipamQuery = signal('');
+  ipamFilter = signal<IpamFilter>('all');
+  ipamNetwork = signal<string | null>(null);
+  ipamPage = signal(1);
+  selectedQueueIds = signal<Set<string>>(new Set());
+
+  backupName = `ispmax-manual-${new Date().toISOString().slice(0, 10)}`;
+  backupType: 'backup' | 'export' = 'backup';
+  selectedTemplateId = '';
+  templateName = '';
+  templateUploadMbps = 10;
+  templateDownloadMbps = 10;
+  netwatchHost = '';
+  netwatchType = 'icmp';
+  netwatchInterval = '1m';
+  netwatchPort: number | null = null;
+  netwatchComment = '';
+
+  queueEditor = signal<{ id: string | null; ip: string } | null>(null);
+  queueName = '';
+  queueUploadMbps = 1;
+  queueDownloadMbps = 1;
+  queueDisabled = false;
+  queueComment = '';
+
+  pingTarget = '';
   pingResult = signal<any[]>([]);
 
-  activeTab = signal<'top' | 'traffic' | 'queues' | 'sessions' | 'tools'>('top');
+  private coreTimer?: ReturnType<typeof setInterval>;
+  private unknownTimer?: ReturnType<typeof setInterval>;
 
-  changeTab(tab: 'top' | 'traffic' | 'queues' | 'sessions' | 'tools') {
-    this.activeTab.set(tab);
-    if (tab === 'traffic' && this.traffic().length === 0) this.loadTraffic();
-    if (tab === 'queues' && this.queues().length === 0) this.loadQueues();
-    if (tab === 'sessions' && !this.sessions()) this.loadSessions();
-  }
-  queueSearch = '';
-  pingTarget = '';
-  pinging = signal(false);
+  canManage = computed(() => this.auth.hasAnyRole(['admin']));
 
-  private refreshInterval: any;
+  clients = computed(() => this.live()?.clients || []);
+  filteredClients = computed(() => {
+    const query = this.clientQuery().trim().toLowerCase();
+    const filter = this.syncFilter();
+    return this.clients().filter((row) => {
+      const matchesQuery = !query || [row.client?.name, row.client?.username, row.ip, row.queueName]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+      const matchesFilter = filter === 'all'
+        || (filter === 'differences' && row.syncState !== 'synced')
+        || (filter === 'online' && row.isOnline)
+        || (filter === 'offline' && !row.isOnline)
+        || (filter === 'disabled' && row.isDisabled);
+      return matchesQuery && matchesFilter;
+    });
+  });
+  clientPageCount = computed(() => Math.max(1, Math.ceil(this.filteredClients().length / this.pageSize)));
+  pagedClients = computed(() => {
+    const page = Math.min(this.clientPage(), this.clientPageCount());
+    return this.filteredClients().slice((page - 1) * this.pageSize, page * this.pageSize);
+  });
 
-  async ngOnInit() {
-    await this.refresh();
-    // Auto-refresh every 30s
-    this.refreshInterval = setInterval(() => this.refresh(), 30000);
+  topClients = computed(() => [...this.clients()]
+    .filter((row) => row.uploadBps + row.downloadBps > 0)
+    .sort((a, b) => (b.uploadBps + b.downloadBps) - (a.uploadBps + a.downloadBps))
+    .slice(0, 8));
+
+  filteredUnknown = computed(() => {
+    const query = this.unknownQuery().trim().toLowerCase();
+    const filter = this.unknownFilter();
+    return (this.unknown()?.devices || []).filter((device) => {
+      const matchesQuery = !query || [device.ip, device.macAddress, device.identity, device.platform, device.queueName]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+      const matchesFilter = filter === 'all'
+        || (filter === 'high' && device.risk === 'high')
+        || (filter === 'unmanaged' && device.classification === 'unmanaged_device')
+        || (filter === 'infrastructure' && device.classification === 'infrastructure_candidate');
+      return matchesQuery && matchesFilter;
+    });
+  });
+  unknownPageCount = computed(() => Math.max(1, Math.ceil(this.filteredUnknown().length / this.pageSize)));
+  pagedUnknown = computed(() => {
+    const page = Math.min(this.unknownPage(), this.unknownPageCount());
+    return this.filteredUnknown().slice((page - 1) * this.pageSize, page * this.pageSize);
+  });
+
+  firewallRules = computed(() => this.firewall()?.tables?.[this.firewallTable()] || []);
+  filteredIpamRows = computed(() => {
+    const query = this.ipamQuery().trim().toLowerCase();
+    const filter = this.ipamFilter();
+    const network = this.ipamNetwork();
+    return (this.ipam()?.rows || []).filter((row) => {
+      const matchesQuery = !query || [row.ip, row.macAddress, row.hostName, row.queueName, row.poolName, row.client?.name, row.client?.username]
+        .some((value) => String(value || '').toLowerCase().includes(query));
+      const matchesNetwork = !network || row.cidr === network;
+      const matchesFilter = filter === 'all'
+        || (filter === 'available' && row.available)
+        || (filter === 'client' && row.classification === 'client')
+        || (filter === 'occupied' && !row.available && !['client', 'router'].includes(row.classification))
+        || (filter === 'conflict' && row.conflict);
+      return matchesQuery && matchesNetwork && matchesFilter;
+    });
+  });
+  ipamPageCount = computed(() => Math.max(1, Math.ceil(this.filteredIpamRows().length / this.pageSize)));
+  pagedIpamRows = computed(() => {
+    const page = Math.min(this.ipamPage(), this.ipamPageCount());
+    return this.filteredIpamRows().slice((page - 1) * this.pageSize, page * this.pageSize);
+  });
+
+  activeInterfaces = computed(() => this.traffic().filter((item) => item.running));
+  wanUtilization = computed(() => {
+    const wan = this.wan();
+    if (!wan?.maxBps) return 0;
+    return Math.min(100, (Math.max(wan.rxBps, wan.txBps) / wan.maxBps) * 100);
+  });
+
+  ngOnInit() {
+    const requestedTab = this.route.snapshot.queryParamMap.get('tab');
+    const validTabs: MikrotikTab[] = ['overview', 'ipam', 'reconciliation', 'unknown', 'interfaces', 'firewall', 'netwatch', 'backups', 'security'];
+    if (requestedTab && validTabs.includes(requestedTab as MikrotikTab)) {
+      this.activeTab.set(requestedTab as MikrotikTab);
+    }
+    this.refreshAll();
+    this.coreTimer = setInterval(() => {
+      if (!this.unknownLoading() && !this.securityLoading()) this.refreshCore(false);
+    }, 15_000);
+    this.unknownTimer = setInterval(() => {
+      if (this.unknown()) this.loadUnknown(false);
+    }, 300_000);
   }
 
   ngOnDestroy() {
-    if (this.refreshInterval) clearInterval(this.refreshInterval);
+    if (this.coreTimer) clearInterval(this.coreTimer);
+    if (this.unknownTimer) clearInterval(this.unknownTimer);
   }
 
-  async refresh() {
-    this.mt.getStatus().subscribe({
-      next: (s) => {
-        this.status.set(s);
-        if (s.connected) {
-          this.loadSystem();
-          this.loadConsumers();
-        }
-      }
+  changeTab(tab: MikrotikTab) {
+    this.activeTab.set(tab);
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { tab: tab === 'overview' ? null : tab },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+    if (tab === 'unknown' && !this.unknown()) this.loadUnknown(true);
+    if (tab === 'interfaces' && this.traffic().length === 0) this.loadInfrastructure();
+    if (tab === 'security' && !this.security()) this.loadSecurity(true);
+    if (tab === 'firewall' && !this.firewall()) this.loadFirewall();
+    if (tab === 'ipam' && !this.ipam()) this.loadIpam();
+    if (tab === 'netwatch' && this.netwatch().length === 0) this.loadNetwatch();
+    if (tab === 'backups' && this.backups().length === 0) this.loadBackups();
+    if (tab === 'reconciliation' && this.speedTemplates().length === 0) this.loadSpeedTemplates();
+  }
+
+  refreshAll() {
+    const tab = this.activeTab();
+    if (tab === 'unknown') return this.loadUnknown(true);
+    if (tab === 'interfaces') return this.loadInfrastructure();
+    if (tab === 'security') return this.loadSecurity(true);
+    if (tab === 'firewall') return this.loadFirewall();
+    if (tab === 'ipam') return this.loadIpam();
+    if (tab === 'netwatch') return this.loadNetwatch();
+    if (tab === 'backups') return this.loadBackups();
+    return this.refreshCore(true);
+  }
+
+  refreshCore(showLoading = true) {
+    if (showLoading) this.loading.set(true);
+    this.refreshing.set(true);
+    forkJoin({
+      status: this.mt.getStatus().pipe(catchError(() => of(this.status()))),
+      system: this.mt.getSystem().pipe(catchError(() => of(this.system()))),
+      wan: this.mt.getWanTraffic().pipe(catchError(() => of(this.wan()))),
+      live: this.mt.getLiveClients().pipe(catchError((error) => {
+        this.errorMessage.set(error.error?.error || 'No se pudo leer la operacion del MikroTik');
+        return of(this.live());
+      })),
+    }).pipe(finalize(() => {
+      this.loading.set(false);
+      this.refreshing.set(false);
+    })).subscribe(({ status, system, wan, live }) => {
+      this.status.set(status);
+      if (system) this.system.set(system as MtSystem);
+      if (wan) this.wan.set(wan as WanTraffic);
+      if (live) this.live.set(live as MtLiveResponse);
+      this.lastUpdate.set(new Date());
+      if (live) this.errorMessage.set('');
     });
   }
 
-  loadSystem() {
-    this.mt.getSystem().subscribe({ next: s => this.system.set(s) });
+  loadUnknown(showLoading = true) {
+    if (showLoading) this.unknownLoading.set(true);
+    this.mt.getUnknownDevices().pipe(
+      catchError((error) => {
+        if (showLoading) this.toast.error(error.error?.error || 'No se pudo analizar dispositivos desconocidos');
+        return of(null);
+      }),
+      finalize(() => this.unknownLoading.set(false)),
+    ).subscribe((data) => { if (data) this.unknown.set(data); });
   }
 
-  loadTraffic() {
-    this.mt.getTraffic().subscribe({ next: t => this.traffic.set(t) });
+  loadSecurity(showLoading = true) {
+    if (showLoading) this.securityLoading.set(true);
+    this.mt.getSecurityAudit().pipe(
+      catchError((error) => {
+        if (showLoading) this.toast.error(error.error?.error || 'No se pudo completar la auditoria');
+        return of(null);
+      }),
+      finalize(() => this.securityLoading.set(false)),
+    ).subscribe((data) => { if (data) this.security.set(data); });
   }
 
-  loadQueues() {
-    this.mt.getQueues().subscribe({ next: q => this.queues.set(q) });
+  loadInfrastructure() {
+    forkJoin({
+      traffic: this.mt.getTraffic().pipe(catchError(() => of([]))),
+      sessions: this.mt.getActiveSessions().pipe(catchError(() => of({ pppoe: [], hotspot: [] }))),
+    }).subscribe(({ traffic, sessions }) => {
+      this.traffic.set(traffic);
+      this.sessions.set(sessions);
+    });
   }
 
-  loadConsumers() {
-    this.mt.getTopConsumers(20).subscribe({ next: c => this.consumers.set(c) });
+  loadBackups() {
+    this.controlLoading.set(true);
+    this.mt.getBackups().pipe(finalize(() => this.controlLoading.set(false))).subscribe({
+      next: (data) => this.backups.set(data),
+      error: (error) => this.toast.error(error.error?.error || 'No se pudieron leer los respaldos'),
+    });
   }
 
-  loadSessions() {
-    this.mt.getActiveSessions().subscribe({ next: s => this.sessions.set(s) });
+  createBackup() {
+    if (!this.backupName.trim() || this.controlSaving()) return;
+    this.controlSaving.set(true);
+    this.mt.createBackup({ name: this.backupName.trim(), type: this.backupType, confirmation: 'CREAR' })
+      .pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+        next: () => { this.toast.success('Respaldo creado en el MikroTik'); this.loadBackups(); },
+        error: (error) => this.toast.error(error.error?.error || 'No se pudo crear el respaldo'),
+      });
   }
 
-  filteredQueues(): MtQueue[] {
-    const term = this.queueSearch.toLowerCase();
-    if (!term) return this.queues();
-    return this.queues().filter(q =>
-      q.name?.toLowerCase().includes(term) ||
-      q.target?.includes(term)
-    );
+  deleteBackup(item: MtBackup) {
+    if (!window.confirm(`Eliminar ${item.name} del MikroTik?`)) return;
+    this.controlSaving.set(true);
+    this.mt.deleteBackup(item.id).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => { this.toast.success('Respaldo eliminado'); this.loadBackups(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo eliminar el respaldo'),
+    });
+  }
+
+  loadFirewall() {
+    this.controlLoading.set(true);
+    this.mt.getFirewall().pipe(finalize(() => this.controlLoading.set(false))).subscribe({
+      next: (data) => this.firewall.set(data),
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo leer el firewall'),
+    });
+  }
+
+  setFirewallTable(table: MtFirewallTable) { this.firewallTable.set(table); }
+
+  toggleFirewallRule(rule: MtFirewallRule) {
+    const action = rule.disabled ? 'habilitar' : 'deshabilitar';
+    if (!window.confirm(`Se creara un respaldo automatico antes de ${action} esta regla. Continuar?`)) return;
+    this.controlSaving.set(true);
+    this.mt.toggleFirewallRule(rule.table, rule.id, !rule.disabled)
+      .pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+        next: () => { this.toast.success(`Regla ${rule.disabled ? 'habilitada' : 'deshabilitada'}`); this.loadFirewall(); },
+        error: (error) => this.toast.error(error.error?.error || 'No se pudo cambiar la regla'),
+      });
+  }
+
+  deleteFirewallRule(rule: MtFirewallRule) {
+    if (!window.confirm('Eliminar permanentemente esta regla? Se creara un respaldo automatico.')) return;
+    this.controlSaving.set(true);
+    this.mt.deleteFirewallRule(rule.table, rule.id).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => { this.toast.success('Regla eliminada'); this.loadFirewall(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo eliminar la regla'),
+    });
+  }
+
+  loadIpam() {
+    this.controlLoading.set(true);
+    this.mt.getIpam().pipe(finalize(() => this.controlLoading.set(false))).subscribe({
+      next: (data) => {
+        this.ipam.set(data);
+        this.ipamPage.set(1);
+        if (data.stale) this.toast.info('Mostrando el ultimo inventario guardado en SQLite');
+      },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo construir el inventario IP'),
+    });
+  }
+
+  setIpamQuery(value: string) { this.ipamQuery.set(value); this.ipamPage.set(1); }
+  setIpamFilter(value: IpamFilter) { this.ipamFilter.set(value); this.ipamPage.set(1); }
+  setIpamNetwork(value: string | null) { this.ipamNetwork.set(value); this.ipamPage.set(1); }
+  moveIpamPage(delta: number) {
+    this.ipamPage.set(Math.min(this.ipamPageCount(), Math.max(1, this.ipamPage() + delta)));
+  }
+  async copyAvailableIp(ip: string) {
+    await navigator.clipboard.writeText(ip);
+    this.toast.success(`IP ${ip} copiada`);
+  }
+
+  ipamClassificationLabel(row: MtIpamResponse['rows'][number]) {
+    if (row.conflict) return 'Conflicto';
+    return {
+      available: row.recommended ? 'Disponible sugerida' : 'Disponible',
+      client: 'Cliente WispHub',
+      unknown_lease: 'DHCP sin cliente',
+      arp_only: 'ARP sin cliente',
+      queue_only: 'Queue sin cliente',
+      pool_reserved: 'Reserva de pool',
+      router: 'Infraestructura',
+    }[row.classification] || row.classification;
+  }
+
+  makeLeaseStatic(row: MtIpamResponse['rows'][number]) {
+    if (!row.leaseId || !window.confirm(`Fijar ${row.ip} para ${row.macAddress || 'esta MAC'}? Se creara un respaldo automatico.`)) return;
+    this.controlSaving.set(true);
+    this.mt.makeLeaseStatic(row.leaseId).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => { this.toast.success('Concesion convertida a estatica'); this.loadIpam(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo fijar la concesion'),
+    });
+  }
+
+  loadSpeedTemplates() {
+    this.mt.getSpeedTemplates().subscribe({
+      next: (data) => {
+        this.speedTemplates.set(data);
+        if (!this.selectedTemplateId && data.length) this.selectedTemplateId = data[0].id;
+      },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudieron cargar las plantillas'),
+    });
+  }
+
+  toggleQueueSelection(queueId: string | null, checked: boolean) {
+    if (!queueId) return;
+    const next = new Set(this.selectedQueueIds());
+    if (checked) next.add(queueId); else next.delete(queueId);
+    this.selectedQueueIds.set(next);
+  }
+
+  selectVisibleQueues(checked: boolean) {
+    const next = new Set(this.selectedQueueIds());
+    for (const row of this.pagedClients()) {
+      if (!row.queueId) continue;
+      if (checked) next.add(row.queueId); else next.delete(row.queueId);
+    }
+    this.selectedQueueIds.set(next);
+  }
+
+  saveSpeedTemplate() {
+    if (!this.templateName.trim() || this.controlSaving()) return;
+    this.controlSaving.set(true);
+    this.mt.saveSpeedTemplate({
+      name: this.templateName.trim(), uploadMbps: Number(this.templateUploadMbps), downloadMbps: Number(this.templateDownloadMbps),
+    }).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => {
+        this.toast.success('Plantilla guardada');
+        this.templateName = '';
+        this.loadSpeedTemplates();
+      },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo guardar la plantilla'),
+    });
+  }
+
+  deleteSpeedTemplate(item: MtSpeedTemplate) {
+    if (!window.confirm(`Eliminar la plantilla ${item.name}?`)) return;
+    this.mt.deleteSpeedTemplate(item.id).subscribe({
+      next: () => { this.toast.success('Plantilla eliminada'); this.loadSpeedTemplates(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo eliminar la plantilla'),
+    });
+  }
+
+  applySpeedTemplate() {
+    const queueIds = [...this.selectedQueueIds()];
+    const template = this.speedTemplates().find((item) => item.id === this.selectedTemplateId);
+    if (!template || !queueIds.length) return this.toast.error('Selecciona una plantilla y al menos una cola');
+    if (!window.confirm(`Aplicar ${template.name} a ${queueIds.length} colas? Se creara un respaldo automatico.`)) return;
+    this.controlSaving.set(true);
+    this.mt.applySpeedTemplate(template.id, queueIds).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => {
+        this.toast.success(`Plantilla aplicada a ${queueIds.length} colas`);
+        this.selectedQueueIds.set(new Set());
+        this.refreshCore(false);
+      },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo aplicar la plantilla'),
+    });
+  }
+
+  loadNetwatch() {
+    this.controlLoading.set(true);
+    this.mt.getNetwatch().pipe(finalize(() => this.controlLoading.set(false))).subscribe({
+      next: (data) => this.netwatch.set(data),
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo leer Netwatch'),
+    });
+  }
+
+  createNetwatch() {
+    if (!this.netwatchHost.trim() || this.controlSaving()) return;
+    this.controlSaving.set(true);
+    const port = ['tcp-conn', 'http-get', 'https-get'].includes(this.netwatchType) && this.netwatchPort
+      ? Number(this.netwatchPort) : undefined;
+    this.mt.createNetwatch({
+      host: this.netwatchHost.trim(), type: this.netwatchType, interval: this.netwatchInterval,
+      port, comment: this.netwatchComment.trim() || undefined,
+    }).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => {
+        this.toast.success('Sonda Netwatch creada');
+        this.netwatchHost = '';
+        this.netwatchComment = '';
+        this.loadNetwatch();
+      },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo crear la sonda'),
+    });
+  }
+
+  toggleNetwatch(item: MtNetwatch) {
+    if (!window.confirm(`${item.disabled ? 'Habilitar' : 'Deshabilitar'} la sonda ${item.host}?`)) return;
+    this.controlSaving.set(true);
+    this.mt.updateNetwatch(item.id, { disabled: !item.disabled }).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => { this.toast.success('Sonda actualizada'); this.loadNetwatch(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo actualizar la sonda'),
+    });
+  }
+
+  deleteNetwatch(item: MtNetwatch) {
+    if (!window.confirm(`Eliminar la sonda ${item.host}? Se creara un respaldo automatico.`)) return;
+    this.controlSaving.set(true);
+    this.mt.deleteNetwatch(item.id).pipe(finalize(() => this.controlSaving.set(false))).subscribe({
+      next: () => { this.toast.success('Sonda eliminada'); this.loadNetwatch(); },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo eliminar la sonda'),
+    });
+  }
+
+  setClientQuery(value: string) {
+    this.clientQuery.set(value);
+    this.clientPage.set(1);
+  }
+
+  setSyncFilter(value: SyncFilter) {
+    this.syncFilter.set(value);
+    this.clientPage.set(1);
+  }
+
+  setUnknownQuery(value: string) {
+    this.unknownQuery.set(value);
+    this.unknownPage.set(1);
+  }
+
+  setUnknownFilter(value: UnknownFilter) {
+    this.unknownFilter.set(value);
+    this.unknownPage.set(1);
+  }
+
+  moveClientPage(delta: number) {
+    this.clientPage.set(Math.min(this.clientPageCount(), Math.max(1, this.clientPage() + delta)));
+  }
+
+  moveUnknownPage(delta: number) {
+    this.unknownPage.set(Math.min(this.unknownPageCount(), Math.max(1, this.unknownPage() + delta)));
+  }
+
+  openClientQueue(row: MtLiveClient) {
+    if (!row.ip) return;
+    this.queueEditor.set({ id: row.queueId, ip: row.ip });
+    this.queueName = row.queueName || row.client?.name || `Cliente - ${row.ip}`;
+    this.queueUploadMbps = this.bpsToMbps(row.maxUploadBps) || 1;
+    this.queueDownloadMbps = this.bpsToMbps(row.maxDownloadBps) || 1;
+    this.queueDisabled = row.isDisabled;
+    this.queueComment = row.client ? `Cliente WispHub #${row.client.id}` : 'IP sin cliente en WispHub ERP';
+  }
+
+  openUnknownQueue(device: MtUnknownDevice) {
+    this.queueEditor.set({ id: device.queueId, ip: device.ip });
+    this.queueName = device.queueName || `DESCONOCIDO - ${device.ip}`;
+    const [upload, download] = this.limitValues(device.maxLimit);
+    this.queueUploadMbps = upload || 1;
+    this.queueDownloadMbps = download || 1;
+    this.queueDisabled = device.disabled;
+    this.queueComment = 'IP sin cliente en WispHub ERP - limitado desde ISP max';
+  }
+
+  closeQueueEditor() {
+    if (!this.queueSaving()) this.queueEditor.set(null);
+  }
+
+  saveQueue() {
+    const editor = this.queueEditor();
+    if (!editor || this.queueSaving()) return;
+    if (!this.queueName.trim() || this.queueUploadMbps < 0.1 || this.queueDownloadMbps < 0.1) {
+      this.toast.error('Completa un nombre y limites validos');
+      return;
+    }
+    this.queueSaving.set(true);
+    const payload = {
+      name: this.queueName.trim(),
+      uploadMbps: Number(this.queueUploadMbps),
+      downloadMbps: Number(this.queueDownloadMbps),
+      disabled: this.queueDisabled,
+      comment: this.queueComment.trim(),
+    };
+    const request = editor.id
+      ? this.mt.updateQueue(editor.id, payload)
+      : this.mt.createQueue({ ...payload, targetIp: editor.ip });
+    request.pipe(finalize(() => this.queueSaving.set(false))).subscribe({
+      next: () => {
+        this.toast.success(editor.id ? 'Cola actualizada' : 'Cola creada');
+        this.queueEditor.set(null);
+        this.refreshCore(false);
+        this.loadUnknown(false);
+      },
+      error: (error) => this.toast.error(error.error?.error || 'No se pudo guardar la cola'),
+    });
   }
 
   runPing() {
-    if (!this.pingTarget) return;
+    if (!this.pingTarget.trim() || this.pinging()) return;
     this.pinging.set(true);
     this.pingResult.set([]);
-    this.mt.ping(this.pingTarget, 4).subscribe({
-      next: (r) => { this.pingResult.set(r); this.pinging.set(false); },
-      error: (e) => { this.toast.error('Error: ' + (e.error?.error || 'falló')); this.pinging.set(false); }
+    this.mt.ping(this.pingTarget.trim(), 4).pipe(finalize(() => this.pinging.set(false))).subscribe({
+      next: (result) => this.pingResult.set(result),
+      error: (error) => this.toast.error(error.error?.error || 'El ping fallo'),
     });
   }
 
-  formatBytes(bytes: number): string {
-    if (!bytes) return '0 B';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
-    return (bytes / 1073741824).toFixed(2) + ' GB';
+  systemResource(key: string): string {
+    return String(this.system()?.resource?.[key] ?? '-');
   }
 
-  formatLimit(limit: string): string {
-    if (!limit) return '-';
-    // Format "4300000/4300000" → "4.3M / 4.3M"
-    const parts = limit.split('/');
-    return parts.map(p => {
-      const n = parseInt(p);
-      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-      if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
-      return p;
-    }).join(' / ');
+  memoryUsage(): number {
+    const total = Number(this.system()?.resource?.['total-memory'] || 0);
+    const free = Number(this.system()?.resource?.['free-memory'] || 0);
+    return total ? Math.max(0, Math.min(100, ((total - free) / total) * 100)) : 0;
+  }
+
+  temperature(): string {
+    const item = this.system()?.health?.find((entry: any) => entry.name === 'cpu-temperature')
+      || this.system()?.health?.find((entry: any) => entry.name === 'temperature');
+    return item ? `${item.value} ${item.type || 'C'}` : '-';
+  }
+
+  formatBps(value: number): string {
+    if (!value) return '0 Mbps';
+    if (value < 1_000_000) return `${(value / 1_000).toFixed(0)} Kbps`;
+    return `${(value / 1_000_000).toFixed(value >= 100_000_000 ? 0 : 1)} Mbps`;
+  }
+
+  formatBytes(value: number | string | undefined): string {
+    const bytes = Number(value || 0);
+    if (bytes < 1_000_000) return `${(bytes / 1_000).toFixed(1)} KB`;
+    if (bytes < 1_000_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+    if (bytes < 1_000_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
+    return `${(bytes / 1_000_000_000_000).toFixed(2)} TB`;
+  }
+
+  formatLimit(value: string | null | undefined): string {
+    const [upload, download] = this.limitValues(value);
+    if (!upload && !download) return 'Sin limite';
+    return `${this.compactMbps(upload)} / ${this.compactMbps(download)}`;
+  }
+
+  compactMbps(value: number): string {
+    return `${Number.isInteger(value) ? value : value.toFixed(1)}M`;
+  }
+
+  limitValues(value: string | null | undefined): [number, number] {
+    const [upload = '0', download = '0'] = String(value || '0/0').split('/');
+    return [this.bpsToMbps(Number(upload)), this.bpsToMbps(Number(download))];
+  }
+
+  bpsToMbps(value: number): number {
+    return Number((Number(value || 0) / 1_000_000).toFixed(1));
+  }
+
+  syncLabel(state: MtSyncState): string {
+    return ({
+      synced: 'Sincronizado', missing_wisphub: 'Solo MikroTik', missing_mikrotik: 'Sin cola',
+      missing_ip: 'Sin IP', queue_mismatch: 'Nombre diferente', state_mismatch: 'Estado diferente',
+    })[state];
+  }
+
+  classificationLabel(value: MtUnknownDevice['classification']): string {
+    return ({
+      unregistered_queue: 'Cola sin ERP', unmanaged_device: 'Sin control', infrastructure_candidate: 'Posible infraestructura',
+    })[value];
+  }
+
+  severityLabel(value: string): string {
+    return ({ critical: 'Critico', high: 'Alto', medium: 'Medio', low: 'Bajo' } as Record<string, string>)[value] || value;
+  }
+
+  pingLine(row: any): string {
+    if (row.received !== undefined) return `${row.host || this.pingTarget} · ${row.time || '-'} · TTL ${row.ttl || '-'}`;
+    return `${row.host || this.pingTarget} · ${row.status || 'Sin respuesta'}`;
   }
 }

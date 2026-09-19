@@ -1,16 +1,77 @@
-import { Component, OnDestroy, OnInit, inject, signal, computed } from '@angular/core';
-import { NavbarComponent } from '../../components/layout/navbar';
-import { MikrotikService } from '../../services/mikrotik.service';
-import { ClientActionsService } from '../../services/client-actions.service';
-import { SurveyService } from '../../services/survey.service';
-import { ToastService } from '../../services/toast.service';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { catchError, forkJoin, of } from 'rxjs';
+import {
+  LucideActivity,
+  LucideBan,
+  LucideChevronLeft,
+  LucideChevronRight,
+  LucideCircleAlert,
+  LucideCircleCheck,
+  LucideClock3,
+  LucideCopy,
+  LucideDatabase,
+  LucideExternalLink,
+  LucideFilterX,
+  LucideHistory,
+  LucideLockOpen,
+  LucideMessageCircle,
+  LucidePackage,
+  LucidePause,
+  LucidePlay,
+  LucideRadioTower,
+  LucideRefreshCw,
+  LucideSearch,
+  LucideServer,
+  LucideSlidersHorizontal,
+  LucideWifi,
+  LucideWifiOff,
+  LucideX,
+  LucideZap,
+} from '@lucide/angular';
+import { NavbarComponent } from '../../components/layout/navbar';
+import { ClientActionsService } from '../../services/client-actions.service';
+import { MikrotikService } from '../../services/mikrotik.service';
+import { ServerSyncStatus, SyncService } from '../../services/sync.service';
+import { ToastService } from '../../services/toast.service';
+
+type LiveView = 'operation' | 'incidents' | 'sync';
+type QuickFilter = 'all' | 'online' | 'offline' | 'overdue' | 'no_ip' | 'differences' | 'overlimit';
+type SortMode = 'priority' | 'traffic' | 'name' | 'zone' | 'uptime';
+type SyncState = 'synced' | 'missing_wisphub' | 'missing_mikrotik' | 'missing_ip' | 'queue_mismatch' | 'state_mismatch';
+
+interface LiveClientProfile {
+  id: number;
+  username?: string | null;
+  name: string;
+  wisphubName?: string | null;
+  phone?: string | null;
+  address?: string | null;
+  plan?: string | null;
+  price?: string | null;
+  balance?: string | null;
+  zone?: string | null;
+  router?: string | null;
+  interface?: string | null;
+  macAddress?: string | null;
+  snOnu?: string | null;
+  status?: string | null;
+  invoiceStatus?: string | null;
+  crmAction?: string | null;
+  crmActionReason?: string | null;
+  paymentPilotEnabled?: boolean;
+  paymentPilotEnabledAt?: string | null;
+  syncedAt?: string | null;
+  mtSyncedAt?: string | null;
+  equipmentCount?: number;
+}
 
 interface LiveClient {
   queueName: string;
   ip: string;
-  client: any | null;
+  client: LiveClientProfile | null;
   maxUploadBps: number;
   maxDownloadBps: number;
   totalUploadBytes: number;
@@ -21,807 +82,825 @@ interface LiveClient {
   uploadPct: number;
   downloadPct: number;
   isActive: boolean;
+  isOnline: boolean;
+  isTransmitting: boolean;
   isDisabled: boolean;
+  interface?: string | null;
+  macAddress?: string | null;
+  sessionUptime?: string | null;
+  sessionUser?: string | null;
+  syncState: SyncState;
 }
 
-interface WanSample { t: number; rx: number; tx: number; }
-interface Alert { id: number; ts: number; kind: 'limit' | 'spike'; ip: string; name: string; message: string; }
+interface LiveStats {
+  totalQueues: number;
+  mikrotikQueues: number;
+  totalClients: number;
+  activeClients: number;
+  onlineClients: number;
+  offlineClients: number;
+  transmittingClients: number;
+  differences: number;
+  overdueClients: number;
+  disabledQueues: number;
+  missingWisphub: number;
+  missingMikrotik: number;
+  clientsWithoutIp: number;
+  totalUploadBps: number;
+  totalDownloadBps: number;
+  totalBpsCombined: number;
+}
+
+interface LiveResponse {
+  timestamp: string;
+  stats: LiveStats;
+  clients: LiveClient[];
+}
+
+interface TrafficSample {
+  t: number;
+  upload: number;
+  download: number;
+}
+
+interface WanState {
+  ifaceName: string;
+  rxBps: number;
+  txBps: number;
+  maxBps: number;
+}
+
+interface EquipmentLite {
+  id: number;
+  serialNumber?: string | null;
+  macAddress?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  status: string;
+  assignedAt?: string | null;
+  type?: { name: string; category: string } | null;
+}
+
+interface BlockEvent {
+  id: number;
+  action: string;
+  reason: string;
+  createdBy?: string | null;
+  createdAt: string;
+}
+
+interface LiveAlert {
+  id: number;
+  ts: number;
+  kind: 'limit' | 'spike' | 'offline';
+  ip: string;
+  name: string;
+  message: string;
+}
+
+const EMPTY_STATS: LiveStats = {
+  totalQueues: 0,
+  mikrotikQueues: 0,
+  totalClients: 0,
+  activeClients: 0,
+  onlineClients: 0,
+  offlineClients: 0,
+  transmittingClients: 0,
+  differences: 0,
+  overdueClients: 0,
+  disabledQueues: 0,
+  missingWisphub: 0,
+  missingMikrotik: 0,
+  clientsWithoutIp: 0,
+  totalUploadBps: 0,
+  totalDownloadBps: 0,
+  totalBpsCombined: 0,
+};
 
 const STORAGE_PAUSED = 'live.paused';
 const STORAGE_INTERVAL = 'live.intervalMs';
-const HISTORY_MAX = 200;          // ~10 min @ 3s
-const ALERT_TTL_MS = 2 * 60 * 1000; // 2 min
+const TRAFFIC_HISTORY_LIMIT = 30;
+const ALERT_TTL_MS = 5 * 60 * 1000;
 
 @Component({
   selector: 'app-live',
   standalone: true,
-  imports: [NavbarComponent, FormsModule, RouterLink],
-  template: `
-    <app-navbar pageTitle="Consumo en Vivo" />
-
-    <div class="page">
-      <!-- LIVE STATS BAR + CONTROLS -->
-      <div class="live-bar">
-        <div class="live-pulse">
-          <span class="pulse-dot" [class.paused]="paused()"></span>
-          <span>{{ paused() ? 'PAUSADO' : 'EN VIVO' }}</span>
-        </div>
-        <div class="controls-inline">
-          <button class="btn-icon" (click)="togglePause()" [title]="paused() ? 'Reanudar' : 'Pausar'">
-            @if (paused()) { ▶ } @else { ⏸ }
-          </button>
-          <select class="interval-sel" [(ngModel)]="refreshMs" (change)="changeInterval()">
-            <option [ngValue]="1000">1s</option>
-            <option [ngValue]="3000">3s</option>
-            <option [ngValue]="10000">10s</option>
-            <option [ngValue]="30000">30s</option>
-          </select>
-          <button class="btn-icon bell" (click)="toggleAlertsDrop()" [class.has-alerts]="alerts().length > 0">
-            🔔
-            @if (alerts().length > 0) { <span class="alert-count">{{ alerts().length }}</span> }
-          </button>
-        </div>
-        <div class="live-time">{{ lastUpdate() }}</div>
-      </div>
-
-      <!-- ALERTS DROPDOWN -->
-      @if (showAlerts() && alerts().length > 0) {
-        <div class="alerts-drop">
-          <div class="alerts-header">
-            <strong>{{ alerts().length }} alertas activas</strong>
-            <button class="link-btn" (click)="clearAlerts()">Limpiar</button>
-          </div>
-          @for (a of alerts(); track a.id) {
-            <div class="alert-item" [class.spike]="a.kind === 'spike'">
-              <span class="alert-icon">{{ a.kind === 'spike' ? '⚡' : '⚠' }}</span>
-              <div class="alert-body">
-                <strong>{{ a.name }}</strong>
-                <span class="alert-msg">{{ a.message }}</span>
-              </div>
-              <span class="alert-time">{{ formatRel(a.ts) }}</span>
-            </div>
-          }
-        </div>
-      }
-
-      <!-- WAN PANEL -->
-      @if (wan(); as w) {
-        <div class="wan-panel">
-          <div class="wan-header">
-            <div class="wan-title">
-              <span class="wan-iface">🌐 WAN — {{ w.ifaceName }}</span>
-              <span class="wan-mbps">{{ formatBps(w.rxBps) }} / {{ formatBps(w.maxBps) }}</span>
-            </div>
-            <div class="wan-sparkline" [innerHTML]="wanSparkline()"></div>
-          </div>
-          <div class="wan-bars">
-            <div class="wan-bar-row">
-              <span class="wan-bar-label">↓ DOWN</span>
-              <div class="wan-bar-track">
-                <div class="wan-bar-fill" [class]="wanColorClass(wanPctDown())" [style.width.%]="wanPctDown()"></div>
-              </div>
-              <span class="wan-bar-val">{{ wanPctDown().toFixed(0) }}%</span>
-            </div>
-            <div class="wan-bar-row">
-              <span class="wan-bar-label">↑ UP</span>
-              <div class="wan-bar-track">
-                <div class="wan-bar-fill" [class]="wanColorClass(wanPctUp())" [style.width.%]="wanPctUp()"></div>
-              </div>
-              <span class="wan-bar-val">{{ wanPctUp().toFixed(0) }}%</span>
-            </div>
-          </div>
-        </div>
-      }
-
-      <!-- BIG STATS -->
-      <div class="big-stats">
-        <div class="big-stat down">
-          <div class="bs-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-          </div>
-          <div class="bs-data">
-            <span class="bs-value">{{ formatBps(stats().totalDownloadBps) }}</span>
-            <span class="bs-label">Descarga total</span>
-          </div>
-        </div>
-        <div class="big-stat up">
-          <div class="bs-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          </div>
-          <div class="bs-data">
-            <span class="bs-value">{{ formatBps(stats().totalUploadBps) }}</span>
-            <span class="bs-label">Subida total</span>
-          </div>
-        </div>
-        <div class="big-stat active">
-          <div class="bs-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
-          </div>
-          <div class="bs-data">
-            <span class="bs-value">{{ stats().activeClients }} / {{ stats().totalQueues }}</span>
-            <span class="bs-label">Clientes activos</span>
-          </div>
-        </div>
-        <div class="big-stat total">
-          <div class="bs-icon">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-          </div>
-          <div class="bs-data">
-            <span class="bs-value">{{ formatBps(stats().totalBpsCombined) }}</span>
-            <span class="bs-label">Combinado</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- CONTROLS (search/filter) -->
-      <div class="controls">
-        <input type="text" placeholder="Buscar cliente..." [(ngModel)]="search" (input)="applyFilter()" class="search" />
-        <select [(ngModel)]="filterBy" (change)="applyFilter()" class="filter-sel">
-          <option value="active">Solo activos</option>
-          <option value="all">Todos</option>
-          <option value="top">Top 20</option>
-          <option value="overlimit">Cerca del limite</option>
-        </select>
-        <select [(ngModel)]="sortBy" (change)="applyFilter()" class="filter-sel">
-          <option value="combined">Mas trafico</option>
-          <option value="download">Mas descarga</option>
-          <option value="upload">Mas subida</option>
-          <option value="historical">Mas historico</option>
-          <option value="name">Por nombre</option>
-        </select>
-        <span class="count">{{ filtered().length }} mostrando</span>
-      </div>
-
-      <!-- CLIENT CARDS -->
-      <div class="grid">
-        @for (c of filtered(); track c.queueName) {
-          <div class="client-card" [class.high-usage]="c.downloadPct > 80 || c.uploadPct > 80">
-            <div class="card-header">
-              <div class="client-info">
-                @if (c.client) {
-                  <a [routerLink]="['/clients', c.client.id]" class="client-name">{{ c.client.name }}</a>
-                  <span class="client-meta">
-                    {{ c.client.plan || c.queueName }}
-                    @if (c.client.phone) { · {{ c.client.phone }} }
-                  </span>
-                } @else {
-                  <span class="client-name no-match">{{ c.queueName }}</span>
-                  <span class="client-meta">Sin match en WispHub</span>
-                }
-              </div>
-              <span class="ip-badge">{{ c.ip }}</span>
-            </div>
-
-            <!-- DOWNLOAD BAR -->
-            <div class="bw-row">
-              <div class="bw-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
-                <span>{{ formatBps(c.downloadBps) }}</span>
-                <span class="bw-max">/ {{ formatBps(c.maxDownloadBps) }}</span>
-              </div>
-              <div class="bw-track">
-                <div class="bw-fill download" [style.width.%]="c.downloadPct"></div>
-              </div>
-            </div>
-
-            <!-- UPLOAD BAR -->
-            <div class="bw-row">
-              <div class="bw-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-                <span>{{ formatBps(c.uploadBps) }}</span>
-                <span class="bw-max">/ {{ formatBps(c.maxUploadBps) }}</span>
-              </div>
-              <div class="bw-track">
-                <div class="bw-fill upload" [style.width.%]="c.uploadPct"></div>
-              </div>
-            </div>
-
-            <!-- HISTORICAL & STATUS -->
-            <div class="card-footer">
-              <span class="hist">
-                Total: <strong>{{ formatBytes(c.totalBytes) }}</strong>
-              </span>
-              @if (c.client?.invoiceStatus) {
-                <span class="status-badge" [class]="getInvoiceClass(c.client.invoiceStatus)">
-                  {{ c.client.invoiceStatus }}
-                </span>
-              }
-              @if (c.isActive) {
-                <span class="live-badge">
-                  <span class="dot-live"></span>ACTIVO
-                </span>
-              }
-            </div>
-
-            <!-- INLINE ACTIONS -->
-            @if (c.client) {
-              <div class="card-actions" (click)="$event.stopPropagation()">
-                <button class="act-btn block" (click)="$event.stopPropagation(); actBlock(c)" [disabled]="actLoading() === c.ip" title="Desactivar cliente y mostrar pagina informativa">
-                  🚫 Bloquear
-                </button>
-                <button class="act-btn moroso" (click)="$event.stopPropagation(); actMoroso(c)" [disabled]="actLoading() === c.ip" title="Marcar moroso (captive)">
-                  ⏰ Moroso
-                </button>
-                <button class="act-btn survey" (click)="$event.stopPropagation(); actSurvey(c)" [disabled]="actLoading() === c.ip" title="Crear enlace seguro de encuesta sin tocar internet">
-                  📝 Encuesta
-                </button>
-                <button class="act-btn clear-survey" (click)="$event.stopPropagation(); clearSurvey(c)" [disabled]="actLoading() === c.ip" title="Quitar encuesta pendiente">
-                  Quitar encuesta
-                </button>
-              </div>
-            }
-          </div>
-        }
-      </div>
-
-      @if (filtered().length === 0 && !loading()) {
-        <div class="empty">
-          @if (!status().connected) {
-            <p>MikroTik no conectado. Verifica configuracion.</p>
-          } @else {
-            <p>No hay clientes que coincidan con tu busqueda</p>
-          }
-        </div>
-      }
-    </div>
-  `,
-  styles: [`
-    .page { padding: 16px 24px 32px; }
-
-    .live-bar {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 16px; margin-bottom: 12px;
-      background: #0f172a; color: white; border-radius: 10px;
-      flex-wrap: wrap; gap: 10px;
-    }
-    .live-pulse {
-      display: flex; align-items: center; gap: 8px;
-      font-size: 11px; font-weight: 700; letter-spacing: 1px;
-    }
-    .pulse-dot {
-      width: 8px; height: 8px; border-radius: 50%; background: #ef4444;
-      animation: pulse 1.5s infinite;
-    }
-    .pulse-dot.paused { background: #94a3b8; animation: none; }
-    @keyframes pulse {
-      0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
-      50% { opacity: 0.6; box-shadow: 0 0 0 8px rgba(239,68,68,0); }
-    }
-    .live-time { font-size: 12px; color: #94a3b8; font-family: 'Courier New', monospace; }
-    .controls-inline { display: flex; align-items: center; gap: 8px; }
-    .btn-icon {
-      background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px; padding: 4px 10px; font-size: 14px; cursor: pointer;
-      position: relative;
-    }
-    .btn-icon:hover { background: rgba(255,255,255,0.2); }
-    .btn-icon.bell.has-alerts { background: rgba(239,68,68,0.2); border-color: rgba(239,68,68,0.5); }
-    .alert-count {
-      position: absolute; top: -4px; right: -4px;
-      background: #ef4444; color: white; border-radius: 999px;
-      font-size: 9px; padding: 1px 5px; font-weight: 700;
-    }
-    .interval-sel {
-      background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2);
-      border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer; outline: none;
-    }
-    .interval-sel option { background: #0f172a; color: white; }
-
-    .alerts-drop {
-      background: white; border: 1px solid #e2e8f0; border-radius: 12px;
-      padding: 8px; margin-bottom: 12px; max-height: 250px; overflow-y: auto;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    }
-    .alerts-header {
-      display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 10px; border-bottom: 1px solid #f1f5f9; margin-bottom: 6px;
-    }
-    .link-btn { background: none; border: none; color: #6366f1; cursor: pointer; font-size: 12px; }
-    .alert-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 10px; border-radius: 8px;
-      font-size: 12px;
-    }
-    .alert-item:hover { background: #f8fafc; }
-    .alert-item.spike { background: #fef3c7; }
-    .alert-icon { font-size: 18px; }
-    .alert-body { flex: 1; display: flex; flex-direction: column; }
-    .alert-body strong { color: #0f172a; font-size: 13px; }
-    .alert-msg { color: #64748b; font-size: 11px; }
-    .alert-time { color: #94a3b8; font-size: 11px; font-family: monospace; }
-
-    .wan-panel {
-      background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-      padding: 12px 18px; margin-bottom: 14px;
-    }
-    .wan-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 10px; gap: 14px; flex-wrap: wrap;
-    }
-    .wan-title { display: flex; flex-direction: column; gap: 2px; }
-    .wan-iface { font-weight: 700; color: #0f172a; font-size: 14px; }
-    .wan-mbps { font-size: 12px; color: #64748b; font-family: monospace; }
-    .wan-sparkline { flex: 1; max-width: 320px; height: 40px; }
-    .wan-sparkline svg { display: block; width: 100%; height: 100%; }
-
-    .wan-bars { display: flex; flex-direction: column; gap: 6px; }
-    .wan-bar-row { display: flex; align-items: center; gap: 10px; }
-    .wan-bar-label { font-size: 11px; font-weight: 700; color: #475569; width: 50px; }
-    .wan-bar-track {
-      flex: 1; height: 12px; background: #f1f5f9; border-radius: 6px; overflow: hidden;
-    }
-    .wan-bar-fill {
-      height: 100%; transition: width 0.4s ease, background 0.3s ease;
-    }
-    .wan-bar-fill.green { background: linear-gradient(90deg, #22c55e, #16a34a); }
-    .wan-bar-fill.yellow { background: linear-gradient(90deg, #f59e0b, #d97706); }
-    .wan-bar-fill.red { background: linear-gradient(90deg, #ef4444, #dc2626); }
-    .wan-bar-val { font-family: monospace; font-size: 12px; font-weight: 700; color: #0f172a; width: 44px; text-align: right; }
-
-    .big-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-    .big-stat {
-      background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-      padding: 16px 20px; display: flex; align-items: center; gap: 14px;
-      transition: all 0.3s;
-    }
-    .big-stat.down { border-left: 4px solid #3b82f6; }
-    .big-stat.up { border-left: 4px solid #22c55e; }
-    .big-stat.active { border-left: 4px solid #f59e0b; }
-    .big-stat.total { border-left: 4px solid #8b5cf6; }
-    .bs-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-    .big-stat.down .bs-icon { background: #dbeafe; color: #2563eb; }
-    .big-stat.up .bs-icon { background: #dcfce7; color: #16a34a; }
-    .big-stat.active .bs-icon { background: #fef3c7; color: #d97706; }
-    .big-stat.total .bs-icon { background: #faf5ff; color: #8b5cf6; }
-    .bs-value {
-      display: block; font-size: 22px; font-weight: 800; color: #0f172a;
-      transition: all 0.3s;
-    }
-    .bs-label { font-size: 11px; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
-
-    .controls {
-      display: flex; gap: 10px; margin-bottom: 14px; align-items: center; flex-wrap: wrap;
-    }
-    .search {
-      padding: 9px 14px; border: 1px solid #e2e8f0; border-radius: 10px;
-      font-size: 13px; outline: none; min-width: 220px;
-    }
-    .search:focus { border-color: #6366f1; }
-    .filter-sel {
-      padding: 9px 12px; border: 1px solid #e2e8f0; border-radius: 10px;
-      font-size: 13px; background: white; cursor: pointer; outline: none;
-    }
-    .count { font-size: 12px; color: #64748b; margin-left: auto; }
-
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
-
-    .client-card {
-      background: white; border: 1px solid #e2e8f0; border-radius: 14px;
-      padding: 14px 16px; transition: all 0.25s;
-      animation: cardIn 0.3s ease;
-    }
-    @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    .client-card.high-usage {
-      border-color: #ef4444;
-      box-shadow: 0 0 0 4px rgba(239,68,68,0.1);
-    }
-
-    .card-header {
-      display: flex; justify-content: space-between; align-items: flex-start;
-      gap: 10px; margin-bottom: 10px;
-    }
-    .client-info { flex: 1; min-width: 0; }
-    .client-name {
-      display: block; font-size: 14px; font-weight: 700; color: #0f172a;
-      text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    }
-    .client-name:hover { color: #6366f1; }
-    .client-name.no-match { color: #94a3b8; font-style: italic; }
-    .client-meta { display: block; font-size: 11px; color: #94a3b8; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ip-badge {
-      font-family: 'Courier New', monospace; font-size: 11px; font-weight: 600;
-      background: #eef2ff; color: #6366f1; padding: 3px 8px; border-radius: 6px;
-      flex-shrink: 0;
-    }
-
-    .bw-row { margin-bottom: 8px; }
-    .bw-label {
-      display: flex; align-items: center; gap: 6px;
-      font-size: 12px; font-weight: 600; color: #475569; margin-bottom: 4px;
-    }
-    .bw-label svg { flex-shrink: 0; }
-    .bw-max { color: #94a3b8; font-weight: 400; font-size: 11px; }
-    .bw-track {
-      height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden;
-      position: relative;
-    }
-    .bw-fill {
-      height: 100%; border-radius: 4px;
-      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-      position: relative;
-      min-width: 2px;
-    }
-    .bw-fill.download {
-      background: linear-gradient(90deg, #3b82f6, #2563eb);
-      box-shadow: 0 0 8px rgba(59,130,246,0.4);
-    }
-    .bw-fill.upload {
-      background: linear-gradient(90deg, #22c55e, #16a34a);
-      box-shadow: 0 0 8px rgba(34,197,94,0.4);
-    }
-    .bw-fill::after {
-      content: '';
-      position: absolute; inset: 0;
-      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-      animation: shimmer 1.5s infinite;
-    }
-    @keyframes shimmer {
-      0% { transform: translateX(-100%); }
-      100% { transform: translateX(100%); }
-    }
-
-    .card-footer {
-      display: flex; align-items: center; gap: 8px; margin-top: 10px;
-      padding-top: 10px; border-top: 1px solid #f1f5f9;
-      font-size: 11px; flex-wrap: wrap;
-    }
-    .hist { color: #64748b; }
-    .hist strong { color: #0f172a; }
-    .status-badge { padding: 2px 8px; border-radius: 12px; font-weight: 600; }
-    .status-paid { background: #dcfce7; color: #16a34a; }
-    .status-pending { background: #fef3c7; color: #d97706; }
-
-    .live-badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      background: #fee2e2; color: #dc2626; padding: 2px 8px; border-radius: 12px;
-      font-weight: 700; letter-spacing: 0.5px;
-    }
-    .dot-live {
-      width: 6px; height: 6px; border-radius: 50%; background: #ef4444;
-      animation: pulse 1s infinite;
-    }
-
-    .card-actions {
-      display: flex; gap: 6px; margin-top: 10px;
-      padding-top: 8px; border-top: 1px dashed #f1f5f9;
-    }
-    .act-btn {
-      flex: 1; padding: 6px 8px; border-radius: 6px; font-size: 11px; font-weight: 600;
-      cursor: pointer; border: 1px solid transparent; transition: all 0.15s;
-    }
-    .act-btn:disabled { opacity: 0.5; cursor: wait; }
-    .act-btn.block { background: #fee2e2; color: #b91c1c; border-color: #fecaca; }
-    .act-btn.block:hover:not(:disabled) { background: #fecaca; }
-    .act-btn.moroso { background: #fef3c7; color: #92400e; border-color: #fde68a; }
-    .act-btn.moroso:hover:not(:disabled) { background: #fde68a; }
-    .act-btn.survey { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
-    .act-btn.survey:hover:not(:disabled) { background: #dbeafe; }
-    .act-btn.clear-survey { background: #f8fafc; color: #475569; border-color: #cbd5e1; }
-    .act-btn.clear-survey:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
-
-    .empty { text-align: center; padding: 60px; color: #94a3b8; }
-
-    @media (max-width: 768px) {
-      .big-stats { grid-template-columns: repeat(2, 1fr); }
-      .bs-value { font-size: 18px; }
-      .wan-sparkline { display: none; }
-    }
-    @media (max-width: 480px) {
-      .big-stats { grid-template-columns: 1fr; }
-    }
-  `]
+  imports: [
+    NavbarComponent,
+    FormsModule,
+    RouterLink,
+    LucideActivity,
+    LucideBan,
+    LucideChevronLeft,
+    LucideChevronRight,
+    LucideCircleAlert,
+    LucideCircleCheck,
+    LucideClock3,
+    LucideCopy,
+    LucideDatabase,
+    LucideExternalLink,
+    LucideFilterX,
+    LucideHistory,
+    LucideLockOpen,
+    LucideMessageCircle,
+    LucidePackage,
+    LucidePause,
+    LucidePlay,
+    LucideRadioTower,
+    LucideRefreshCw,
+    LucideSearch,
+    LucideServer,
+    LucideSlidersHorizontal,
+    LucideWifi,
+    LucideWifiOff,
+    LucideX,
+    LucideZap,
+  ],
+  templateUrl: './live.html',
 })
 export class LiveComponent implements OnInit, OnDestroy {
-  private mt = inject(MikrotikService);
-  private actions = inject(ClientActionsService);
-  private survey = inject(SurveyService);
-  private toast = inject(ToastService);
+  private readonly mt = inject(MikrotikService);
+  private readonly actions = inject(ClientActionsService);
+  private readonly sync = inject(SyncService);
+  private readonly http = inject(HttpClient);
+  private readonly toast = inject(ToastService);
 
-  status = signal<any>({ connected: false });
-  stats = signal<any>({ totalQueues: 0, activeClients: 0, totalUploadBps: 0, totalDownloadBps: 0, totalBpsCombined: 0 });
+  status = signal({ connected: false, configured: false, host: '' });
+  syncStatus = signal<ServerSyncStatus | null>(null);
+  stats = signal<LiveStats>(EMPTY_STATS);
   allClients = signal<LiveClient[]>([]);
-  filtered = signal<LiveClient[]>([]);
-  lastUpdate = signal('');
+  selectedClient = signal<LiveClient | null>(null);
+  selectedHistory = signal<TrafficSample[]>([]);
+  equipment = signal<EquipmentLite[]>([]);
+  events = signal<BlockEvent[]>([]);
+  alerts = signal<LiveAlert[]>([]);
+  wan = signal<WanState | null>(null);
+
   loading = signal(true);
-
-  // WAN data
-  wan = signal<{ ifaceName: string; rxBps: number; txBps: number; maxBps: number } | null>(null);
-  wanHistory = signal<WanSample[]>([]);
-  wanPctDown = computed(() => {
-    const w = this.wan();
-    if (!w || !w.maxBps) return 0;
-    return Math.min(100, (w.rxBps / w.maxBps) * 100);
-  });
-  wanPctUp = computed(() => {
-    const w = this.wan();
-    if (!w || !w.maxBps) return 0;
-    return Math.min(100, (w.txBps / w.maxBps) * 100);
-  });
-
-  // Pause + interval
+  refreshing = signal(false);
+  contextLoading = signal(false);
+  actionLoading = signal(false);
+  pinging = signal(false);
+  syncingNow = signal(false);
+  errorMessage = signal('');
+  pingResult = signal('');
   paused = signal(false);
+  lastUpdate = signal<Date | null>(null);
+  nowTick = signal(Date.now());
+  nextRefreshAt = signal(Date.now());
+  effectiveRefreshMs = signal(3000);
+
+  activeView = signal<LiveView>('operation');
+  quickFilter = signal<QuickFilter>('all');
+  search = signal('');
+  zoneFilter = signal('');
+  planFilter = signal('');
+  interfaceFilter = signal('');
+  sortBy = signal<SortMode>('priority');
+  page = signal(1);
+  pageSize = signal(25);
   refreshMs = 3000;
 
-  // Alerts
-  alerts = signal<Alert[]>([]);
-  showAlerts = signal(false);
-  private alertIdSeq = 0;
-  // Track sustained-high counters per IP and recent bps for spike detection
-  private overLimitTicks = new Map<string, number>(); // ip -> consecutive ticks > 80%
-  private recentBps = new Map<string, number[]>(); // ip -> last 5 download bps samples
-  private alertsCooldown = new Map<string, number>(); // ip|kind -> ts
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private supportTimer: ReturnType<typeof setInterval> | null = null;
+  private clockTimer: ReturnType<typeof setInterval> | null = null;
+  private refreshInProgress = false;
+  private consecutiveRefreshFailures = 0;
+  private readonly historyByIp = new Map<string, TrafficSample[]>();
+  private readonly overLimitTicks = new Map<string, number>();
+  private readonly recentDownload = new Map<string, number[]>();
+  private readonly previousOnline = new Map<string, boolean>();
+  private readonly alertCooldown = new Map<string, number>();
+  private alertId = 0;
 
-  // Action state
-  actLoading = signal<string | null>(null); // ip currently performing action
+  zones = computed(() => this.uniqueSorted(this.allClients().map(c => c.client?.zone)));
+  plans = computed(() => this.uniqueSorted(this.allClients().map(c => c.client?.plan)));
+  interfaces = computed(() => this.uniqueSorted(this.allClients().map(c => c.interface || c.client?.interface)));
 
-  search = '';
-  filterBy: 'active' | 'all' | 'top' | 'overlimit' = 'active';
-  sortBy: 'combined' | 'download' | 'upload' | 'historical' | 'name' = 'combined';
+  incidentCount = computed(() => this.allClients().filter(c => this.hasIncident(c)).length);
+  filteredClients = computed(() => {
+    const term = this.normalize(this.search());
+    const zone = this.zoneFilter();
+    const plan = this.planFilter();
+    const iface = this.interfaceFilter();
+    const quick = this.quickFilter();
+    const view = this.activeView();
 
-  private interval: any;
+    let result = this.allClients().filter(client => {
+      if (view === 'incidents' && !this.hasIncident(client)) return false;
+      if (view === 'sync' && client.syncState === 'synced') return false;
 
-  // Safe localStorage helpers — tolerantes a QuotaExceeded, modo privado, SSR, etc.
-  private lsGet(k: string): string | null {
-    try { return localStorage.getItem(k); } catch { return null; }
+      if (term) {
+        const haystack = [
+          client.client?.name,
+          client.client?.wisphubName,
+          client.client?.username,
+          client.queueName,
+          client.ip,
+          client.client?.phone,
+          client.macAddress,
+          client.client?.snOnu,
+        ].map(value => this.normalize(value)).join(' ');
+        if (!haystack.includes(term)) return false;
+      }
+
+      if (zone && client.client?.zone !== zone) return false;
+      if (plan && client.client?.plan !== plan) return false;
+      if (iface && (client.interface || client.client?.interface) !== iface) return false;
+
+      if (quick === 'online' && !client.isOnline) return false;
+      if (quick === 'offline' && client.isOnline) return false;
+      if (quick === 'overdue' && !this.isOverdue(client)) return false;
+      if (quick === 'no_ip' && client.syncState !== 'missing_ip') return false;
+      if (quick === 'differences' && client.syncState === 'synced') return false;
+      if (quick === 'overlimit' && Math.max(client.downloadPct, client.uploadPct) < 70) return false;
+      return true;
+    });
+
+    result = [...result].sort((a, b) => this.compareClients(a, b, this.sortBy()));
+    return result;
+  });
+
+  totalPages = computed(() => Math.max(1, Math.ceil(this.filteredClients().length / this.pageSize())));
+  pagedClients = computed(() => {
+    const page = Math.min(this.page(), this.totalPages());
+    const start = (page - 1) * this.pageSize();
+    return this.filteredClients().slice(start, start + this.pageSize());
+  });
+  rangeStart = computed(() => this.filteredClients().length ? ((this.page() - 1) * this.pageSize()) + 1 : 0);
+  rangeEnd = computed(() => Math.min(this.page() * this.pageSize(), this.filteredClients().length));
+  nextRefreshSeconds = computed(() => {
+    if (this.paused()) return 0;
+    return Math.max(0, Math.ceil((this.nextRefreshAt() - this.nowTick()) / 1000));
+  });
+  syncHealthy = computed(() => {
+    const sync = this.syncStatus();
+    const result = sync?.lastSyncResult;
+    return !!result && result.status === 'success' && result.sources?.wisphub === 'ok'
+      && result.sources?.mikrotik === 'ok' && result.errors === 0;
+  });
+  wanDownloadPct = computed(() => {
+    const wan = this.wan();
+    return wan?.maxBps ? Math.min(100, (wan.rxBps / wan.maxBps) * 100) : 0;
+  });
+  wanUploadPct = computed(() => {
+    const wan = this.wan();
+    return wan?.maxBps ? Math.min(100, (wan.txBps / wan.maxBps) * 100) : 0;
+  });
+  wanTotalBps = computed(() => (this.wan()?.rxBps || 0) + (this.wan()?.txBps || 0));
+  selectedDownloadPath = computed(() => this.sparklinePath(this.selectedHistory(), 'download', 320, 64));
+  selectedUploadPath = computed(() => this.sparklinePath(this.selectedHistory(), 'upload', 320, 64));
+
+  ngOnInit(): void {
+    this.paused.set(this.storageGet(STORAGE_PAUSED) === '1');
+    const savedInterval = Number(this.storageGet(STORAGE_INTERVAL) || 3000);
+    if ([3000, 5000, 10000, 30000].includes(savedInterval)) this.refreshMs = savedInterval;
+    this.effectiveRefreshMs.set(this.refreshMs);
+
+    this.refresh(true);
+    this.refreshSupportingData();
+    this.supportTimer = setInterval(() => this.refreshSupportingData(), 15000);
+    this.clockTimer = setInterval(() => this.nowTick.set(Date.now()), 1000);
   }
-  private lsSet(k: string, v: string): void {
-    try { localStorage.setItem(k, v); } catch {}
+
+  ngOnDestroy(): void {
+    this.stopRefreshTimer();
+    if (this.supportTimer) clearInterval(this.supportTimer);
+    if (this.clockTimer) clearInterval(this.clockTimer);
   }
 
-  ngOnInit() {
-    // Restore localStorage prefs (defensivo)
-    this.paused.set(this.lsGet(STORAGE_PAUSED) === '1');
-    const savedMs = parseInt(this.lsGet(STORAGE_INTERVAL) || '3000');
-    if ([1000, 3000, 10000, 30000].includes(savedMs)) this.refreshMs = savedMs;
+  refresh(manual = false): void {
+    if (this.refreshInProgress) return;
+    this.refreshInProgress = true;
+    this.refreshing.set(true);
+    if (manual) this.errorMessage.set('');
 
-    this.mt.getStatus().subscribe({ next: s => this.status.set(s) });
-    if (!this.paused()) {
-      this.refresh();
-      this.startInterval();
-    } else {
-      this.loading.set(false);
-    }
-  }
-
-  ngOnDestroy() {
-    this.stopInterval();
-  }
-
-  private startInterval() {
-    this.stopInterval();
-    this.interval = setInterval(() => this.refresh(), this.refreshMs);
-  }
-  private stopInterval() {
-    if (this.interval) { clearInterval(this.interval); this.interval = null; }
-  }
-
-  togglePause() {
-    const p = !this.paused();
-    this.paused.set(p);
-    this.lsSet(STORAGE_PAUSED, p ? '1' : '0');
-    if (p) this.stopInterval();
-    else { this.refresh(); this.startInterval(); }
-  }
-
-  changeInterval() {
-    this.lsSet(STORAGE_INTERVAL, String(this.refreshMs));
-    if (!this.paused()) this.startInterval();
-  }
-
-  toggleAlertsDrop() { this.showAlerts.update(v => !v); }
-  clearAlerts() { this.alerts.set([]); this.showAlerts.set(false); }
-
-  refresh() {
-    // Clients
     this.mt.getLiveClients().subscribe({
-      next: (data) => {
-        this.stats.set(data.stats);
-        this.allClients.set(data.clients);
-        this.lastUpdate.set(new Date(data.timestamp).toLocaleTimeString('es-DO'));
-        this.applyFilter();
-        this.detectAnomalies(data.clients);
+      next: data => {
+        const response = data as LiveResponse;
+        this.stats.set({ ...EMPTY_STATS, ...response.stats });
+        this.allClients.set(response.clients || []);
+        this.lastUpdate.set(new Date(response.timestamp));
+        this.captureTraffic(response.clients || []);
+        this.detectAnomalies(response.clients || []);
+        this.keepSelectedClientFresh(response.clients || []);
         this.loading.set(false);
+        this.errorMessage.set('');
+        this.finishRefresh(true);
       },
-      error: () => { this.loading.set(false); }
+      error: error => {
+        this.loading.set(false);
+        this.errorMessage.set(error?.error?.error || 'No se pudo consultar MikroTik. Reintentaremos automáticamente.');
+        this.finishRefresh(false);
+      },
     });
-    // WAN
+
     this.mt.getWanTraffic().subscribe({
-      next: (w) => {
-        this.wan.set({ ifaceName: w.ifaceName, rxBps: w.rxBps, txBps: w.txBps, maxBps: w.maxBps });
-        this.wanHistory.update(h => {
-          const arr = [...h, { t: Date.now(), rx: w.rxBps, tx: w.txBps }];
-          if (arr.length > HISTORY_MAX) arr.splice(0, arr.length - HISTORY_MAX);
-          return arr;
-        });
-      },
-      error: () => { /* WAN puede no estar disponible, no spam de errores */ }
+      next: wan => this.wan.set(wan),
+      error: () => this.wan.set(null),
     });
-    // Purge old alerts
-    this.purgeOldAlerts();
   }
 
-  private detectAnomalies(clients: LiveClient[]) {
-    const now = Date.now();
-    for (const c of clients) {
-      if (!c.client) continue;
-      const ip = c.ip;
-      const name = c.client.name || c.queueName;
+  manualRefresh(): void {
+    this.refresh(true);
+    this.refreshSupportingData();
+  }
 
-      // 1) Sustained > 80% on download
-      const pct = Math.max(c.downloadPct, c.uploadPct);
-      if (pct > 80) {
-        const prev = this.overLimitTicks.get(ip) || 0;
-        this.overLimitTicks.set(ip, prev + 1);
-        if (prev + 1 === 3) {
-          this.pushAlertIfFresh('limit', ip, name, `${pct.toFixed(0)}% del plan por 3 lecturas seguidas`);
-        }
-      } else {
-        this.overLimitTicks.delete(ip);
-      }
-
-      // 2) Spike: bps > 5x avg of last 5
-      const arr = this.recentBps.get(ip) || [];
-      const avg = arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-      if (avg > 100000 && c.downloadBps > avg * 5) {
-        this.pushAlertIfFresh('spike', ip, name, `Pico subito: ${this.formatBps(c.downloadBps)} (avg era ${this.formatBps(avg)})`);
-      }
-      arr.push(c.downloadBps);
-      if (arr.length > 5) arr.shift();
-      this.recentBps.set(ip, arr);
+  togglePause(): void {
+    const next = !this.paused();
+    this.paused.set(next);
+    this.storageSet(STORAGE_PAUSED, next ? '1' : '0');
+    if (next) this.stopRefreshTimer();
+    else {
+      this.refresh(true);
     }
   }
 
-  private pushAlertIfFresh(kind: 'limit' | 'spike', ip: string, name: string, message: string) {
-    const key = `${ip}|${kind}`;
-    const last = this.alertsCooldown.get(key) || 0;
-    const now = Date.now();
-    if (now - last < 60_000) return; // 1 min cooldown per (ip, kind)
-    this.alertsCooldown.set(key, now);
-    this.alerts.update(a => [{ id: ++this.alertIdSeq, ts: now, kind, ip, name, message }, ...a]);
+  changeInterval(value: number): void {
+    this.refreshMs = Number(value);
+    this.consecutiveRefreshFailures = 0;
+    this.effectiveRefreshMs.set(this.refreshMs);
+    this.storageSet(STORAGE_INTERVAL, String(this.refreshMs));
+    if (!this.paused()) this.startRefreshTimer();
   }
 
-  private purgeOldAlerts() {
-    const cutoff = Date.now() - ALERT_TTL_MS;
-    this.alerts.update(a => a.filter(x => x.ts > cutoff));
-  }
-
-  applyFilter() {
-    let result = this.allClients();
-    const term = this.search.toLowerCase();
-
-    if (term) {
-      result = result.filter(c =>
-        c.client?.name?.toLowerCase().includes(term) ||
-        c.queueName?.toLowerCase().includes(term) ||
-        c.ip?.includes(term) ||
-        c.client?.phone?.includes(term)
-      );
-    }
-
-    if (this.filterBy === 'active') result = result.filter(c => c.isActive);
-    else if (this.filterBy === 'overlimit') result = result.filter(c => c.downloadPct > 70 || c.uploadPct > 70);
-    else if (this.filterBy === 'top') {
-      result = [...result].sort((a, b) => (b.uploadBps + b.downloadBps) - (a.uploadBps + a.downloadBps)).slice(0, 20);
-    }
-
-    // Sort
-    result = [...result].sort((a, b) => {
-      switch (this.sortBy) {
-        case 'combined': return (b.uploadBps + b.downloadBps) - (a.uploadBps + a.downloadBps);
-        case 'download': return b.downloadBps - a.downloadBps;
-        case 'upload': return b.uploadBps - a.uploadBps;
-        case 'historical': return b.totalBytes - a.totalBytes;
-        case 'name': return (a.client?.name || a.queueName).localeCompare(b.client?.name || b.queueName);
-      }
-      return 0;
-    });
-
-    this.filtered.set(result);
-  }
-
-  // Inline actions
-  actBlock(c: LiveClient) {
-    const name = c.client?.name || c.queueName;
-    if (!confirm(`Desactivar a ${name} (${c.ip})?\nNo podra navegar. Al abrir HTTP vera una pagina con sus datos y el aviso de contactar administracion.`)) return;
-    this.actLoading.set(c.ip);
-    this.actions.apply(c.client.id, 'block', 'Desactivado desde En Vivo').subscribe({
-      next: r => { this.actLoading.set(null); if (r.ok) this.toast.success(`Desactivado: ${name}`); else this.toast.error(r.error || 'Fallo desactivar'); },
-      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo desactivar'); },
-    });
-  }
-  actMoroso(c: LiveClient) {
-    const name = c.client?.name || c.queueName;
-    if (!confirm(`Marcar moroso a ${name}?\nLa próxima vez que abra HTTP vera el captive de pago.`)) return;
-    this.actLoading.set(c.ip);
-    this.actions.apply(c.client.id, 'moroso', 'Moroso desde En Vivo').subscribe({
-      next: r => { this.actLoading.set(null); if (r.ok) this.toast.success(`Moroso: ${name}`); else this.toast.error(r.error || 'Fallo'); },
-      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo'); },
-    });
-  }
-  actSurvey(c: LiveClient) {
-    const name = c.client?.name || c.queueName;
-    if (!confirm(`Crear encuesta para ${name} (${c.ip})?\nSe creara un enlace seguro y recordatorios, sin tocar MikroTik ni el internet.`)) return;
-    this.actLoading.set(c.ip);
-    this.survey.start(c.ip, c.client?.id).subscribe({
-      next: r => {
-        this.actLoading.set(null);
-        if (r.publicUrl) navigator.clipboard?.writeText(r.publicUrl).catch(() => {});
-        if (r.alreadySubmitted) this.toast.info('Este cliente ya lleno la encuesta.');
-        else if (r.alreadyPending) this.toast.info('Ya hay encuesta pendiente. Enlace copiado y recordatorio reactivado.');
-        else if (r.ok) this.toast.success(`Encuesta creada para ${name}. Enlace copiado y recordatorios activos, sin tocar internet.`);
-        else this.toast.error(r.error || 'Fallo activar encuesta');
+  runSync(): void {
+    if (this.syncingNow()) return;
+    this.syncingNow.set(true);
+    this.sync.runServerSync().subscribe({
+      next: result => {
+        this.syncingNow.set(false);
+        this.toast.success(`Sincronización completa: ${result?.updated || 0} clientes, ${result?.errors || 0} errores`);
+        this.refreshSupportingData();
+        this.refresh(true);
       },
-      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo'); },
-    });
-  }
-
-  clearSurvey(c: LiveClient) {
-    const name = c.client?.name || c.queueName;
-    if (!confirm(`Pausar encuesta para ${name}?\nEl cliente navega normal. Si no la llena, el sistema volvera a recordarle en unas horas.`)) return;
-    this.actLoading.set(c.ip);
-    this.survey.clear(c.ip, c.client?.id).subscribe({
-      next: r => {
-        this.actLoading.set(null);
-        if (!r.ok) {
-          this.toast.error(r.error || 'No se pudo quitar');
-          return;
-        }
-        const mtCleaned = r.mikrotik?.removed?.some((x: any) => x.wasInList);
-        const detail = r.snoozed > 0 ? `${r.snoozed} pausada(s) por ${r.reminderIntervalHours || 4}h` : 'sin pendientes';
-        this.toast.success(`Encuesta pausada: ${detail}${mtCleaned ? ', MikroTik limpio' : ''}`);
+      error: error => {
+        this.syncingNow.set(false);
+        this.toast.error(error?.error?.error || 'No se pudo ejecutar la sincronización');
       },
-      error: e => { this.actLoading.set(null); this.toast.error(e.error?.error || 'Fallo quitar encuesta'); },
     });
   }
 
-  // WAN helpers
-  wanColorClass(pct: number): string {
-    if (pct > 85) return 'red';
-    if (pct > 60) return 'yellow';
-    return 'green';
+  setView(view: LiveView): void {
+    this.activeView.set(view);
+    this.quickFilter.set('all');
+    this.page.set(1);
   }
 
-  // SVG sparkline (down=blue line, up=green line)
-  wanSparkline(): string {
-    const data = this.wanHistory();
-    if (data.length < 2) return '';
-    const W = 320, H = 40, PAD = 2;
-    const maxVal = Math.max(...data.map(d => Math.max(d.rx, d.tx)), 1);
-    const xStep = (W - PAD * 2) / (data.length - 1);
-    const yScale = (v: number) => H - PAD - ((v / maxVal) * (H - PAD * 2));
-    const pathFor = (key: 'rx' | 'tx') => data.map((d, i) => `${i === 0 ? 'M' : 'L'}${(PAD + i * xStep).toFixed(1)},${yScale(d[key]).toFixed(1)}`).join(' ');
-    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="${pathFor('rx')}" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linejoin="round"/>
-      <path d="${pathFor('tx')}" fill="none" stroke="#22c55e" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>`;
+  setQuickFilter(filter: QuickFilter): void {
+    this.quickFilter.set(filter);
+    this.page.set(1);
+  }
+
+  updateSearch(value: string): void {
+    this.search.set(value);
+    this.page.set(1);
+  }
+
+  updateZone(value: string): void {
+    this.zoneFilter.set(value);
+    this.page.set(1);
+  }
+
+  updatePlan(value: string): void {
+    this.planFilter.set(value);
+    this.page.set(1);
+  }
+
+  updateInterface(value: string): void {
+    this.interfaceFilter.set(value);
+    this.page.set(1);
+  }
+
+  updateSort(value: SortMode): void {
+    this.sortBy.set(value);
+    this.page.set(1);
+  }
+
+  clearFilters(): void {
+    this.search.set('');
+    this.zoneFilter.set('');
+    this.planFilter.set('');
+    this.interfaceFilter.set('');
+    this.quickFilter.set('all');
+    this.sortBy.set('priority');
+    this.page.set(1);
+  }
+
+  hasActiveFilters(): boolean {
+    return !!(this.search() || this.zoneFilter() || this.planFilter() || this.interfaceFilter() || this.quickFilter() !== 'all' || this.sortBy() !== 'priority');
+  }
+
+  setPage(page: number): void {
+    this.page.set(Math.min(Math.max(1, page), this.totalPages()));
+  }
+
+  setPageSize(value: number): void {
+    this.pageSize.set(Number(value));
+    this.page.set(1);
+  }
+
+  selectClient(client: LiveClient): void {
+    this.selectedClient.set(client);
+    this.selectedHistory.set([...(this.historyByIp.get(client.ip || this.clientKey(client)) || [])]);
+    this.pingResult.set('');
+    this.loadClientContext(client);
+  }
+
+  closeDrawer(): void {
+    this.selectedClient.set(null);
+    this.equipment.set([]);
+    this.events.set([]);
+    this.pingResult.set('');
+  }
+
+  pingSelected(): void {
+    const client = this.selectedClient();
+    if (!client?.ip || this.pinging()) return;
+    this.pinging.set(true);
+    this.pingResult.set('Consultando...');
+    this.mt.ping(client.ip, 4).subscribe({
+      next: rows => {
+        const times = rows
+          .map(row => this.parseLatency(row?.time || row?.['avg-rtt']))
+          .filter((value): value is number => value !== null);
+        if (!times.length) this.pingResult.set('Sin respuesta');
+        else this.pingResult.set(`${(times.reduce((a, b) => a + b, 0) / times.length).toFixed(1)} ms · ${times.length}/4`);
+        this.pinging.set(false);
+      },
+      error: () => {
+        this.pingResult.set('Sin respuesta');
+        this.pinging.set(false);
+      },
+    });
+  }
+
+  copyIp(): void {
+    const ip = this.selectedClient()?.ip;
+    if (!ip) return;
+    navigator.clipboard?.writeText(ip)
+      .then(() => this.toast.success('IP copiada'))
+      .catch(() => this.toast.info(ip));
+  }
+
+  openWhatsapp(): void {
+    const phone = String(this.selectedClient()?.client?.phone || '').replace(/\D/g, '');
+    if (!phone) {
+      this.toast.info('Este cliente no tiene teléfono registrado');
+      return;
+    }
+    const normalized = phone.length === 10 ? `1${phone}` : phone;
+    window.open(`https://wa.me/${normalized}`, '_blank', 'noopener,noreferrer');
+  }
+
+  blockSelected(): void {
+    const selected = this.selectedClient();
+    if (!selected?.client?.paymentPilotEnabled) {
+      this.toast.info('Habilita primero el piloto del portal para este cliente');
+      return;
+    }
+    this.applyAction('block');
+  }
+
+  setPaymentPilot(enabled: boolean): void {
+    const selected = this.selectedClient();
+    if (!selected?.client?.id || this.actionLoading()) return;
+    const label = enabled ? 'Habilitar' : 'Deshabilitar';
+    if (!confirm(`${label} el piloto del portal de pago para ${this.displayName(selected)}?\n\nEsto no cambia el servicio por si solo.`)) return;
+
+    this.actionLoading.set(true);
+    this.actions.setPaymentPilot(selected.client.id, enabled).subscribe({
+      next: result => {
+        this.actionLoading.set(false);
+        this.patchPaymentPilot(result.paymentPilotEnabled, result.paymentPilotEnabledAt || null);
+        this.toast.success(`Piloto ${enabled ? 'habilitado' : 'deshabilitado'} para este cliente`);
+      },
+      error: error => {
+        this.actionLoading.set(false);
+        this.toast.error(error?.error?.error || 'No se pudo cambiar el piloto');
+      },
+    });
+  }
+
+  previewPaymentPortal(): void {
+    const ip = this.selectedClient()?.ip;
+    if (!ip) return;
+    window.open(`/captive?ip=${encodeURIComponent(ip)}&preview=blocked`, '_blank', 'noopener,noreferrer');
+  }
+
+  markOverdueSelected(): void {
+    this.applyAction('moroso');
+  }
+
+  clearSelected(): void {
+    this.applyAction('clear');
+  }
+
+  clientKey(client: LiveClient): string {
+    return client.client?.id ? `client-${client.client.id}` : `queue-${client.queueName}-${client.ip}`;
+  }
+
+  displayName(client: LiveClient): string {
+    return client.client?.name || client.queueName || 'Sin nombre';
+  }
+
+  isOverdue(client: LiveClient): boolean {
+    const action = this.normalize(client.client?.crmAction);
+    const invoice = this.normalize(client.client?.invoiceStatus);
+    return action === 'moroso' || invoice.includes('vencid') || invoice.includes('pendiente');
+  }
+
+  hasIncident(client: LiveClient): boolean {
+    return !client.isOnline || client.isDisabled || client.syncState !== 'synced' || this.isOverdue(client) || Math.max(client.downloadPct, client.uploadPct) >= 70;
+  }
+
+  connectionLabel(client: LiveClient): string {
+    if (client.syncState === 'missing_ip') return 'Sin IP';
+    if (client.isDisabled) return 'Deshabilitado';
+    if (client.isOnline && client.isTransmitting) return 'Transmitiendo';
+    if (client.isOnline) return 'En línea';
+    return 'Sin presencia';
+  }
+
+  syncLabel(state: SyncState): string {
+    const labels: Record<SyncState, string> = {
+      synced: 'Sin diferencias',
+      missing_wisphub: 'Solo MikroTik',
+      missing_mikrotik: 'Sin cola MikroTik',
+      missing_ip: 'Sin IP',
+      queue_mismatch: 'Cola diferente',
+      state_mismatch: 'Estado diferente',
+    };
+    return labels[state] || 'Revisar';
+  }
+
+  eventLabel(action: string): string {
+    const labels: Record<string, string> = { block: 'Servicio bloqueado', moroso: 'Marcado como moroso', unblock: 'Servicio reactivado' };
+    return labels[action] || action;
   }
 
   formatBps(bps: number): string {
     if (!bps || bps < 1) return '0 bps';
-    if (bps < 1000) return Math.round(bps) + ' bps';
-    if (bps < 1000000) return (bps / 1000).toFixed(1) + ' Kbps';
-    if (bps < 1000000000) return (bps / 1000000).toFixed(2) + ' Mbps';
-    return (bps / 1000000000).toFixed(2) + ' Gbps';
+    if (bps < 1000) return `${Math.round(bps)} bps`;
+    if (bps < 1_000_000) return `${(bps / 1000).toFixed(1)} Kbps`;
+    if (bps < 1_000_000_000) return `${(bps / 1_000_000).toFixed(bps >= 10_000_000 ? 1 : 2)} Mbps`;
+    return `${(bps / 1_000_000_000).toFixed(2)} Gbps`;
   }
 
   formatBytes(bytes: number): string {
     if (!bytes) return '0 B';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1073741824) return (bytes / 1048576).toFixed(1) + ' MB';
-    return (bytes / 1073741824).toFixed(2) + ' GB';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+    return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
   }
 
-  formatRel(ts: number): string {
-    const diff = (Date.now() - ts) / 1000;
-    if (diff < 60) return Math.floor(diff) + 's';
-    if (diff < 3600) return Math.floor(diff / 60) + 'm';
-    return Math.floor(diff / 3600) + 'h';
+  formatMoney(value?: string | null): string {
+    const amount = Number(value || 0);
+    return new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'DOP', maximumFractionDigits: 0 }).format(Number.isFinite(amount) ? amount : 0);
   }
 
-  getInvoiceClass(status: string): string {
-    if (status?.toLowerCase() === 'pagadas') return 'status-paid';
-    if (status?.toLowerCase().includes('pendiente')) return 'status-pending';
-    return '';
+  formatClock(date?: Date | string | null): string {
+    if (!date) return 'Sin datos';
+    const parsed = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(parsed.getTime())) return 'Sin datos';
+    return parsed.toLocaleTimeString('es-DO', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  formatDateTime(date?: string | null): string {
+    if (!date) return 'Sin registro';
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return 'Sin registro';
+    return parsed.toLocaleString('es-DO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  syncAge(): string {
+    const date = this.syncStatus()?.lastSyncAt;
+    if (!date) return 'Sin sincronización';
+    const diffSeconds = Math.max(0, Math.floor((this.nowTick() - new Date(date).getTime()) / 1000));
+    if (diffSeconds < 60) return `hace ${diffSeconds} s`;
+    if (diffSeconds < 3600) return `hace ${Math.floor(diffSeconds / 60)} min`;
+    return `hace ${Math.floor(diffSeconds / 3600)} h`;
+  }
+
+  clientSparkline(client: LiveClient, key: 'upload' | 'download'): string {
+    return this.sparklinePath(this.historyByIp.get(client.ip || this.clientKey(client)) || [], key, 92, 28);
+  }
+
+  private refreshSupportingData(): void {
+    this.mt.getStatus().subscribe({
+      next: status => this.status.set(status),
+      error: () => this.status.update(current => ({ ...current, connected: false })),
+    });
+    this.sync.getServerStatus().subscribe({
+      next: status => this.syncStatus.set(status),
+      error: () => this.syncStatus.set(null),
+    });
+  }
+
+  private finishRefresh(success: boolean): void {
+    this.refreshInProgress = false;
+    this.refreshing.set(false);
+    if (success) {
+      this.consecutiveRefreshFailures = 0;
+      this.effectiveRefreshMs.set(this.refreshMs);
+    } else {
+      this.consecutiveRefreshFailures += 1;
+      this.effectiveRefreshMs.set(Math.min(30_000, this.refreshMs * (2 ** Math.min(3, this.consecutiveRefreshFailures))));
+    }
+    this.purgeAlerts();
+    if (!this.paused()) this.startRefreshTimer();
+  }
+
+  private startRefreshTimer(): void {
+    this.stopRefreshTimer();
+    const delay = this.effectiveRefreshMs();
+    this.nextRefreshAt.set(Date.now() + delay);
+    this.refreshTimer = setTimeout(() => this.refresh(), delay);
+  }
+
+  private stopRefreshTimer(): void {
+    if (this.refreshTimer) clearInterval(this.refreshTimer);
+    this.refreshTimer = null;
+  }
+
+  private captureTraffic(clients: LiveClient[]): void {
+    const now = Date.now();
+    for (const client of clients) {
+      const key = client.ip || this.clientKey(client);
+      const history = this.historyByIp.get(key) || [];
+      history.push({ t: now, upload: client.uploadBps, download: client.downloadBps });
+      if (history.length > TRAFFIC_HISTORY_LIMIT) history.splice(0, history.length - TRAFFIC_HISTORY_LIMIT);
+      this.historyByIp.set(key, history);
+    }
+    const selected = this.selectedClient();
+    if (selected) this.selectedHistory.set([...(this.historyByIp.get(selected.ip || this.clientKey(selected)) || [])]);
+  }
+
+  private detectAnomalies(clients: LiveClient[]): void {
+    for (const client of clients) {
+      if (!client.client) continue;
+      const key = client.ip || this.clientKey(client);
+      const name = this.displayName(client);
+      const usage = Math.max(client.downloadPct, client.uploadPct);
+      const wasOnline = this.previousOnline.get(key);
+
+      if (wasOnline === true && !client.isOnline) {
+        this.pushAlert('offline', key, name, 'Perdió presencia en MikroTik');
+      }
+      this.previousOnline.set(key, client.isOnline);
+
+      if (usage > 80) {
+        const ticks = (this.overLimitTicks.get(key) || 0) + 1;
+        this.overLimitTicks.set(key, ticks);
+        if (ticks === 3) this.pushAlert('limit', key, name, `${usage.toFixed(0)}% del plan durante tres lecturas`);
+      } else {
+        this.overLimitTicks.delete(key);
+      }
+
+      const history = this.recentDownload.get(key) || [];
+      const average = history.length ? history.reduce((sum, value) => sum + value, 0) / history.length : 0;
+      if (average > 100_000 && client.downloadBps > average * 5) {
+        this.pushAlert('spike', key, name, `Pico de descarga: ${this.formatBps(client.downloadBps)}`);
+      }
+      history.push(client.downloadBps);
+      if (history.length > 5) history.shift();
+      this.recentDownload.set(key, history);
+    }
+  }
+
+  private pushAlert(kind: LiveAlert['kind'], ip: string, name: string, message: string): void {
+    const key = `${ip}|${kind}`;
+    const now = Date.now();
+    if (now - (this.alertCooldown.get(key) || 0) < 60_000) return;
+    this.alertCooldown.set(key, now);
+    this.alerts.update(alerts => [{ id: ++this.alertId, ts: now, kind, ip, name, message }, ...alerts].slice(0, 30));
+  }
+
+  private purgeAlerts(): void {
+    const cutoff = Date.now() - ALERT_TTL_MS;
+    this.alerts.update(alerts => alerts.filter(alert => alert.ts >= cutoff));
+  }
+
+  private keepSelectedClientFresh(clients: LiveClient[]): void {
+    const selected = this.selectedClient();
+    if (!selected) return;
+    const fresh = clients.find(client => this.clientKey(client) === this.clientKey(selected));
+    if (fresh) this.selectedClient.set(fresh);
+  }
+
+  private loadClientContext(client: LiveClient): void {
+    if (!client.client?.id) {
+      this.equipment.set([]);
+      this.events.set([]);
+      return;
+    }
+    this.contextLoading.set(true);
+    forkJoin({
+      equipment: this.http.get<EquipmentLite[]>(`/clients/${client.client.id}/equipment`).pipe(catchError(() => of([]))),
+      events: this.actions.events(client.client.id).pipe(catchError(() => of([]))),
+    }).subscribe(({ equipment, events }) => {
+      this.equipment.set(equipment);
+      this.events.set((events as BlockEvent[]).slice(0, 8));
+      this.contextLoading.set(false);
+    });
+  }
+
+  private applyAction(action: 'block' | 'moroso' | 'clear'): void {
+    const selected = this.selectedClient();
+    if (!selected?.client?.id || !selected.ip || this.actionLoading()) return;
+    const labels = {
+      block: `¿Desactivar el servicio de ${this.displayName(selected)} y mostrarle solamente el portal de pago?`,
+      moroso: `¿Marcar como moroso a ${this.displayName(selected)}?`,
+      clear: `¿Reactivar el servicio de ${this.displayName(selected)}?`,
+    };
+    if (!confirm(labels[action])) return;
+
+    this.actionLoading.set(true);
+    const reason = action === 'block' ? 'Desactivado manualmente con portal de pago' : action === 'moroso' ? 'Moroso desde monitoreo En vivo' : 'Reactivado desde monitoreo En vivo';
+    this.actions.apply(selected.client.id, action, reason, action === 'block').subscribe({
+      next: result => {
+        this.actionLoading.set(false);
+        if (!result.ok) {
+          this.toast.error(result.error || 'No se pudo completar la acción');
+          return;
+        }
+        const success = action === 'block' ? 'Servicio bloqueado' : action === 'moroso' ? 'Cliente marcado como moroso' : 'Servicio reactivado';
+        this.toast.success(success);
+        this.refresh(true);
+        this.loadClientContext(selected);
+      },
+      error: error => {
+        this.actionLoading.set(false);
+        this.toast.error(error?.error?.error || 'No se pudo completar la acción');
+      },
+    });
+  }
+
+  private patchPaymentPilot(enabled: boolean, enabledAt: string | null): void {
+    const current = this.selectedClient();
+    if (!current?.client) return;
+    const updated: LiveClient = {
+      ...current,
+      client: { ...current.client, paymentPilotEnabled: enabled, paymentPilotEnabledAt: enabledAt },
+    };
+    this.selectedClient.set(updated);
+    this.allClients.update(clients => clients.map(client => this.clientKey(client) === this.clientKey(current) ? updated : client));
+  }
+
+  private compareClients(a: LiveClient, b: LiveClient, sort: SortMode): number {
+    if (sort === 'traffic') return (b.downloadBps + b.uploadBps) - (a.downloadBps + a.uploadBps);
+    if (sort === 'name') return this.displayName(a).localeCompare(this.displayName(b), 'es');
+    if (sort === 'zone') return String(a.client?.zone || '').localeCompare(String(b.client?.zone || ''), 'es');
+    if (sort === 'uptime') return this.uptimeSeconds(b.sessionUptime) - this.uptimeSeconds(a.sessionUptime);
+
+    const priority = (client: LiveClient) => {
+      if (client.syncState === 'missing_ip') return 0;
+      if (!client.isOnline) return 1;
+      if (client.syncState !== 'synced') return 2;
+      if (client.isDisabled || this.isOverdue(client)) return 3;
+      if (Math.max(client.downloadPct, client.uploadPct) >= 70) return 4;
+      return 5;
+    };
+    return priority(a) - priority(b) || (b.downloadBps + b.uploadBps) - (a.downloadBps + a.uploadBps);
+  }
+
+  private uptimeSeconds(value?: string | null): number {
+    if (!value) return 0;
+    const units: Record<string, number> = { w: 604800, d: 86400, h: 3600, m: 60, s: 1 };
+    let total = 0;
+    for (const match of value.matchAll(/(\d+)([wdhms])/g)) total += Number(match[1]) * units[match[2]];
+    return total;
+  }
+
+  private sparklinePath(data: TrafficSample[], key: 'upload' | 'download', width: number, height: number): string {
+    if (data.length < 2) return '';
+    const max = Math.max(...data.map(sample => sample[key]), 1);
+    return data.map((sample, index) => {
+      const x = (index / (data.length - 1)) * width;
+      const y = height - ((sample[key] / max) * (height - 4)) - 2;
+      return `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+  }
+
+  private parseLatency(value: unknown): number | null {
+    const match = String(value || '').match(/[\d.]+/);
+    return match ? Number(match[0]) : null;
+  }
+
+  private uniqueSorted(values: Array<string | null | undefined>): string[] {
+    return [...new Set(values.filter((value): value is string => !!value))].sort((a, b) => a.localeCompare(b, 'es'));
+  }
+
+  private normalize(value: unknown): string {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  }
+
+  private storageGet(key: string): string | null {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+
+  private storageSet(key: string, value: string): void {
+    try { localStorage.setItem(key, value); } catch {}
   }
 }

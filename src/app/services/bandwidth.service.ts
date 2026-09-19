@@ -12,19 +12,8 @@ export interface SpeedResult {
   server?: string;
 }
 
-export interface PingHistory {
-  clientId: number;
-  timestamp: string;
-  status: 'online' | 'offline';
-  successCount: number;
-  totalAttempts: number;
-}
-
 @Injectable({ providedIn: 'root' })
 export class BandwidthService {
-  private readonly SPEED_KEY = 'wishub_speed_history';
-  private readonly PING_KEY = 'wishub_ping_history';
-
   /** Test real con archivos de descarga/subida */
   async runSpeedTest(onProgress?: (phase: string, pct: number) => void): Promise<SpeedResult> {
     const result: SpeedResult = {
@@ -128,51 +117,4 @@ export class BandwidthService {
     return bestSpeed;
   }
 
-  // ─── HISTORY PERSISTENCE ───
-
-  saveSpeedResult(result: SpeedResult) {
-    const history = this.getSpeedHistory();
-    history.unshift(result);
-    // Keep last 500
-    const trimmed = history.slice(0, 500);
-    localStorage.setItem(this.SPEED_KEY, JSON.stringify(trimmed));
-  }
-
-  getSpeedHistory(): SpeedResult[] {
-    try { return JSON.parse(localStorage.getItem(this.SPEED_KEY) || '[]'); }
-    catch { return []; }
-  }
-
-  getClientSpeedHistory(clientId: number): SpeedResult[] {
-    return this.getSpeedHistory().filter(r => r.clientId === clientId);
-  }
-
-  clearSpeedHistory() {
-    localStorage.removeItem(this.SPEED_KEY);
-  }
-
-  savePingResult(p: PingHistory) {
-    const history = this.getPingHistory();
-    history.unshift(p);
-    const trimmed = history.slice(0, 2000);
-    localStorage.setItem(this.PING_KEY, JSON.stringify(trimmed));
-  }
-
-  getPingHistory(): PingHistory[] {
-    try { return JSON.parse(localStorage.getItem(this.PING_KEY) || '[]'); }
-    catch { return []; }
-  }
-
-  getClientPingHistory(clientId: number): PingHistory[] {
-    return this.getPingHistory().filter(p => p.clientId === clientId);
-  }
-
-  getClientUptime(clientId: number, days = 7): number {
-    const history = this.getClientPingHistory(clientId);
-    const cutoff = Date.now() - days * 86400000;
-    const relevant = history.filter(p => new Date(p.timestamp).getTime() > cutoff);
-    if (relevant.length === 0) return 0;
-    const online = relevant.filter(p => p.status === 'online').length;
-    return (online / relevant.length) * 100;
-  }
 }

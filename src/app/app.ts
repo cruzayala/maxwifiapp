@@ -1,4 +1,4 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { RouterOutlet, NavigationEnd, Router } from '@angular/router';
 import { SidebarComponent } from './components/layout/sidebar';
 import { ToastComponent } from './components/toast/toast';
@@ -49,12 +49,14 @@ import { filter } from 'rxjs/operators';
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .global-sync-bar {
-      position: fixed; bottom: -50px; left: 260px; right: 0;
-      height: 44px; background: #0f172a; color: white;
+      position: fixed; top: 74px; right: 18px;
+      min-height: 38px; background: #172331; color: white;
       display: flex; align-items: center; justify-content: center;
-      gap: 10px; font-size: 13px; transition: bottom 0.3s; z-index: 200;
+      gap: 9px; padding: 0 13px; border-radius: 6px; font-size: 12px;
+      box-shadow: 0 8px 20px rgba(16, 24, 40, .18); z-index: 200;
+      opacity: 0; visibility: hidden; transform: translateY(-6px); transition: .2s ease;
     }
-    .global-sync-bar.visible { bottom: 0; }
+    .global-sync-bar.visible { opacity: 1; visibility: visible; transform: translateY(0); }
     .gsync-spinner {
       width: 16px; height: 16px;
       border: 2px solid rgba(255,255,255,0.3); border-top-color: white;
@@ -64,7 +66,7 @@ import { filter } from 'rxjs/operators';
 
     @media (max-width: 1024px) {
       .main-content { margin-left: 0; }
-      .global-sync-bar { left: 0; }
+      .global-sync-bar { top: 66px; right: 10px; max-width: calc(100vw - 20px); }
     }
   `]
 })
@@ -75,6 +77,11 @@ export class App implements OnInit {
   private scheduler = inject(NotificationSchedulerService);
   private config = inject(ConfigService);
   private auth = inject(AuthService);
+  private notificationConfigEffect = effect(() => {
+    if (!this.config.loaded()) return;
+    if (this.config.autoNotifEnabled()) this.scheduler.start();
+    else this.scheduler.stop();
+  });
 
   showLayout = signal(true);
 
@@ -90,9 +97,5 @@ export class App implements OnInit {
       filter(e => e instanceof NavigationEnd)
     ).subscribe(() => this.ui.closeSidebar());
 
-    // Start auto-notification scheduler if enabled
-    if (this.config.autoNotifEnabled()) {
-      this.scheduler.start();
-    }
   }
 }

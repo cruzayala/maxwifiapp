@@ -1,287 +1,253 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
+import { Component, OnInit, computed, inject, signal } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import {
+  LucideAlertTriangle, LucideArrowDownRight, LucideArrowUpRight, LucideBanknote,
+  LucideCalendarRange, LucideChartColumn, LucideCircleCheck, LucideCircleDollarSign,
+  LucideDownload, LucideFileSpreadsheet, LucideGauge, LucideLayers3,
+  LucideMapPin, LucideReceiptText, LucideTrendingUp, LucideUserMinus,
+  LucideUserPlus, LucideUsers, LucideWalletCards,
+} from '@lucide/angular';
+import { RouterLink } from '@angular/router';
 import { NavbarComponent } from '../../components/layout/navbar';
-import { LocalDbService } from '../../services/local-db.service';
-import { ExportService } from '../../services/export.service';
 import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
-import { DecimalPipe } from '@angular/common';
+import { ExportService } from '../../services/export.service';
+import { LocalDbService } from '../../services/local-db.service';
+
+type ReportView = 'overview' | 'revenue' | 'clients' | 'portfolio';
+type PeriodPreset = '3' | '6' | '12' | 'all' | 'custom';
+
+interface TrendPoint {
+  key: string;
+  label: string;
+  billed: number;
+  collected: number;
+  invoices: number;
+}
+
+interface PlanReportRow {
+  plan: string;
+  count: number;
+  pct: number;
+  revenue: number;
+  avgPrice: number;
+}
+
+interface PaymentReportRow {
+  name: string;
+  count: number;
+  total: number;
+  pct: number;
+}
+
+interface ZoneReportRow {
+  zone: string;
+  clients: number;
+  active: number;
+  pending: number;
+  revenue: number;
+}
 
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [NavbarComponent, DecimalPipe],
-  template: `
-    <app-navbar pageTitle="Reportes" />
-
-    <div class="page">
-      <!-- REVENUE SUMMARY -->
-      <div class="section-title">Resumen de Ingresos</div>
-      <div class="stats-row">
-        <div class="stat-box">
-          <span class="stat-lbl">Ingreso Mensual Estimado</span>
-          <span class="stat-val big">RD$ {{ monthlyRevenue() | number:'1.2-2' }}</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-lbl">Precio Promedio</span>
-          <span class="stat-val">RD$ {{ avgPrice() | number:'1.2-2' }}</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-lbl">Precio Minimo</span>
-          <span class="stat-val">RD$ {{ minPrice() | number:'1.2-2' }}</span>
-        </div>
-        <div class="stat-box">
-          <span class="stat-lbl">Precio Maximo</span>
-          <span class="stat-val">RD$ {{ maxPrice() | number:'1.2-2' }}</span>
-        </div>
-      </div>
-
-      <!-- CLIENT BREAKDOWN -->
-      <div class="section-title">Clientes por Estado</div>
-      <div class="breakdown-grid">
-        @for (item of clientsByStatus(); track item.status) {
-          <div class="breakdown-card" [style.border-left-color]="item.color">
-            <span class="bd-count">{{ item.count }}</span>
-            <span class="bd-label">{{ item.status }}</span>
-            <span class="bd-pct">{{ item.pct | number:'1.1-1' }}%</span>
-          </div>
-        }
-      </div>
-
-      <!-- PLANS REPORT -->
-      <div class="report-grid">
-        <div class="card">
-          <div class="card-header">
-            <h3>Clientes por Plan de Internet</h3>
-            <button class="btn-sm" (click)="exportPlansReport()">Exportar CSV</button>
-          </div>
-          <div class="card-body">
-            <table class="report-table">
-              <thead><tr><th>Plan</th><th>Clientes</th><th>%</th><th>Ingreso Mensual</th></tr></thead>
-              <tbody>
-                @for (p of planReport(); track p.plan) {
-                  <tr>
-                    <td class="bold">{{ p.plan }}</td>
-                    <td>{{ p.count }}</td>
-                    <td>{{ p.pct | number:'1.1-1' }}%</td>
-                    <td class="money">RD$ {{ p.revenue | number:'1.2-2' }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h3>Cobranza por Forma de Pago</h3>
-          </div>
-          <div class="card-body">
-            <table class="report-table">
-              <thead><tr><th>Forma de Pago</th><th>Facturas</th><th>Total Cobrado</th></tr></thead>
-              <tbody>
-                @for (fp of paymentReport(); track fp.name) {
-                  <tr>
-                    <td class="bold">{{ fp.name }}</td>
-                    <td>{{ fp.count }}</td>
-                    <td class="money">RD$ {{ fp.total | number:'1.2-2' }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- MOROSOS -->
-      <div class="card morosos-card">
-        <div class="card-header">
-          <h3>Clientes con Pago Pendiente ({{ morosos().length }})</h3>
-          <button class="btn-sm" (click)="exportMorosos()">Exportar CSV</button>
-        </div>
-        <div class="card-body">
-          @if (morosos().length === 0) {
-            <div class="empty-msg">Todos los clientes estan al dia</div>
-          } @else {
-            <table class="report-table">
-              <thead><tr><th>Cliente</th><th>Telefono</th><th>Plan</th><th>Precio</th><th>Fecha Corte</th><th>IP</th></tr></thead>
-              <tbody>
-                @for (c of morosos(); track c.id_servicio) {
-                  <tr>
-                    <td class="bold">{{ c.nombre }}</td>
-                    <td class="mono">{{ c.telefono || '-' }}</td>
-                    <td>{{ c.plan_internet?.nombre || '-' }}</td>
-                    <td class="money">RD$ {{ c.precio_plan }}</td>
-                    <td>{{ c.fecha_corte }}</td>
-                    <td class="mono">{{ c.ip }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          }
-        </div>
-      </div>
-
-      <!-- GRATIS -->
-      @if (gratisClients().length > 0) {
-        <div class="card">
-          <div class="card-header">
-            <h3>Clientes Gratis ({{ gratisClients().length }})</h3>
-          </div>
-          <div class="card-body">
-            <table class="report-table">
-              <thead><tr><th>Cliente</th><th>Telefono</th><th>Plan</th><th>IP</th><th>Fecha Instalacion</th></tr></thead>
-              <tbody>
-                @for (c of gratisClients(); track c.id_servicio) {
-                  <tr>
-                    <td class="bold">{{ c.nombre }}</td>
-                    <td class="mono">{{ c.telefono || '-' }}</td>
-                    <td>{{ c.plan_internet?.nombre || '-' }}</td>
-                    <td class="mono">{{ c.ip }}</td>
-                    <td>{{ c.fecha_instalacion }}</td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-          </div>
-        </div>
-      }
-    </div>
-  `,
-  styles: [`
-    .page { padding: 24px 32px; }
-
-    .section-title { font-size: 16px; font-weight: 700; color: #0f172a; margin: 24px 0 12px; }
-    .section-title:first-child { margin-top: 0; }
-
-    .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 8px; }
-    .stat-box { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px; }
-    .stat-lbl { display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
-    .stat-val { font-size: 20px; font-weight: 800; color: #0f172a; }
-    .stat-val.big { font-size: 28px; color: #6366f1; }
-
-    .breakdown-grid { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
-    .breakdown-card {
-      flex: 1; min-width: 120px; background: white; border: 1px solid #e2e8f0;
-      border-left: 4px solid; border-radius: 10px; padding: 14px 16px; text-align: center;
-    }
-    .bd-count { display: block; font-size: 28px; font-weight: 800; color: #0f172a; }
-    .bd-label { display: block; font-size: 13px; color: #64748b; }
-    .bd-pct { display: block; font-size: 12px; color: #94a3b8; margin-top: 2px; }
-
-    .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-
-    .card { background: white; border: 1px solid #e2e8f0; border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
-    .card-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 16px 20px; border-bottom: 1px solid #f1f5f9;
-    }
-    .card-header h3 { font-size: 15px; font-weight: 600; color: #0f172a; margin: 0; }
-    .card-body { padding: 0; overflow-x: auto; }
-
-    .btn-sm {
-      padding: 6px 14px; border: 1px solid #e2e8f0; border-radius: 8px;
-      background: white; font-size: 12px; color: #6366f1; font-weight: 500;
-      cursor: pointer; transition: all 0.2s;
-    }
-    .btn-sm:hover { background: #6366f1; color: white; border-color: #6366f1; }
-
-    .report-table { width: 100%; border-collapse: collapse; }
-    .report-table th {
-      text-align: left; font-size: 11px; font-weight: 600; color: #64748b;
-      text-transform: uppercase; padding: 10px 16px; background: #f8fafc;
-      border-bottom: 1px solid #e2e8f0;
-    }
-    .report-table td { padding: 10px 16px; font-size: 13px; color: #334155; border-bottom: 1px solid #f1f5f9; }
-    .report-table tr:hover td { background: #fafbfc; }
-    .bold { font-weight: 600; color: #0f172a; }
-    .mono { font-family: 'Courier New', monospace; font-size: 12px; }
-    .money { font-family: 'Courier New', monospace; font-weight: 600; }
-
-    .empty-msg { padding: 30px; text-align: center; color: #94a3b8; }
-
-    @media (max-width: 900px) {
-      .stats-row { grid-template-columns: repeat(2, 1fr); }
-      .report-grid { grid-template-columns: 1fr; }
-    }
-  `]
+  imports: [
+    NavbarComponent, DecimalPipe, FormsModule, RouterLink,
+    LucideAlertTriangle, LucideArrowDownRight, LucideArrowUpRight, LucideBanknote,
+    LucideCalendarRange, LucideChartColumn, LucideCircleCheck, LucideCircleDollarSign,
+    LucideDownload, LucideFileSpreadsheet, LucideGauge, LucideLayers3,
+    LucideMapPin, LucideReceiptText, LucideTrendingUp, LucideUserMinus,
+    LucideUserPlus, LucideUsers, LucideWalletCards,
+  ],
+  templateUrl: './reports.html',
+  styleUrl: './reports.scss',
 })
 export class ReportsComponent implements OnInit {
   private db = inject(LocalDbService);
   private exportSvc = inject(ExportService);
 
+  loading = signal(true);
+  errorMessage = signal('');
+  activeView = signal<ReportView>('overview');
+  lastUpdated = signal(new Date());
+
+  periodPreset: PeriodPreset = '12';
+  dateFrom = '';
+  dateTo = '';
+
+  billed = signal(0);
+  collected = signal(0);
+  collectionRate = signal(0);
+  outstanding = signal(0);
   monthlyRevenue = signal(0);
-  avgPrice = signal(0);
-  minPrice = signal(0);
-  maxPrice = signal(0);
+  avgTicket = signal(0);
+  billedDelta = signal(0);
+  collectedDelta = signal(0);
+  invoiceCount = signal(0);
+  paidInvoiceCount = signal(0);
+  totalClientCount = signal(0);
+  activeClientCount = signal(0);
+  newClientCount = signal(0);
+  cancelledClientCount = signal(0);
+
   clientsByStatus = signal<{ status: string; count: number; pct: number; color: string }[]>([]);
-  planReport = signal<{ plan: string; count: number; pct: number; revenue: number }[]>([]);
-  paymentReport = signal<{ name: string; count: number; total: number }[]>([]);
+  planReport = signal<PlanReportRow[]>([]);
+  paymentReport = signal<PaymentReportRow[]>([]);
+  zoneReport = signal<ZoneReportRow[]>([]);
+  trend = signal<TrendPoint[]>([]);
   morosos = signal<WispHubClient[]>([]);
   gratisClients = signal<WispHubClient[]>([]);
+  dataQuality = signal<{ missingPhone: number; missingIp: number; missingPlan: number; missingZone: number }>({ missingPhone: 0, missingIp: 0, missingPlan: 0, missingZone: 0 });
+
+  maxTrendValue = computed(() => Math.max(1, ...this.trend().flatMap((point) => [point.billed, point.collected])));
+  maxPaymentValue = computed(() => Math.max(1, ...this.paymentReport().map((item) => item.total)));
+  topPlan = computed<PlanReportRow | null>(() => this.planReport()[0] || null);
+  topZone = computed<ZoneReportRow | null>(() => [...this.zoneReport()].sort((a, b) => b.revenue - a.revenue)[0] || null);
 
   private clients: WispHubClient[] = [];
+  private invoices: Invoice[] = [];
 
   async ngOnInit() {
-    const clients = await this.db.getClients();
-    const invoices = await this.db.getInvoices();
-    this.clients = clients;
-    this.computeAll(clients, invoices);
+    this.loading.set(true);
+    this.errorMessage.set('');
+    try {
+      const [clients, invoices] = await Promise.all([this.db.getClients(), this.db.getInvoices()]);
+      this.clients = clients;
+      this.invoices = invoices;
+      this.recompute();
+    } catch (error) {
+      this.errorMessage.set(error instanceof Error ? error.message : 'No fue posible preparar los reportes.');
+    } finally {
+      this.loading.set(false);
+    }
   }
 
-  computeAll(clients: WispHubClient[], invoices: Invoice[]) {
-    const prices = clients.map(c => parseFloat(c.precio_plan || '0'));
-    const activePrices = prices.filter(p => p > 0);
+  setView(view: ReportView) {
+    this.activeView.set(view);
+  }
 
-    this.monthlyRevenue.set(prices.reduce((a, b) => a + b, 0));
-    this.avgPrice.set(activePrices.length ? activePrices.reduce((a, b) => a + b, 0) / activePrices.length : 0);
-    this.minPrice.set(activePrices.length ? Math.min(...activePrices) : 0);
-    this.maxPrice.set(activePrices.length ? Math.max(...activePrices) : 0);
+  onPeriodChange() {
+    if (this.periodPreset !== 'custom') {
+      this.dateFrom = '';
+      this.dateTo = '';
+      this.recompute();
+    }
+  }
 
-    // By status
-    const statusColors: Record<string, string> = { Activo: '#22c55e', Suspendido: '#ef4444', Cortado: '#dc2626', Gratis: '#3b82f6', Retirado: '#94a3b8' };
-    const statusMap = new Map<string, number>();
-    clients.forEach(c => statusMap.set(c.estado, (statusMap.get(c.estado) || 0) + 1));
-    this.clientsByStatus.set([...statusMap.entries()].sort((a, b) => b[1] - a[1]).map(([status, count]) => ({
-      status, count, pct: (count / clients.length) * 100, color: statusColors[status] || '#94a3b8'
-    })));
+  applyCustomPeriod() {
+    if (this.dateFrom && this.dateTo) this.recompute();
+  }
 
-    // By plan
-    const planMap = new Map<string, { count: number; revenue: number }>();
-    clients.forEach(c => {
-      const name = c.plan_internet?.nombre || 'Sin plan';
-      const entry = planMap.get(name) || { count: 0, revenue: 0 };
-      entry.count++;
-      entry.revenue += parseFloat(c.precio_plan || '0');
-      planMap.set(name, entry);
+  periodLabel(): string {
+    if (this.periodPreset === 'all') return 'Todo el historial';
+    if (this.periodPreset === 'custom') return this.dateFrom && this.dateTo ? `${this.dateFrom} a ${this.dateTo}` : 'Rango personalizado';
+    return `Últimos ${this.periodPreset} meses`;
+  }
+
+  recompute() {
+    const { start, end, previousStart, previousEnd } = this.getPeriodRange();
+    const validInvoices = this.invoices.filter((invoice) => !this.isClosedWithoutPayment(invoice));
+    const periodInvoices = validInvoices.filter((invoice) => this.dateInside(this.invoiceDate(invoice), start, end));
+    const previousInvoices = previousStart && previousEnd
+      ? validInvoices.filter((invoice) => this.dateInside(this.invoiceDate(invoice), previousStart, previousEnd))
+      : [];
+
+    const billed = periodInvoices.reduce((sum, invoice) => sum + (invoice.total || 0), 0);
+    const collected = periodInvoices.reduce((sum, invoice) => sum + this.collectedAmount(invoice), 0);
+    const previousBilled = previousInvoices.reduce((sum, invoice) => sum + (invoice.total || 0), 0);
+    const previousCollected = previousInvoices.reduce((sum, invoice) => sum + this.collectedAmount(invoice), 0);
+    const paid = periodInvoices.filter((invoice) => this.isPaid(invoice));
+
+    this.billed.set(billed);
+    this.collected.set(collected);
+    this.collectionRate.set(billed ? Math.min(100, (collected / billed) * 100) : 0);
+    this.billedDelta.set(this.percentDelta(billed, previousBilled));
+    this.collectedDelta.set(this.percentDelta(collected, previousCollected));
+    this.invoiceCount.set(periodInvoices.length);
+    this.paidInvoiceCount.set(paid.length);
+    this.avgTicket.set(paid.length ? collected / paid.length : 0);
+
+    const activeClients = this.clients.filter((client) => client.estado?.toLowerCase() === 'activo');
+    const pendingClients = activeClients.filter((client) => client.estado_facturas?.toLowerCase().includes('pendiente'));
+    this.totalClientCount.set(this.clients.length);
+    this.activeClientCount.set(activeClients.length);
+    this.monthlyRevenue.set(activeClients.reduce((sum, client) => sum + this.moneyValue(client.precio_plan), 0));
+    this.outstanding.set(pendingClients.reduce((sum, client) => {
+      const clientInvoices = validInvoices.filter((invoice) => !this.isPaid(invoice) && this.invoiceBelongsToClient(invoice, client));
+      const clientDebt = clientInvoices.reduce((invoiceSum, invoice) => invoiceSum + this.balanceAmount(invoice), 0);
+      return sum + (clientDebt || this.moneyValue(client.precio_plan));
+    }, 0));
+    this.newClientCount.set(this.clients.filter((client) => this.dateInside(this.parseDate(client.fecha_instalacion), start, end)).length);
+    this.cancelledClientCount.set(this.clients.filter((client) => this.dateInside(this.parseDate(client.fecha_cancelacion), start, end)).length);
+
+    this.computeClientStatus();
+    this.computePlans(activeClients);
+    this.computePayments(periodInvoices);
+    this.computeZones();
+    this.computeTrend(periodInvoices, start, end);
+    this.morosos.set(pendingClients);
+    this.gratisClients.set(this.clients.filter((client) => client.estado?.toLowerCase() === 'gratis'));
+    this.dataQuality.set({
+      missingPhone: this.clients.filter((client) => !client.telefono?.trim()).length,
+      missingIp: this.clients.filter((client) => !client.ip?.trim()).length,
+      missingPlan: this.clients.filter((client) => !client.plan_internet?.nombre).length,
+      missingZone: this.clients.filter((client) => !client.zona?.nombre).length,
     });
-    this.planReport.set([...planMap.entries()].sort((a, b) => b[1].count - a[1].count).map(([plan, d]) => ({
-      plan, count: d.count, pct: (d.count / clients.length) * 100, revenue: d.revenue
-    })));
+    this.lastUpdated.set(new Date());
+  }
 
-    // Payment methods
-    const fpMap = new Map<string, { count: number; total: number }>();
-    invoices.filter(i => i.estado?.toLowerCase() === 'pagada').forEach(i => {
-      const name = i.forma_pago?.nombre || 'Sin definir';
-      const entry = fpMap.get(name) || { count: 0, total: 0 };
-      entry.count++;
-      entry.total += i.total_cobrado || 0;
-      fpMap.set(name, entry);
-    });
-    this.paymentReport.set([...fpMap.entries()].sort((a, b) => b[1].total - a[1].total).map(([name, d]) => ({
-      name, count: d.count, total: d.total
-    })));
+  trendHeight(value: number): number {
+    return value > 0 ? Math.max(3, (value / this.maxTrendValue()) * 100) : 0;
+  }
 
-    // Morosos
-    this.morosos.set(clients.filter(c => c.estado_facturas?.toLowerCase().includes('pendiente') && c.estado?.toLowerCase() === 'activo'));
-    this.gratisClients.set(clients.filter(c => c.estado?.toLowerCase() === 'gratis'));
+  paymentWidth(value: number): number {
+    return value > 0 ? Math.max(2, (value / this.maxPaymentValue()) * 100) : 0;
+  }
+
+  statusWidth(pct: number): number {
+    return Math.max(0, Math.min(100, pct));
+  }
+
+  deltaClass(delta: number): string {
+    if (delta > 0.05) return 'positive';
+    if (delta < -0.05) return 'negative';
+    return 'neutral';
+  }
+
+  exportExecutiveSummary() {
+    this.exportSvc.exportCSV([
+      { metric: 'Periodo', value: this.periodLabel() },
+      { metric: 'Facturado', value: this.billed() },
+      { metric: 'Cobrado', value: this.collected() },
+      { metric: 'Tasa de cobro', value: this.collectionRate() },
+      { metric: 'Cartera pendiente actual', value: this.outstanding() },
+      { metric: 'MRR estimado activo', value: this.monthlyRevenue() },
+      { metric: 'Clientes activos', value: this.activeClientCount() },
+      { metric: 'Clientes morosos', value: this.morosos().length },
+    ], 'reporte_ejecutivo', [
+      { key: 'metric', label: 'Indicador' },
+      { key: 'value', label: 'Valor' },
+    ]);
   }
 
   exportPlansReport() {
     this.exportSvc.exportCSV(this.planReport(), 'reporte_planes', [
       { key: 'plan', label: 'Plan' },
-      { key: 'count', label: 'Clientes' },
-      { key: 'pct', label: '% del Total' },
-      { key: 'revenue', label: 'Ingreso Mensual' },
+      { key: 'count', label: 'Clientes activos' },
+      { key: 'pct', label: '% de activos' },
+      { key: 'avgPrice', label: 'Precio promedio' },
+      { key: 'revenue', label: 'Ingreso mensual' },
+    ]);
+  }
+
+  exportZonesReport() {
+    this.exportSvc.exportCSV(this.zoneReport(), 'reporte_zonas', [
+      { key: 'zone', label: 'Zona' },
+      { key: 'clients', label: 'Clientes' },
+      { key: 'active', label: 'Activos' },
+      { key: 'pending', label: 'Morosos' },
+      { key: 'revenue', label: 'Ingreso mensual activo' },
     ]);
   }
 
@@ -294,5 +260,206 @@ export class ReportsComponent implements OnInit {
       { key: 'fecha_corte', label: 'Fecha Corte' },
       { key: 'ip', label: 'IP' },
     ]);
+  }
+
+  private computeClientStatus() {
+    const colors: Record<string, string> = { Activo: '#159765', Suspendido: '#dd4a55', Cortado: '#b93742', Gratis: '#3379bd', Retirado: '#8392a0' };
+    const statusMap = new Map<string, number>();
+    for (const client of this.clients) {
+      const status = client.estado || 'Sin estado';
+      statusMap.set(status, (statusMap.get(status) || 0) + 1);
+    }
+    this.clientsByStatus.set([...statusMap.entries()].sort((a, b) => b[1] - a[1]).map(([status, count]) => ({
+      status,
+      count,
+      pct: this.clients.length ? (count / this.clients.length) * 100 : 0,
+      color: colors[status] || '#8392a0',
+    })));
+  }
+
+  private computePlans(activeClients: WispHubClient[]) {
+    const map = new Map<string, { count: number; revenue: number }>();
+    for (const client of activeClients) {
+      const plan = client.plan_internet?.nombre || 'Sin plan';
+      const entry = map.get(plan) || { count: 0, revenue: 0 };
+      entry.count++;
+      entry.revenue += this.moneyValue(client.precio_plan);
+      map.set(plan, entry);
+    }
+    this.planReport.set([...map.entries()].sort((a, b) => b[1].revenue - a[1].revenue).map(([plan, item]) => ({
+      plan,
+      count: item.count,
+      pct: activeClients.length ? (item.count / activeClients.length) * 100 : 0,
+      revenue: item.revenue,
+      avgPrice: item.count ? item.revenue / item.count : 0,
+    })));
+  }
+
+  private computePayments(periodInvoices: Invoice[]) {
+    const map = new Map<string, { count: number; total: number }>();
+    const withCollection = periodInvoices.filter((invoice) => this.collectedAmount(invoice) > 0);
+    for (const invoice of withCollection) {
+      const name = invoice.forma_pago?.nombre || 'Sin definir';
+      const entry = map.get(name) || { count: 0, total: 0 };
+      entry.count++;
+      entry.total += this.collectedAmount(invoice);
+      map.set(name, entry);
+    }
+    const total = withCollection.reduce((sum, invoice) => sum + this.collectedAmount(invoice), 0);
+    this.paymentReport.set([...map.entries()].sort((a, b) => b[1].total - a[1].total).map(([name, item]) => ({
+      name,
+      count: item.count,
+      total: item.total,
+      pct: total ? (item.total / total) * 100 : 0,
+    })));
+  }
+
+  private computeZones() {
+    const map = new Map<string, ZoneReportRow>();
+    for (const client of this.clients) {
+      const zone = client.zona?.nombre || 'Sin zona';
+      const entry = map.get(zone) || { zone, clients: 0, active: 0, pending: 0, revenue: 0 };
+      entry.clients++;
+      if (client.estado?.toLowerCase() === 'activo') {
+        entry.active++;
+        entry.revenue += this.moneyValue(client.precio_plan);
+        if (client.estado_facturas?.toLowerCase().includes('pendiente')) entry.pending++;
+      }
+      map.set(zone, entry);
+    }
+    this.zoneReport.set([...map.values()].sort((a, b) => b.revenue - a.revenue));
+  }
+
+  private computeTrend(periodInvoices: Invoice[], rangeStart: Date | null, rangeEnd: Date): void {
+    const datedInvoices = periodInvoices.filter((invoice) => this.invoiceDate(invoice));
+    let firstMonth = rangeStart ? new Date(rangeStart.getFullYear(), rangeStart.getMonth(), 1) : null;
+    if (!firstMonth && datedInvoices.length) {
+      const earliest = datedInvoices.map((invoice) => this.invoiceDate(invoice)!).sort((a, b) => a.getTime() - b.getTime())[0];
+      firstMonth = new Date(earliest.getFullYear(), earliest.getMonth(), 1);
+    }
+    if (!firstMonth) firstMonth = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth(), 1);
+
+    const maxMonths = 24;
+    const months: TrendPoint[] = [];
+    let cursor = new Date(firstMonth);
+    while (cursor <= rangeEnd && months.length < maxMonths) {
+      const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+      months.push({ key, label: cursor.toLocaleDateString('es-DO', { month: 'short', year: '2-digit' }).replace('.', ''), billed: 0, collected: 0, invoices: 0 });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+    if (cursor <= rangeEnd) {
+      const start = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() - maxMonths + 1, 1);
+      this.computeTrend(periodInvoices.filter((invoice) => {
+        const date = this.invoiceDate(invoice);
+        return date && date >= start;
+      }), start, rangeEnd);
+      return;
+    }
+
+    const byKey = new Map(months.map((month) => [month.key, month]));
+    for (const invoice of datedInvoices) {
+      const date = this.invoiceDate(invoice)!;
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const point = byKey.get(key);
+      if (!point) continue;
+      point.billed += invoice.total || 0;
+      point.collected += this.collectedAmount(invoice);
+      point.invoices++;
+    }
+    this.trend.set(months);
+  }
+
+  private getPeriodRange(): { start: Date | null; end: Date; previousStart: Date | null; previousEnd: Date | null } {
+    const now = new Date();
+    const end = this.periodPreset === 'custom' && this.dateTo ? this.endOfDay(this.parseDate(this.dateTo) || now) : now;
+    if (this.periodPreset === 'all') return { start: null, end, previousStart: null, previousEnd: null };
+
+    let start: Date;
+    if (this.periodPreset === 'custom' && this.dateFrom) {
+      start = this.parseDate(this.dateFrom) || new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    } else {
+      const months = Number(this.periodPreset) || 12;
+      start = new Date(now.getFullYear(), now.getMonth() - months + 1, 1);
+    }
+    const duration = Math.max(1, end.getTime() - start.getTime() + 1);
+    const previousEnd = new Date(start.getTime() - 1);
+    const previousStart = new Date(previousEnd.getTime() - duration + 1);
+    return { start, end, previousStart, previousEnd };
+  }
+
+  private invoiceDate(invoice: Invoice): Date | null {
+    return this.parseDate(invoice.fecha_emision);
+  }
+
+  private dateInside(date: Date | null, start: Date | null, end: Date): boolean {
+    return Boolean(date && (!start || date >= start) && date <= end);
+  }
+
+  private parseDate(value: string | null | undefined): Date | null {
+    if (!value) return null;
+    const text = String(value).trim();
+    const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+    const latin = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (latin) return new Date(Number(latin[3]), Number(latin[2]) - 1, Number(latin[1]));
+    const date = new Date(text);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  private endOfDay(date: Date): Date {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+  }
+
+  private isClosedWithoutPayment(invoice: Invoice): boolean {
+    const status = (invoice.estado || '').toLowerCase();
+    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer');
+  }
+
+  private isPaid(invoice: Invoice): boolean {
+    if (this.isClosedWithoutPayment(invoice)) return false;
+    const status = (invoice.estado || '').toLowerCase();
+    if (status.includes('pendiente')) return false;
+    if (status.includes('pagad')) return true;
+    return Boolean(invoice.fecha_pago) && (invoice.total || 0) > 0 && (invoice.total_cobrado || 0) >= (invoice.total || 0) - 0.01;
+  }
+
+  private balanceAmount(invoice: Invoice): number {
+    if (this.isPaid(invoice) || this.isClosedWithoutPayment(invoice)) return 0;
+    const status = (invoice.estado || '').toLowerCase();
+    if (status.includes('pendiente')) {
+      const explicitBalance = Number(invoice.saldo || 0);
+      return explicitBalance > 0 ? explicitBalance : Math.max(invoice.total || 0, 0);
+    }
+    return Math.max(Number(invoice.saldo || 0), (invoice.total || 0) - (invoice.total_cobrado || 0), 0);
+  }
+
+  private invoiceBelongsToClient(invoice: Invoice, client: WispHubClient): boolean {
+    return Boolean(
+      invoice.articulos?.some((article) => article.servicio?.id_servicio === client.id_servicio) ||
+      (invoice.cliente?.nombre && invoice.cliente.nombre.toLowerCase() === client.nombre?.toLowerCase()) ||
+      (invoice.cliente?.usuario && invoice.cliente.usuario.toLowerCase() === client.usuario?.toLowerCase())
+    );
+  }
+
+  private collectedAmount(invoice: Invoice): number {
+    const status = (invoice.estado || '').toLowerCase();
+    if (status.includes('pendiente')) {
+      const total = Math.max(invoice.total || 0, 0);
+      const explicitBalance = Number(invoice.saldo || 0);
+      return explicitBalance > 0 ? Math.max(0, total - explicitBalance) : 0;
+    }
+    return Math.max(0, invoice.total_cobrado || 0);
+  }
+
+  private moneyValue(value: string | number | null | undefined): number {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+    const normalized = String(value || '').replace(/[^0-9.-]/g, '');
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  private percentDelta(current: number, previous: number): number {
+    if (!previous) return current ? 100 : 0;
+    return ((current - previous) / previous) * 100;
   }
 }

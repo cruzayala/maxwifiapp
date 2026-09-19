@@ -1,0 +1,34 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    volumes:
+      - genieacs-mongodb:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  genieacs:
+    build:
+      context: .
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    env_file:
+      - .env.local
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://mongodb:27017/genieacs
+      GENIEACS_CWMP_INTERFACE: 0.0.0.0
+      GENIEACS_CWMP_WORKER_PROCESSES: 2
+      GENIEACS_NBI_INTERFACE: 0.0.0.0
+      GENIEACS_NBI_WORKER_PROCESSES: 1
+    ports:
+      - "10.254.250.2:7547:7547"
+      - "127.0.0.1:7557:7557"
+
+volumes:
+  genieacs-mongodb:

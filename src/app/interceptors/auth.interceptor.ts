@@ -11,7 +11,6 @@ const PUBLIC_PATHS = [
   '/auth/login',
   '/auth/check',
   '/health',
-  '/sys/info',
   '/captive',
   '/survey/landing',
   '/survey/submit',

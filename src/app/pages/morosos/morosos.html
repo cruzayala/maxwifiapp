@@ -1,0 +1,116 @@
+<app-navbar pageTitle="Cobranza y morosos" />
+
+<main class="collections-page">
+  @if (loading()) {
+    <section class="state-panel" aria-live="polite">
+      <span class="loader"></span>
+      <div><strong>Preparando cartera</strong><p>Consolidando clientes y facturas pendientes.</p></div>
+    </section>
+  } @else if (errorMessage()) {
+    <section class="state-panel error" role="alert">
+      <svg lucideAlertTriangle size="22"></svg>
+      <div><strong>No se pudo cargar la cobranza</strong><p>{{ errorMessage() }}</p></div>
+    </section>
+  } @else {
+    <section class="kpi-strip" aria-label="Resumen de cobranza">
+      <article class="kpi-item debtors">
+        <span class="kpi-icon"><svg lucideUsers size="19"></svg></span>
+        <div><small>Clientes en mora</small><strong>{{ totalMorosos() }}</strong><p>{{ riesgoAlto() }} requieren prioridad</p></div>
+      </article>
+      <article class="kpi-item amount">
+        <span class="kpi-icon"><svg lucideBanknote size="19"></svg></span>
+        <div><small>Saldo por cobrar</small><strong>RD$ {{ montoTotalPendiente() | number:'1.2-2' }}</strong><p>{{ totalFacturasPendientes() }} facturas abiertas</p></div>
+      </article>
+      <article class="kpi-item rate">
+        <span class="kpi-icon"><svg lucideCircleCheck size="19"></svg></span>
+        <div><small>Cartera al día</small><strong>{{ tasaCobro() | number:'1.1-1' }}%</strong><p>de clientes activos</p></div>
+      </article>
+      <article class="kpi-item overdue">
+        <span class="kpi-icon"><svg lucideCalendarClock size="19"></svg></span>
+        <div><small>Promedio de mora</small><strong>{{ promedioVencido() | number:'1.0-0' }} días</strong><p>{{ totalContactables() }} con teléfono</p></div>
+      </article>
+    </section>
+
+    <section class="risk-section" aria-labelledby="risk-title">
+      <header class="section-heading">
+        <div><span>Prioridad de gestión</span><h2 id="risk-title">Distribución de la cartera</h2></div>
+        @if (riskFilter) { <button type="button" class="text-button" (click)="riskFilter = ''; filter()">Ver todos</button> }
+      </header>
+      <div class="risk-selector">
+        <button type="button" class="risk-option high" [class.active]="riskFilter === 'alto'" [attr.aria-pressed]="riskFilter === 'alto'" (click)="filterByRisk('alto')">
+          <span class="risk-top"><b>Alta</b><strong>{{ riesgoAlto() }}</strong></span>
+          <span class="risk-amount">RD$ {{ riskAmount('alto') | number:'1.2-2' }}</span>
+          <span class="risk-note">Más de 15 días vencido</span>
+          <span class="risk-track"><i [style.width.%]="riskShare('alto')"></i></span>
+        </button>
+        <button type="button" class="risk-option medium" [class.active]="riskFilter === 'medio'" [attr.aria-pressed]="riskFilter === 'medio'" (click)="filterByRisk('medio')">
+          <span class="risk-top"><b>Media</b><strong>{{ riesgoMedio() }}</strong></span>
+          <span class="risk-amount">RD$ {{ riskAmount('medio') | number:'1.2-2' }}</span>
+          <span class="risk-note">Entre 6 y 15 días</span>
+          <span class="risk-track"><i [style.width.%]="riskShare('medio')"></i></span>
+        </button>
+        <button type="button" class="risk-option low" [class.active]="riskFilter === 'bajo'" [attr.aria-pressed]="riskFilter === 'bajo'" (click)="filterByRisk('bajo')">
+          <span class="risk-top"><b>Reciente</b><strong>{{ riesgoBajo() }}</strong></span>
+          <span class="risk-amount">RD$ {{ riskAmount('bajo') | number:'1.2-2' }}</span>
+          <span class="risk-note">Hasta 5 días vencido</span>
+          <span class="risk-track"><i [style.width.%]="riskShare('bajo')"></i></span>
+        </button>
+      </div>
+    </section>
+
+    <section class="collection-workspace" aria-labelledby="queue-title">
+      <header class="workspace-header">
+        <div><span>Seguimiento operativo</span><h2 id="queue-title">Cola de cobranza</h2></div>
+        <div class="workspace-actions">
+          <button type="button" class="action-button secondary" (click)="exportMorosos()"><svg lucideDownload size="16"></svg><span>Exportar</span></button>
+          <a routerLink="/whatsapp" class="action-button primary"><svg lucideMessageCircle size="16"></svg><span>Gestionar cobros</span></a>
+        </div>
+      </header>
+
+      <div class="filters">
+        <label class="search-field">
+          <svg lucideSearch size="17"></svg>
+          <input type="search" placeholder="Buscar cliente, usuario, IP o teléfono" [(ngModel)]="searchTerm" (input)="filter()" />
+        </label>
+        <label class="select-field"><svg lucideSlidersHorizontal size="16"></svg><select [(ngModel)]="riskFilter" (change)="filter()"><option value="">Todos los riesgos</option><option value="alto">Riesgo alto</option><option value="medio">Riesgo medio</option><option value="bajo">Riesgo reciente</option></select></label>
+        <label class="select-field"><svg lucidePhone size="16"></svg><select [(ngModel)]="contactFilter" (change)="filter()"><option value="">Todos los contactos</option><option value="with-phone">Con teléfono</option><option value="without-phone">Sin teléfono</option></select></label>
+        <label class="select-field"><svg lucideFileText size="16"></svg><select [(ngModel)]="sortBy" (change)="filter()"><option value="priority">Prioridad</option><option value="amount">Mayor deuda</option><option value="invoices">Más facturas</option><option value="name">Nombre A-Z</option></select></label>
+        <button type="button" class="reset-button" (click)="resetFilters()" title="Limpiar filtros"><svg lucideRotateCcw size="16"></svg><span>Limpiar</span></button>
+      </div>
+
+      <div class="visible-summary" aria-live="polite">
+        <span><b>{{ filtered().length }}</b> de {{ totalMorosos() }} clientes</span>
+        <span>Saldo visible <strong>RD$ {{ visibleAmount() | number:'1.2-2' }}</strong></span>
+      </div>
+
+      @if (filtered().length) {
+        <div class="table-wrap">
+          <table class="collection-table">
+            <thead><tr><th>Cliente</th><th>Contacto</th><th>Servicio</th><th>Deuda</th><th>Mora</th><th>Riesgo</th><th>Corte</th><th aria-label="Abrir"></th></tr></thead>
+            <tbody>
+              @for (item of filtered(); track item.client.id_servicio) {
+                <tr>
+                  <td data-label="Cliente"><div class="client-cell"><span class="client-avatar">{{ initials(item.client.nombre) }}</span><div><a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a><small>{{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small></div></div></td>
+                  <td data-label="Contacto">@if (item.client.telefono) { <span class="contact-ok"><svg lucidePhone size="14"></svg>{{ item.client.telefono }}</span> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
+                  <td data-label="Servicio"><div class="stack"><strong>{{ item.client.plan_internet?.nombre || '-' }}</strong><small>{{ item.client.ip || 'Sin IP' }}</small></div></td>
+                  <td data-label="Deuda"><div class="stack debt"><strong>RD$ {{ item.montoTotal | number:'1.2-2' }}</strong><small>{{ item.facturasPendientes }} {{ item.facturasPendientes === 1 ? 'factura' : 'facturas' }}</small></div></td>
+                  <td data-label="Mora"><span class="days" [class]="'days-' + item.riesgo">{{ item.diasVencido }} días</span></td>
+                  <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ item.riesgo === 'bajo' ? 'RECIENTE' : (item.riesgo | uppercase) }}</span></td>
+                  <td data-label="Corte">{{ item.client.fecha_corte || '-' }}</td>
+                  <td data-label="Detalle"><a [routerLink]="['/clients', item.client.id_servicio]" class="row-action" [attr.aria-label]="'Abrir ' + item.client.nombre"><svg lucideArrowUpRight size="17"></svg></a></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <div class="empty-state">
+          <span><svg lucideCircleCheck size="26"></svg></span>
+          <h3>{{ totalMorosos() ? 'No hay coincidencias' : 'Cartera al día' }}</h3>
+          <p>{{ totalMorosos() ? 'Ajusta la búsqueda o limpia los filtros activos.' : 'No hay clientes activos con facturas pendientes.' }}</p>
+          @if (totalMorosos()) { <button type="button" (click)="resetFilters()">Limpiar filtros</button> }
+        </div>
+      }
+    </section>
+  }
+</main>

@@ -8,6 +8,7 @@ import { DbService } from '../../services/db.service';
 import { FormsModule } from '@angular/forms';
 import { DecimalPipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { firstValueFrom } from 'rxjs';
 
 @Component({
   selector: 'app-bandwidth',
@@ -22,7 +23,7 @@ import { RouterLink } from '@angular/router';
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         <div>
           <strong>Sobre este modulo</strong>
-          <p>El speedtest mide la velocidad real desde este dispositivo (PC/celular/tablet del tecnico). Ejecutalo desde la ubicacion del cliente para medir su velocidad real. Historial se guarda localmente.</p>
+          <p>El speedtest mide la velocidad real desde este dispositivo (PC/celular/tablet del tecnico). Ejecutalo desde la ubicacion del cliente para medir su velocidad real. El historial queda guardado en SQLite.</p>
         </div>
       </div>
 
@@ -128,9 +129,6 @@ import { RouterLink } from '@angular/router';
       <div class="card">
         <div class="card-head">
           <h3>Historial de Tests ({{ history().length }})</h3>
-          @if (history().length > 0) {
-            <button class="btn-sm" (click)="clearHistory()">Limpiar</button>
-          }
         </div>
 
         @if (history().length === 0) {
@@ -310,7 +308,21 @@ export class BandwidthComponent implements OnInit {
   async ngOnInit() {
     const clients = await this.db.getClients();
     this.clients.set(clients.filter(c => c.estado?.toLowerCase() === 'activo'));
-    this.history.set(this.bandwidth.getSpeedHistory());
+    try {
+      const records = await firstValueFrom(this.serverDb.getSpeedTests(undefined, 500));
+      this.history.set(records.map(record => ({
+        clientId: record.idServicio,
+        clientName: record.clientName,
+        clientIp: record.clientIp,
+        downloadMbps: record.downloadMbps,
+        uploadMbps: record.uploadMbps,
+        pingMs: record.pingMs,
+        jitterMs: record.jitterMs,
+        timestamp: record.createdAt || new Date().toISOString(),
+      })));
+    } catch {
+      this.toast.error('No se pudo cargar el historial de velocidad desde SQLite');
+    }
     this.computeCapacity();
   }
 
@@ -368,10 +380,7 @@ export class BandwidthComponent implements OnInit {
           result.clientIp = c.ip;
         }
       }
-      this.bandwidth.saveSpeedResult(result);
-
-      // Save to server DB for history across devices
-      this.serverDb.logSpeedTest({
+      const saved = await firstValueFrom(this.serverDb.logSpeedTest({
         idServicio: result.clientId,
         clientName: result.clientName,
         clientIp: result.clientIp,
@@ -379,9 +388,9 @@ export class BandwidthComponent implements OnInit {
         uploadMbps: result.uploadMbps,
         pingMs: result.pingMs,
         jitterMs: result.jitterMs,
-      }).subscribe({ error: () => {} });
-
-      this.history.set(this.bandwidth.getSpeedHistory());
+      }));
+      result.timestamp = saved.createdAt || result.timestamp;
+      this.history.update(history => [result, ...history].slice(0, 500));
 
       this.toast.success(`Test completado: ${result.downloadMbps.toFixed(1)} / ${result.uploadMbps.toFixed(1)} Mbps`);
     } catch (e: any) {
@@ -391,13 +400,6 @@ export class BandwidthComponent implements OnInit {
     this.testing.set(false);
     this.phase.set('idle');
     this.progress.set(0);
-  }
-
-  clearHistory() {
-    if (!confirm('Eliminar todo el historial de tests?')) return;
-    this.bandwidth.clearSpeedHistory();
-    this.history.set([]);
-    this.toast.info('Historial limpiado');
   }
 
   formatDate(iso: string): string {

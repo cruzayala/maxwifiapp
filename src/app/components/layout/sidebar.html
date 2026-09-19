@@ -1,0 +1,80 @@
+<aside class="sidebar" [class.open]="isOpen()" aria-label="Navegacion principal">
+  <div class="sidebar-brand">
+    <div class="brand-mark" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div class="brand-copy">
+      <strong>ISP <span>MAX</span></strong>
+      <small>Centro de control</small>
+    </div>
+    <button class="close-btn" type="button" aria-label="Cerrar menu" title="Cerrar menu" (click)="closeSidebar()">
+      <svg lucideX size="20"></svg>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <p class="nav-eyebrow">Modulos</p>
+
+    @for (group of groups; track group.id) {
+      @if (visibleItems(group).length) {
+        <details
+          class="nav-group"
+          name="isp-max-navigation"
+          [attr.open]="openGroup() === group.id ? '' : null"
+          [class.expanded]="openGroup() === group.id"
+          [class.contains-active]="groupHasActiveItem(group)"
+          (toggle)="onGroupToggle(group.id, $event)"
+        >
+          <summary
+            class="group-trigger"
+            [attr.aria-expanded]="openGroup() === group.id"
+            [attr.aria-controls]="'menu-group-' + group.id"
+          >
+            <span class="group-icon" aria-hidden="true">
+              @switch (group.id) {
+                @case ('operations') { <svg lucideLayoutDashboard size="19"></svg> }
+                @case ('customers') { <svg lucideUsersRound size="19"></svg> }
+                @case ('network') { <svg lucideNetwork size="19"></svg> }
+                @case ('communications') { <svg lucideMessagesSquare size="19"></svg> }
+                @case ('administration') { <svg lucideBriefcaseBusiness size="19"></svg> }
+                @case ('system') { <svg lucideSettings size="19"></svg> }
+              }
+            </span>
+            <span class="group-copy">
+              <strong>{{ group.label }}</strong>
+              <small>{{ group.description }}</small>
+            </span>
+            <svg class="group-chevron" lucideChevronDown size="17" aria-hidden="true"></svg>
+          </summary>
+
+          @if (openGroup() === group.id) {
+            <div class="group-panel" [id]="'menu-group-' + group.id">
+              @for (item of visibleItems(group); track item.label) {
+                <a
+                  class="nav-item"
+                  [class.active]="isItemActive(item)"
+                  [class.live-item]="item.live"
+                  [routerLink]="item.path"
+                  [queryParams]="item.queryParams ?? null"
+                  [attr.aria-current]="isItemActive(item) ? 'page' : null"
+                  (click)="closeSidebar()"
+                >
+                  <span class="nav-marker" aria-hidden="true"></span>
+                  <span>{{ item.label }}</span>
+                  @if (item.live) { <span class="live-dot" title="Actualizacion activa"></span> }
+                </a>
+              }
+            </div>
+          }
+        </details>
+      }
+    }
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="sync-status">
+      <span class="sync-dot" aria-hidden="true"></span>
+      <span><strong>Sistemas conectados</strong><small>Sincronizacion activa</small></span>
+    </div>
+  </div>
+</aside>

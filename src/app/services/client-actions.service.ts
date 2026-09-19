@@ -14,6 +14,15 @@ export interface ClientActionResult {
   rules?: unknown;
 }
 
+export interface PaymentPilotResult {
+  ok: boolean;
+  idServicio: number;
+  paymentPilotEnabled: boolean;
+  paymentPilotEnabledAt?: string | null;
+  paymentPilotEnabledBy?: string | null;
+  captiveUrl?: string | null;
+}
+
 export interface BlockListSnapshot {
   morosos: { id: string; address: string; comment: string }[];
   bloqueados: { id: string; address: string; comment: string }[];
@@ -27,10 +36,18 @@ export class ClientActionsService {
     idServicio: number,
     action: ClientAction,
     reason: string,
+    pilotConfirmed = false,
   ): Observable<ClientActionResult> {
     return this.http.post<ClientActionResult>(
       `/clients-actions/${idServicio}/${action}`,
-      { reason },
+      { reason, pilotConfirmed },
+    );
+  }
+
+  setPaymentPilot(idServicio: number, enabled: boolean): Observable<PaymentPilotResult> {
+    return this.http.patch<PaymentPilotResult>(
+      `/clients-actions/${idServicio}/payment-pilot`,
+      { enabled, confirmation: enabled ? 'HABILITAR PORTAL' : 'DESHABILITAR PORTAL' },
     );
   }
 
@@ -39,7 +56,7 @@ export class ClientActionsService {
   }
 
   states(): Observable<
-    { idServicio: number; crmAction: string | null; crmActionReason: string | null; crmActionAt: string | null }[]
+    { idServicio: number; crmAction: string | null; crmActionReason: string | null; crmActionAt: string | null; paymentPilotEnabled: boolean; paymentPilotEnabledAt: string | null }[]
   > {
     return this.http.get<any[]>(`/clients-actions/states`);
   }

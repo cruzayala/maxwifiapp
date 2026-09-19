@@ -14,6 +14,8 @@ export interface PaymentLog {
   notes?: string;
   success?: boolean;
   errorMessage?: string;
+  wasRegisteredOnWisphub?: boolean;
+  taskId?: string;
   createdAt?: string;
 }
 
@@ -61,6 +63,17 @@ export interface Activity {
   entityName?: string;
   details?: string;
   createdAt?: string;
+}
+
+export interface InvoiceHistorySyncStatus {
+  running: boolean;
+  status: 'idle' | 'running' | 'success' | 'error';
+  windowsCompleted: number;
+  windowsTotal: number;
+  fetched: number;
+  saved: number;
+  through?: string | null;
+  error?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -139,6 +152,14 @@ export class DbService {
 
   logActivity(data: Activity): Observable<Activity> {
     return this.http.post<Activity>('/db/activity', data);
+  }
+
+  startInvoiceHistorySync(): Observable<InvoiceHistorySyncStatus & { started: boolean }> {
+    return this.http.post<InvoiceHistorySyncStatus & { started: boolean }>('/db/invoices/sync-history', {});
+  }
+
+  getInvoiceHistorySyncStatus(): Observable<InvoiceHistorySyncStatus> {
+    return this.http.get<InvoiceHistorySyncStatus>('/db/invoices/sync-status');
   }
 
   // ─── STATS ───

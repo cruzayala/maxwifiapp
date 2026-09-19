@@ -6,6 +6,7 @@
 
 # Node
 /node_modules
+/tr069-acs/node_modules/
 npm-debug.log
 yarn-error.log
 
@@ -48,6 +49,7 @@ Thumbs.db
 .env
 .env.local
 .env.production
+/tr069-acs/.env.local
 
 # Database (la del usuario, NO subir)
 *.db
@@ -63,9 +65,45 @@ baileys-store.json
 backups/
 *.bak
 
+# Agente local de aprovisionamiento ONU
+/onu-provisioner/.venv/
+/onu-provisioner/.pytest_cache/
+/onu-provisioner/data/
+/onu-provisioner/build/
+/onu-provisioner/build-browsers/
+/onu-provisioner/release/
+/onu-provisioner/release-test/
+/onu-provisioner/release-v1.0.1/
+__pycache__/
+*.pyc
+
+# Android local build state
+/android/.gradle/
+/android/.kotlin/
+/android/build/
+/android/app/build/
+/agent-downloads/ISP-Max-Android-0.2.0-preview.apk
+/agent-downloads/ISP-Max-Android-0.2.1-preview.apk
+/agent-downloads/ISP-Max-Android-0.3.0-preview.apk
+/agent-downloads/ISP-Max-Android-0.7.0-preview.apk
+/agent-downloads/ONU-Studio-ISP-Max-v1.12.0.exe
+
 # Logs locales y artefactos de mocks/tests
 *.err.log
 *.out.log
 mock-api-clients.*.log
 .playwright-mcp/
+.playwright-cli/
 wisphub_speed_*.bin
+/output/
+/outputs/
+/recibo-inteligente-android/
+newcookies.txt
+
+# Binarios de distribucion: se publican con `railway up`, no se versionan
+/agent-downloads/*.apk
+/agent-downloads/*.exe
+/onu-provisioner/release-cloud/
+
+# Configuracion local de Claude Code
+/.claude/

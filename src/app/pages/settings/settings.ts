@@ -2,7 +2,6 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { FormsModule } from '@angular/forms';
 import { environment } from '../../../environments/environment';
-import { LocalDbService } from '../../services/local-db.service';
 import { ConfigService } from '../../services/config.service';
 import { NotificationSchedulerService } from '../../services/notification-scheduler.service';
 import { ToastService } from '../../services/toast.service';
@@ -145,9 +144,10 @@ import { HttpClient } from '@angular/common/http';
           }
         </div>
 
-        <!-- DB LOCAL -->
+        <!-- SQLITE PERSISTENTE -->
         <div class="card">
-          <h3>Base de Datos Local (IndexedDB)</h3>
+          <h3>Base de datos SQLite persistente</h3>
+          <p class="help-text">Los datos operativos se conservan en el volumen <code>/data</code>. Sincronizar actualiza registros existentes y agrega los nuevos; no vacia la base.</p>
           <div class="db-info">
             <div class="db-stat">
               <span>Clientes guardados</span>
@@ -158,21 +158,20 @@ import { HttpClient } from '@angular/common/http';
               <span class="db-val">{{ localInvoicesCount() }}</span>
             </div>
             <div class="db-stat">
-              <span>Tickets guardados</span>
-              <span class="db-val">{{ localTicketsCount() }}</span>
+              <span>Direcciones IP inventariadas</span>
+              <span class="db-val">{{ ipInventoryCount() }}</span>
             </div>
             <div class="db-stat">
-              <span>Ultima sync clientes</span>
-              <span class="db-val">{{ lastSyncClients() || 'Nunca' }}</span>
+              <span>Motor</span>
+              <span class="db-val">SQLite + Prisma</span>
             </div>
             <div class="db-stat">
-              <span>Ultima sync facturas</span>
-              <span class="db-val">{{ lastSyncInvoices() || 'Nunca' }}</span>
+              <span>Ultima sincronizacion</span>
+              <span class="db-val">{{ lastSyncAt() || 'Nunca' }}</span>
             </div>
           </div>
-          <button class="btn btn-red" (click)="clearLocalData()">
-            Limpiar todos los datos locales
-          </button>
+          <button class="btn btn-primary" (click)="downloadDatabaseBackup()" [disabled]="backupBusy()">{{ backupBusy() ? 'Preparando...' : 'Descargar respaldo SQLite' }}</button>
+          <button class="btn btn-outline" (click)="downloadAndroid()" [disabled]="androidBusy()">{{ androidBusy() ? 'Descargando APK...' : 'Descargar ISP Max Android (preliminar)' }}</button>
         </div>
 
         <!-- WHATSAPP AUTOMATICO -->
@@ -355,7 +354,7 @@ import { HttpClient } from '@angular/common/http';
           <div class="info-grid">
             <div class="info-item"><span>Version</span><span>1.0.0</span></div>
             <div class="info-item"><span>API</span><span>WispHub.io REST API</span></div>
-            <div class="info-item"><span>Base de datos</span><span>IndexedDB (navegador)</span></div>
+            <div class="info-item"><span>Base de datos</span><span>SQLite persistente (servidor)</span></div>
             <div class="info-item"><span>Framework</span><span>Angular 21</span></div>
             <div class="info-item"><span>Almacenamiento</span><span>Local (offline-capable)</span></div>
             <div class="info-item"><span>Deploy target</span><span>Railway</span></div>
@@ -489,7 +488,6 @@ import { HttpClient } from '@angular/common/http';
   `]
 })
 export class SettingsComponent implements OnInit {
-  private db = inject(LocalDbService);
   private scheduler = inject(NotificationSchedulerService);
   private toast = inject(ToastService);
   config = inject(ConfigService);
@@ -504,9 +502,9 @@ export class SettingsComponent implements OnInit {
   detecting = signal(false);
   localClientsCount = signal(0);
   localInvoicesCount = signal(0);
-  localTicketsCount = signal(0);
-  lastSyncClients = signal('');
-  lastSyncInvoices = signal('');
+  ipInventoryCount = signal(0);
+  lastSyncAt = signal('');
+  backupBusy = signal(false);
   paymentWarningEnabled = signal(false);
   paymentWarningOverdueDays = signal(15);
   paymentWarningRunHour = signal(9);
@@ -518,28 +516,23 @@ export class SettingsComponent implements OnInit {
   opsMessage = signal('');
 
   async ngOnInit() {
-    this.localClientsCount.set((await this.db.getClients()).length);
-    this.localInvoicesCount.set((await this.db.getInvoices()).length);
-    this.localTicketsCount.set((await this.db.getTickets()).length);
-    const lsc = await this.db.getLastSync('clients');
-    const lsi = await this.db.getLastSync('invoices');
-    if (lsc) this.lastSyncClients.set(new Date(lsc).toLocaleString('es-DO'));
-    if (lsi) this.lastSyncInvoices.set(new Date(lsi).toLocaleString('es-DO'));
+    this.loadDatabaseStatus();
+    this.config.load();
     this.loadPaymentWarning();
     this.loadOpsHealth();
   }
 
   saveConfig() {
-    this.config.save();
-    this.saved.set(true);
-    this.toast.success('Configuracion guardada');
-    // If auto-notif was enabled, start scheduler
-    if (this.config.autoNotifEnabled()) {
-      this.scheduler.start();
-    } else {
-      this.scheduler.stop();
-    }
-    setTimeout(() => this.saved.set(false), 3000);
+    this.config.save().subscribe({
+      next: () => {
+        this.saved.set(true);
+        this.toast.success('Configuracion guardada en SQLite');
+        if (this.config.autoNotifEnabled()) this.scheduler.start();
+        else this.scheduler.stop();
+        setTimeout(() => this.saved.set(false), 3000);
+      },
+      error: () => this.toast.error('No se pudo guardar la configuracion en SQLite'),
+    });
   }
 
   runNotifNow() {
@@ -678,12 +671,59 @@ export class SettingsComponent implements OnInit {
     this.toast.success('IP copiada al portapapeles');
   }
 
-  async clearLocalData() {
-    indexedDB.deleteDatabase('WishubDB');
-    this.localClientsCount.set(0);
-    this.localInvoicesCount.set(0);
-    this.localTicketsCount.set(0);
-    this.lastSyncClients.set('');
-    this.lastSyncInvoices.set('');
+  loadDatabaseStatus() {
+    this.http.get<any>('/db/stats').subscribe({
+      next: (stats) => {
+        this.localClientsCount.set(stats.clients?.count || 0);
+        this.localInvoicesCount.set(stats.invoices?.count || 0);
+        this.ipInventoryCount.set(stats.ipam?.count || 0);
+      },
+    });
+    this.http.get<any>('/sync/status').subscribe({
+      next: (status) => this.lastSyncAt.set(status.lastSyncAt ? new Date(status.lastSyncAt).toLocaleString('es-DO') : ''),
+    });
+  }
+
+  androidBusy = signal(false);
+
+  downloadAndroid() {
+    this.androidBusy.set(true);
+    this.http.get('/android-api/download', { responseType: 'blob', observe: 'response' }).subscribe({
+      next: response => {
+        this.androidBusy.set(false);
+        if (!response.body) return;
+        const filename = response.headers.get('content-disposition')?.match(/filename="?([^";]+)"?/i)?.[1] || 'ISP-Max-Android.apk';
+        const url = URL.createObjectURL(response.body);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      },
+      error: () => { this.androidBusy.set(false); this.toast.error('No se pudo descargar la APK Android'); },
+    });
+  }
+
+  downloadDatabaseBackup() {
+    this.backupBusy.set(true);
+    this.http.get('/db/backup', { responseType: 'blob', observe: 'response' }).subscribe({
+      next: (response) => {
+        this.backupBusy.set(false);
+        const blob = response.body;
+        if (!blob) return;
+        const disposition = response.headers.get('content-disposition') || '';
+        const fileName = disposition.match(/filename="?([^";]+)"?/i)?.[1] || `isp-max-${new Date().toISOString().slice(0, 10)}.db`;
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        this.toast.success('Respaldo SQLite descargado');
+      },
+      error: (error) => {
+        this.backupBusy.set(false);
+        this.toast.error(error.error?.error || 'No se pudo crear el respaldo SQLite');
+      },
+    });
   }
 }

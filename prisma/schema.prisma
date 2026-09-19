@@ -8,7 +8,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -18,20 +18,20 @@ datasource db {
 
 /// Cliente - mirror completo de WispHub /api/clientes/
 model Client {
-  idServicio     Int      @id
-  usuario        String?
-  nombre         String
-  email          String?
-  emailCc        String?
-  razonSocial    String?
-  tipoPersona    String?
-  cedula         String?
-  rfc            String?
-  telefono       String?
-  direccion      String?
-  localidad      String?
-  ciudad         String?
-  coordenadas    String?
+  idServicio  Int     @id
+  usuario     String?
+  nombre      String
+  email       String?
+  emailCc     String?
+  razonSocial String?
+  tipoPersona String?
+  cedula      String?
+  rfc         String?
+  telefono    String?
+  direccion   String?
+  localidad   String?
+  ciudad      String?
+  coordenadas String?
 
   // Plan y facturacion
   planInternetId   Int?
@@ -42,94 +42,103 @@ model Client {
   estadoFacturas   String?
 
   // Estado y red
-  estado          String?   // Activo, Suspendido, Cortado, Gratis, Retirado
-  ip              String?
-  ipLocal         String?
-  macCpe          String?
-  interfazLan     String?
-  snOnu           String?
+  estado      String? // Activo, Suspendido, Cortado, Gratis, Retirado
+  ip          String?
+  ipLocal     String?
+  macCpe      String?
+  interfazLan String?
+  snOnu       String?
 
   // Router WiFi
-  modeloRouterWifi   String?
-  ipRouterWifi       String?
-  macRouterWifi      String?
-  ssidRouterWifi     String?
-  passwordSsidWifi   String?
+  modeloRouterWifi String?
+  ipRouterWifi     String?
+  macRouterWifi    String?
+  ssidRouterWifi   String?
+  passwordSsidWifi String?
 
   // Zona, router, tecnico (desnormalizado para query rapido)
-  zonaId          Int?
-  zonaNombre      String?
-  routerId        Int?
-  routerNombre    String?
-  sectorialId     Int?
-  sectorialNombre String?
-  modeloAntenaId  Int?
+  zonaId           Int?
+  zonaNombre       String?
+  routerId         Int?
+  routerNombre     String?
+  sectorialId      Int?
+  sectorialNombre  String?
+  modeloAntenaId   Int?
   modeloAntenaName String?
-  tecnicoId       Int?
-  tecnicoNombre   String?
+  tecnicoId        Int?
+  tecnicoNombre    String?
 
   // Metadata
-  firewall           Boolean @default(true)
-  autoActivar        Boolean @default(false)
-  formaContratacion  String?
-  comentarios        String?
-  fechaInstalacion   String?
-  fechaCancelacion   String?
-  fechaCorte         String?
-  ultimoCambio       String?
+  firewall          Boolean @default(true)
+  autoActivar       Boolean @default(false)
+  formaContratacion String?
+  comentarios       String?
+  fechaInstalacion  String?
+  fechaCancelacion  String?
+  fechaCorte        String?
+  ultimoCambio      String?
 
-  syncedAt           DateTime @default(now())
+  syncedAt   DateTime @default(now())
+  sourceHash String?
 
   // Alias / nombre real del cliente (override custom del admin)
   // Se usa para imprimir facturas, notificaciones, captive page
   // El sync NUNCA sobrescribe este campo - solo lo modifica el admin
-  aliasNombre     String?
-  aliasCedula     String?    // cedula real, si Wisphub la tiene mal
-  aliasTelefono   String?    // telefono real, si Wisphub lo tiene mal
-  aliasNotas      String?    // notas internas del admin
+  aliasNombre   String?
+  aliasCedula   String? // cedula real, si Wisphub la tiene mal
+  aliasTelefono String? // telefono real, si Wisphub lo tiene mal
+  aliasNotas    String? // notas internas del admin
 
   // GPS preciso capturado en sitio por el tecnico (separado de "coordenadas" de WispHub
   // para no perderse en el sync). Se usa en el mapa de clientes /mapa.
-  gpsLat          Float?
-  gpsLng          Float?
-  gpsAccuracy     Float?     // metros segun navigator.geolocation
-  gpsCapturedAt   DateTime?
-  gpsCapturedBy   String?    // username del admin que lo capturo
+  gpsLat        Float?
+  gpsLng        Float?
+  gpsAccuracy   Float? // metros segun navigator.geolocation
+  gpsCapturedAt DateTime?
+  gpsCapturedBy String? // username del admin que lo capturo
 
   // Bloqueo manual desde el CRM (independiente del estado WispHub)
-  crmAction       String?    // "moroso" | "block" | null
+  crmAction       String? // "moroso" | "block" | null
   crmActionReason String?
   crmActionAt     DateTime?
 
+  // Piloto manual del portal de pago. Nunca se activa desde el sync.
+  paymentPilotEnabled   Boolean   @default(false)
+  paymentPilotEnabledAt DateTime?
+  paymentPilotEnabledBy String?
+
   // Métricas calculadas automáticamente (recompute cada 2 min)
-  creditScore       Int?       // 0-100
-  creditTier        String?    // EXCELENTE | BUENO | REGULAR | RIESGO | CRITICO
-  creditFactors     String?    // JSON: detalles del cálculo
-  consumptionMb30d  Float?     // MB consumidos últimos 30 días
-  consumptionPct    Float?     // % vs plan teórico mensual
-  consumptionTier   String?    // INTENSIVO | NORMAL | BAJO | INACTIVO
-  metricsUpdatedAt  DateTime?
+  creditScore      Int? // 0-100
+  creditTier       String? // EXCELENTE | BUENO | REGULAR | RIESGO | CRITICO
+  creditFactors    String? // JSON: detalles del cálculo
+  consumptionMb30d Float? // MB consumidos últimos 30 días
+  consumptionPct   Float? // % vs plan teórico mensual
+  consumptionTier  String? // INTENSIVO | NORMAL | BAJO | INACTIVO
+  metricsUpdatedAt DateTime?
 
   // Mirror del MikroTik por IP (datos en vivo del router)
-  mtSyncedAt    DateTime?
-  mtMacAddress  String?
-  mtQueueName   String?
-  mtQueueLimit  String?
-  mtInterface   String?
+  mtSyncedAt   DateTime?
+  mtMacAddress String?
+  mtQueueName  String?
+  mtQueueLimit String?
+  mtInterface  String?
 
-  notes      ClientNote[]
-  promises   PaymentPromise[]
-  pings      PingHistory[]
-  tests      SpeedTest[]
-  payments   PaymentLog[]
-  messages   WhatsappLog[]
-  tags       ClientTagAssignment[]
-  invoices   Invoice[]    @relation("InvoiceToClient")
-  blockEvents BlockEvent[]
-  webActivity WebActivity[]
-  surveys     SurveyResponse[]
-  equipment   Equipment[]   @relation("EquipmentAssignedClient")
-  expenses    Expense[]     @relation("ExpenseClient")
+  notes          ClientNote[]
+  promises       PaymentPromise[]
+  pings          PingHistory[]
+  tests          SpeedTest[]
+  payments       PaymentLog[]
+  messages       WhatsappLog[]
+  tags           ClientTagAssignment[]
+  invoices       Invoice[]             @relation("InvoiceToClient")
+  blockEvents    BlockEvent[]
+  webActivity    WebActivity[]
+  surveys        SurveyResponse[]
+  equipment      Equipment[]           @relation("EquipmentAssignedClient")
+  expenses       Expense[]             @relation("ExpenseClient")
+  networkSamples ClientNetworkSample[]
+  networkDaily   ClientNetworkDaily[]
+  cpeHistory     ClientCpeHistory[]
 
   @@index([nombre])
   @@index([estado])
@@ -145,33 +154,33 @@ model Client {
 
 /// Factura - mirror completo de WispHub /api/facturas/
 model Invoice {
-  idFactura       Int      @id
-  folio           String?
-  fechaEmision    String?
+  idFactura        Int     @id
+  folio            String?
+  fechaEmision     String?
   fechaVencimiento String?
-  fechaPago       String?
-  estado          String?  // Pagada, Pendiente de Pago, Vencida
+  fechaPago        String?
+  estado           String? // Pagada, Pendiente de Pago, Vencida
 
-  tipo            Int?
-  subTotal        Float    @default(0)
-  descuento       Float    @default(0)
-  impuestosTotal  Float    @default(0)
-  total           Float    @default(0)
-  totalCobrado    Float    @default(0)
-  saldo           Float    @default(0)
-  saldoNuevo      Float    @default(0)
+  tipo           Int?
+  subTotal       Float @default(0)
+  descuento      Float @default(0)
+  impuestosTotal Float @default(0)
+  total          Float @default(0)
+  totalCobrado   Float @default(0)
+  saldo          Float @default(0)
+  saldoNuevo     Float @default(0)
 
   comprobantePago String?
   referencia      String?
   referenciaOxxo  String?
 
   // Pasarelas
-  totalPasarela   Float    @default(0)
-  totalOpenpay    Float    @default(0)
-  totalOxxo       Float    @default(0)
-  idMercadopago   String?
-  idPayu          String?
-  urlPayu         String?
+  totalPasarela Float   @default(0)
+  totalOpenpay  Float   @default(0)
+  totalOxxo     Float   @default(0)
+  idMercadopago String?
+  idPayu        String?
+  urlPayu       String?
 
   // Retenciones
   retencionPorcentaje Float @default(0)
@@ -195,11 +204,12 @@ model Invoice {
   clienteEmail      String?
   clienteRfc        String?
 
-  syncedAt        DateTime @default(now())
+  syncedAt   DateTime @default(now())
+  sourceHash String?
 
-  client          Client?        @relation("InvoiceToClient", fields: [clienteIdServicio], references: [idServicio])
-  articles        InvoiceArticle[]
-  payments        PaymentLog[]
+  client   Client?          @relation("InvoiceToClient", fields: [clienteIdServicio], references: [idServicio])
+  articles InvoiceArticle[]
+  payments PaymentLog[]
 
   @@index([clienteIdServicio])
   @@index([clienteNombre])
@@ -213,15 +223,15 @@ model Invoice {
 model InvoiceArticle {
   id             Int     @id @default(autoincrement())
   idFactura      Int
-  remoteId       Int?    // ID original en WispHub
+  remoteId       Int? // ID original en WispHub
   uuidEquipo     String?
   categoriaStock String?
   cantidad       Int     @default(1)
   descripcion    String
   precio         String  @default("0")
-  idServicio     Int?    // ref a Client.idServicio
+  idServicio     Int? // ref a Client.idServicio
 
-  invoice        Invoice @relation(fields: [idFactura], references: [idFactura], onDelete: Cascade)
+  invoice Invoice @relation(fields: [idFactura], references: [idFactura], onDelete: Cascade)
 
   @@index([idFactura])
   @@index([idServicio])
@@ -229,20 +239,20 @@ model InvoiceArticle {
 
 /// Ticket de soporte
 model Ticket {
-  idTicket           Int      @id
-  asunto             String?
-  descripcion        String?
-  estado             String?  // Abierto, En Progreso, Cerrado
-  prioridad          String?  // Alta, Media, Baja
-  asignado           String?
+  idTicket    Int     @id
+  asunto      String?
+  descripcion String?
+  estado      String? // Abierto, En Progreso, Cerrado
+  prioridad   String? // Alta, Media, Baja
+  asignado    String?
 
-  clienteIdServicio  Int?
-  clienteNombre      String?
+  clienteIdServicio Int?
+  clienteNombre     String?
 
   fechaCreacion      String?
   fechaActualizacion String?
 
-  syncedAt           DateTime @default(now())
+  syncedAt DateTime @default(now())
 
   @@index([estado])
   @@index([prioridad])
@@ -251,21 +261,21 @@ model Ticket {
 
 /// Plan de internet
 model InternetPlan {
-  id         Int     @id
-  nombre     String
-  tipo       String? // Simple Queue, PPPoE
+  id     Int     @id
+  nombre String
+  tipo   String? // Simple Queue, PPPoE
 
-  syncedAt   DateTime @default(now())
+  syncedAt DateTime @default(now())
 
   @@index([nombre])
 }
 
 /// Zona geografica
 model Zone {
-  id         Int     @id
-  nombre     String
+  id     Int    @id
+  nombre String
 
-  syncedAt   DateTime @default(now())
+  syncedAt DateTime @default(now())
 }
 
 /// Router MikroTik
@@ -276,54 +286,54 @@ model Router {
   fallaGeneral            Boolean @default(false)
   fallaGeneralDescripcion String?
 
-  syncedAt                DateTime @default(now())
+  syncedAt DateTime @default(now())
 }
 
 /// Forma de pago
 model PaymentMethod {
-  id         Int     @id
-  nombre     String  // Efectivo, Transferencia, Saldo a Favor
+  id     Int    @id
+  nombre String // Efectivo, Transferencia, Saldo a Favor
 
-  syncedAt   DateTime @default(now())
+  syncedAt DateTime @default(now())
 }
 
 /// Modelo de antena CPE
 model AntennaModel {
-  id         Int     @id
-  nombre     String
-  marca      String?
+  id     Int     @id
+  nombre String
+  marca  String?
 
-  syncedAt   DateTime @default(now())
+  syncedAt DateTime @default(now())
 }
 
 /// Miembros del staff (técnicos/cajeros)
 model Staff {
-  id         Int     @id
-  username   String?
-  nombre     String
-  email      String?
+  id       Int     @id
+  username String?
+  nombre   String
+  email    String?
 
-  syncedAt   DateTime @default(now())
+  syncedAt DateTime @default(now())
 }
 
 /// Sectorial
 model Sectorial {
-  id         Int     @id
-  nombre     String
+  id     Int    @id
+  nombre String
 
-  syncedAt   DateTime @default(now())
+  syncedAt DateTime @default(now())
 }
 
 /// Log de sincronizaciones con WispHub
 model SyncLog {
-  id         Int      @id @default(autoincrement())
-  entity     String   // clients, invoices, tickets, plans, zones, routers
-  status     String   // success, error
-  recordCount Int     @default(0)
+  id           Int       @id @default(autoincrement())
+  entity       String // clients, invoices, tickets, plans, zones, routers
+  status       String // success, error
+  recordCount  Int       @default(0)
   errorMessage String?
-  durationMs Int?
-  startedAt  DateTime @default(now())
-  endedAt    DateTime?
+  durationMs   Int?
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
 
   @@index([entity, startedAt])
 }
@@ -334,24 +344,24 @@ model SyncLog {
 
 /// Cada pago registrado desde la app (auditoria completa)
 model PaymentLog {
-  id                Int      @id @default(autoincrement())
-  idFactura         Int
-  idServicio        Int?
-  clientName        String
-  amount            Float
-  paymentMethodId   Int?
-  paymentMethodName String?
-  paidAt            DateTime
-  notes             String?
-  success           Boolean  @default(true)
-  errorMessage      String?
-  receiptPrinted    Boolean  @default(false)
-  wasRegisteredOnWisphub Boolean @default(false)
-  taskId            String?  // WispHub async task id
-  createdAt         DateTime @default(now())
+  id                     Int      @id @default(autoincrement())
+  idFactura              Int
+  idServicio             Int?
+  clientName             String
+  amount                 Float
+  paymentMethodId        Int?
+  paymentMethodName      String?
+  paidAt                 DateTime
+  notes                  String?
+  success                Boolean  @default(true)
+  errorMessage           String?
+  receiptPrinted         Boolean  @default(false)
+  wasRegisteredOnWisphub Boolean  @default(false)
+  taskId                 String? // WispHub async task id
+  createdAt              DateTime @default(now())
 
-  invoice   Invoice? @relation(fields: [idFactura], references: [idFactura])
-  client    Client?  @relation(fields: [idServicio], references: [idServicio])
+  invoice Invoice? @relation(fields: [idFactura], references: [idFactura])
+  client  Client?  @relation(fields: [idServicio], references: [idServicio])
 
   @@index([idFactura])
   @@index([idServicio])
@@ -363,18 +373,18 @@ model PaymentLog {
 
 /// Promesas de pago hechas por los clientes
 model PaymentPromise {
-  id            Int       @id @default(autoincrement())
-  idServicio    Int
-  clientName    String
-  amount        Float
-  promisedDate  DateTime
-  status        String    @default("pending") // pending, paid, broken
-  notes         String?
-  reminderSent  Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  completedAt   DateTime?
+  id           Int       @id @default(autoincrement())
+  idServicio   Int
+  clientName   String
+  amount       Float
+  promisedDate DateTime
+  status       String    @default("pending") // pending, paid, broken
+  notes        String?
+  reminderSent Boolean   @default(false)
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
 
-  client        Client?   @relation(fields: [idServicio], references: [idServicio])
+  client Client? @relation(fields: [idServicio], references: [idServicio])
 
   @@index([idServicio])
   @@index([status])
@@ -387,19 +397,19 @@ model PaymentPromise {
 
 /// Cada mensaje enviado por WhatsApp
 model WhatsappLog {
-  id            Int      @id @default(autoincrement())
-  phone         String
-  message       String
-  idServicio    Int?
-  clientName    String?
-  messageType   String?  // manual, reminder, overdue, template, bulk
-  campaignId    Int?
-  status        String   // sent, failed, pending
-  errorMessage  String?
-  createdAt     DateTime @default(now())
+  id           Int      @id @default(autoincrement())
+  phone        String
+  message      String
+  idServicio   Int?
+  clientName   String?
+  messageType  String? // manual, reminder, overdue, template, bulk
+  campaignId   Int?
+  status       String // sent, failed, pending
+  errorMessage String?
+  createdAt    DateTime @default(now())
 
-  client        Client?  @relation(fields: [idServicio], references: [idServicio])
-  campaign      WhatsappCampaign? @relation(fields: [campaignId], references: [id])
+  client   Client?           @relation(fields: [idServicio], references: [idServicio])
+  campaign WhatsappCampaign? @relation(fields: [campaignId], references: [id])
 
   @@index([phone])
   @@index([idServicio])
@@ -412,10 +422,10 @@ model WhatsappLog {
 /// Plantillas reusables de mensajes
 model WhatsappTemplate {
   id        Int      @id @default(autoincrement())
-  name      String   @unique   // cobro, corte, reconexion, saludo, etc
-  category  String?            // pago, tecnico, comercial
+  name      String   @unique // cobro, corte, reconexion, saludo, etc
+  category  String? // pago, tecnico, comercial
   content   String
-  variables String?            // JSON array con vars que usa
+  variables String? // JSON array con vars que usa
   isDefault Boolean  @default(false)
   useCount  Int      @default(0)
   createdAt DateTime @default(now())
@@ -426,21 +436,21 @@ model WhatsappTemplate {
 
 /// Campañas de mensajes masivos
 model WhatsappCampaign {
-  id              Int      @id @default(autoincrement())
-  name            String
-  templateId      Int?
-  messageContent  String
-  targetFilter    String?   // JSON con criterios de seleccion
-  status          String   @default("draft")  // draft, sending, completed, cancelled
-  totalTargets    Int      @default(0)
-  successCount    Int      @default(0)
-  failedCount     Int      @default(0)
-  scheduledFor    DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime @default(now())
+  id             Int       @id @default(autoincrement())
+  name           String
+  templateId     Int?
+  messageContent String
+  targetFilter   String? // JSON con criterios de seleccion
+  status         String    @default("draft") // draft, sending, completed, cancelled
+  totalTargets   Int       @default(0)
+  successCount   Int       @default(0)
+  failedCount    Int       @default(0)
+  scheduledFor   DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
 
-  messages        WhatsappLog[]
+  messages WhatsappLog[]
 
   @@index([status])
   @@index([scheduledFor])
@@ -448,17 +458,17 @@ model WhatsappCampaign {
 
 /// Reglas de envio automatico
 model NotificationRule {
-  id              Int      @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   name            String
-  type            String   // reminder_before_cut, overdue, welcome, payment_received
-  active          Boolean  @default(true)
-  daysOffset      Int      @default(0)  // -3 = 3 dias antes del corte, +5 = 5 dias despues
-  scheduleHour    Int      @default(10) // 0-23
+  type            String // reminder_before_cut, overdue, welcome, payment_received
+  active          Boolean   @default(true)
+  daysOffset      Int       @default(0) // -3 = 3 dias antes del corte, +5 = 5 dias despues
+  scheduleHour    Int       @default(10) // 0-23
   messageTemplate String
-  intervalDays    Int      @default(1)  // Para repeticion
+  intervalDays    Int       @default(1) // Para repeticion
   lastRunAt       DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([active])
   @@index([type])
@@ -466,12 +476,12 @@ model NotificationRule {
 
 /// Log para evitar duplicados en envios automaticos
 model NotificationSentLog {
-  id          Int      @id @default(autoincrement())
-  ruleId      Int?
-  phone       String
-  idServicio  Int?
-  type        String   // reminder, overdue, etc
-  sentAt      DateTime @default(now())
+  id         Int      @id @default(autoincrement())
+  ruleId     Int?
+  phone      String
+  idServicio Int?
+  type       String // reminder, overdue, etc
+  sentAt     DateTime @default(now())
 
   @@index([phone, type, sentAt])
   @@index([idServicio, type])
@@ -492,7 +502,7 @@ model PingHistory {
   errorMessage  String?
   createdAt     DateTime @default(now())
 
-  client        Client?  @relation(fields: [idServicio], references: [idServicio])
+  client Client? @relation(fields: [idServicio], references: [idServicio])
 
   @@index([idServicio, createdAt])
   @@index([createdAt])
@@ -509,30 +519,315 @@ model SpeedTest {
   uploadMbps   Float
   pingMs       Float
   jitterMs     Float
-  location     String?  // Donde se realizo el test
-  testServer   String?  // cloudflare, google, etc
+  location     String? // Donde se realizo el test
+  testServer   String? // cloudflare, google, etc
   notes        String?
   createdAt    DateTime @default(now())
 
-  client       Client?  @relation(fields: [idServicio], references: [idServicio])
+  client Client? @relation(fields: [idServicio], references: [idServicio])
 
   @@index([idServicio])
   @@index([createdAt])
 }
 
+/// Muestra no invasiva del uso y estabilidad de cada cliente cada 10 minutos.
+model ClientNetworkSample {
+  id             Int      @id @default(autoincrement())
+  idServicio     Int
+  capturedAt     DateTime
+  ip             String?
+  planName       String?
+  queueName      String?
+  uploadBps      Float    @default(0)
+  downloadBps    Float    @default(0)
+  maxUploadBps   Float    @default(0)
+  maxDownloadBps Float    @default(0)
+  mikrotikOnline Boolean  @default(false)
+  transmitting   Boolean  @default(false)
+  queueDisabled  Boolean  @default(false)
+  syncState      String   @default("unknown")
+  onuIndex       String?
+  ponIndex       String?
+  onuOnline      Boolean?
+  phaseState     String?
+  rxPowerDbm     Float?
+  txPowerDbm     Float?
+  opticalState   String   @default("unknown")
+  serviceOnline  Boolean  @default(false)
+  healthState    String   @default("offline")
+  stabilityScore Int      @default(0)
+  issues         String?
+  createdAt      DateTime @default(now())
+
+  client Client @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+
+  @@unique([idServicio, capturedAt])
+  @@index([capturedAt])
+  @@index([healthState, capturedAt])
+  @@index([onuIndex, capturedAt])
+}
+
+/// Resumen diario persistente; conserva la auditoria despues de depurar muestras detalladas.
+model ClientNetworkDaily {
+  id                Int      @id @default(autoincrement())
+  idServicio        Int
+  day               DateTime
+  sampleCount       Int      @default(0)
+  onlineSamples     Int      @default(0)
+  stableSamples     Int      @default(0)
+  degradedSamples   Int      @default(0)
+  offlineSamples    Int      @default(0)
+  uploadBpsSum      Float    @default(0)
+  downloadBpsSum    Float    @default(0)
+  peakUploadBps     Float    @default(0)
+  peakDownloadBps   Float    @default(0)
+  rxPowerSum        Float    @default(0)
+  rxPowerSamples    Int      @default(0)
+  minRxPowerDbm     Float?
+  maxRxPowerDbm     Float?
+  lastHealthState   String   @default("offline")
+  lastServiceOnline Boolean  @default(false)
+  lastUploadBps     Float    @default(0)
+  lastDownloadBps   Float    @default(0)
+  lastRxPowerDbm    Float?
+  lastOpticalState  String   @default("unknown")
+  lastOnuIndex      String?
+  lastCapturedAt    DateTime
+  updatedAt         DateTime @updatedAt
+
+  client Client @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+
+  @@unique([idServicio, day])
+  @@index([day])
+  @@index([lastHealthState, lastCapturedAt])
+}
+
+/// Estado del enlace WAN y de la OLT en el mismo intervalo de auditoria.
+model WanNetworkSample {
+  id                 Int      @id @default(autoincrement())
+  capturedAt         DateTime @unique
+  ifaceName          String?
+  rxBps              Float    @default(0)
+  txBps              Float    @default(0)
+  maxBps             Float    @default(0)
+  utilizationPercent Float    @default(0)
+  pingTarget         String   @default("8.8.8.8")
+  pingSent           Int      @default(0)
+  pingReceived       Int      @default(0)
+  pingLossPercent    Float?
+  pingAvgMs          Float?
+  pingMaxMs          Float?
+  mikrotikConnected  Boolean  @default(false)
+  clientsOnline      Int      @default(0)
+  clientsOffline     Int      @default(0)
+  oltConnected       Boolean  @default(false)
+  oltOnlineOnus      Int      @default(0)
+  oltOfflineOnus     Int      @default(0)
+  oltActiveAlarms    Int      @default(0)
+  oltCriticalAlarms  Int      @default(0)
+  healthState        String   @default("unknown")
+  errorMessage       String?
+  durationMs         Int?
+  createdAt          DateTime @default(now())
+
+  @@index([capturedAt])
+  @@index([healthState, capturedAt])
+}
+
 /// Escaneos de red (cuando se hace scan masivo)
 model NetworkScan {
-  id           Int      @id @default(autoincrement())
-  totalScanned Int      @default(0)
-  onlineCount  Int      @default(0)
-  offlineCount Int      @default(0)
-  errorCount   Int      @default(0)
+  id           Int       @id @default(autoincrement())
+  totalScanned Int       @default(0)
+  onlineCount  Int       @default(0)
+  offlineCount Int       @default(0)
+  errorCount   Int       @default(0)
   durationMs   Int?
-  startedAt    DateTime @default(now())
+  startedAt    DateTime  @default(now())
   endedAt      DateTime?
   notes        String?
 
   @@index([startedAt])
+}
+
+/// Estado persistente de cada red administrada por IPAM.
+/// Solo cambia cuando varian sus ocupaciones; no crea un snapshot por minuto.
+model IpamNetwork {
+  cidr          String   @id
+  network       String
+  prefix        Int
+  capacity      Int
+  used          Int
+  available     Int
+  utilization   Float
+  recommended   String   @default("[]")
+  stateHash     String
+  firstSeenAt   DateTime @default(now())
+  lastChangedAt DateTime @default(now())
+
+  @@index([utilization])
+}
+
+/// Inventario IPv4 durable: cliente, equipo desconocido, reserva o IP libre.
+model IpamAddress {
+  ip                     String   @id
+  cidr                   String?
+  classification         String
+  available              Boolean  @default(false)
+  recommended            Boolean  @default(false)
+  macAddress             String?
+  macAddresses           String   @default("[]")
+  interfaceName          String?
+  leaseId                String?
+  hostName               String?
+  serverName             String?
+  queueId                String?
+  queueName              String?
+  poolName               String?
+  status                 String?
+  dynamic                Boolean  @default(false)
+  disabled               Boolean  @default(false)
+  clientIdServicio       Int?
+  clientName             String?
+  clientUsername         String?
+  sources                String   @default("[]")
+  conflict               Boolean  @default(false)
+  availabilityConfidence String   @default("verified")
+  observed               Boolean  @default(false)
+  active                 Boolean  @default(true)
+  stateHash              String
+  firstSeenAt            DateTime @default(now())
+  lastChangedAt          DateTime @default(now())
+
+  @@index([cidr, classification])
+  @@index([available, recommended])
+  @@index([clientIdServicio])
+  @@index([active])
+}
+
+/// Reserva temporal y atomica para impedir que dos instalaciones usen la misma IP.
+model IpReservation {
+  ip          String    @id
+  token       String    @unique
+  cidr        String?
+  status      String    @default("active")
+  clientName  String?
+  serial      String?
+  createdById Int?
+  createdBy   String
+  expiresAt   DateTime
+  committedAt DateTime?
+  releasedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, expiresAt])
+  @@index([serial])
+}
+
+/// Expediente durable que enlaza ONU Studio, OLT, WispHub y MikroTik.
+model ProvisioningJob {
+  id                        String    @id @default(uuid())
+  idempotencyKey            String    @unique
+  status                    String    @default("draft")
+  stage                     String    @default("draft")
+  mode                      String    @default("new_client")
+  serviceMode               String    @default("router")
+  source                    String    @default("manual")
+  clientIdServicio          Int?
+  clientName                String?
+  ip                        String?
+  zoneId                    Int?
+  planId                    Int?
+  uploadMbps                Float?
+  downloadMbps              Float?
+  serial                    String?
+  previousSerial            String?
+  previousOnuIndex          String?
+  targetPonIndex            String?
+  operationReason           String?
+  cutoverStatus             String?
+  model                     String?
+  macAddress                String?
+  ponIndex                  String?
+  onuIndex                  String?
+  vlan                      Int       @default(101)
+  reservationToken          String?
+  agentInventoryJson        String?
+  agentInventoryAt          DateTime?
+  agentVersion              String?
+  agentInventoryPhase       String?
+  configurationManifestJson String?
+  progressPercent           Int       @default(0)
+  stageLabel                String?
+  heartbeatAt               DateTime?
+  lastCompletedStep         String?
+  localStatus               String?
+  retryable                 Boolean?
+  errorCode                 String?
+  agentLastSeenAt           DateTime?
+  steps                     String    @default("[]")
+  errorMessage              String?
+  createdById               Int?
+  createdBy                 String
+  completedAt               DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([serial])
+  @@index([clientIdServicio])
+  @@index([ip])
+}
+
+/// Historial durable de restauraciones, reemplazos y migraciones de ONU/CPE.
+/// Nunca sustituye al cliente WispHub ni afecta sus facturas.
+model ClientCpeHistory {
+  id               Int       @id @default(autoincrement())
+  clientIdServicio Int
+  jobId            String    @unique
+  operation        String
+  status           String    @default("in_progress")
+  reason           String?
+  ip               String?
+  previousSerial   String?
+  previousOnuIndex String?
+  newSerial        String?
+  newOnuIndex      String?
+  targetPonIndex   String?
+  detailsJson      String?
+  startedBy        String
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  client Client @relation(fields: [clientIdServicio], references: [idServicio], onDelete: Cascade)
+
+  @@index([clientIdServicio, createdAt])
+  @@index([status, createdAt])
+  @@index([previousSerial])
+  @@index([newSerial])
+}
+
+/// Espejo durable de tickets WispHub; reemplaza la antigua cache IndexedDB.
+model CachedTicket {
+  idTicket           Int      @id
+  remoteId           Int?
+  asunto             String?
+  cliente            String?
+  idServicio         Int?
+  estado             String?
+  prioridad          String?
+  fechaCreacion      String?
+  fechaActualizacion String?
+  asignado           String?
+  descripcion        String?
+  stateHash          String
+  firstSeenAt        DateTime @default(now())
+  lastChangedAt      DateTime @default(now())
+
+  @@index([idServicio])
+  @@index([estado])
+  @@index([lastChangedAt])
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -551,7 +846,7 @@ model ClientNote {
   updatedAt  DateTime @updatedAt
   createdAt  DateTime @default(now())
 
-  client     Client?  @relation(fields: [idServicio], references: [idServicio])
+  client Client? @relation(fields: [idServicio], references: [idServicio])
 
   @@index([idServicio])
   @@index([priority])
@@ -575,8 +870,8 @@ model ClientTagAssignment {
   tagId      Int
   assignedAt DateTime @default(now())
 
-  client     Client   @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
-  tag        ClientTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  client Client    @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+  tag    ClientTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@unique([idServicio, tagId])
   @@index([idServicio])
@@ -592,9 +887,9 @@ model ClientAttachment {
   fileSize    Int?
   mimeType    String?
   description String?
-  category    String?  // contrato, cedula, instalacion, factura, otro
-  filePath    String?  // Path en disco (si se guarda)
-  fileData    Bytes?   // O blob directo (si es pequeño)
+  category    String? // contrato, cedula, instalacion, factura, otro
+  filePath    String? // Path en disco (si se guarda)
+  fileData    Bytes? // O blob directo (si es pequeño)
   createdAt   DateTime @default(now())
 
   @@index([idServicio])
@@ -609,7 +904,7 @@ model ClientAttachment {
 model AppSetting {
   key         String   @id
   value       String
-  category    String?  // company, whatsapp, printing, notifications
+  category    String? // company, whatsapp, printing, notifications
   description String?
   updatedAt   DateTime @updatedAt
 
@@ -619,11 +914,11 @@ model AppSetting {
 /// Log de todas las acciones hechas en la app
 model Activity {
   id         Int      @id @default(autoincrement())
-  action     String   // payment, suspend, activate, edit_client, edit_service, create_client, delete_client, message_sent, etc
-  entityType String?  // client, invoice, note, setting, whatsapp
+  action     String // payment, suspend, activate, edit_client, edit_service, create_client, delete_client, message_sent, etc
+  entityType String? // client, invoice, note, setting, whatsapp
   entityId   String?
   entityName String?
-  details    String?  // JSON con datos adicionales
+  details    String? // JSON con datos adicionales
   ipAddress  String?
   userAgent  String?
   createdAt  DateTime @default(now())
@@ -636,11 +931,11 @@ model Activity {
 /// Historial de exportaciones CSV / PDF
 model ExportLog {
   id          Int      @id @default(autoincrement())
-  exportType  String   // clientes, facturas, morosos, reporte_planes
+  exportType  String // clientes, facturas, morosos, reporte_planes
   format      String   @default("csv") // csv, pdf, excel
   recordCount Int      @default(0)
   fileName    String?
-  filters     String?  // JSON con filtros aplicados
+  filters     String? // JSON con filtros aplicados
   createdAt   DateTime @default(now())
 
   @@index([exportType])
@@ -681,18 +976,18 @@ model DailySnapshot {
 /// - cobranza:    ver clientes, enviar facturas/recordatorios, marcar moroso (NO bloqueo total)
 /// - viewer:      solo lectura
 model User {
-  id            Int       @id @default(autoincrement())
-  username      String    @unique
-  passwordHash  String
-  fullName      String?
-  email         String?
-  role          String    @default("admin")
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  lastLoginIp   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  createdById   Int?
+  id                Int       @id @default(autoincrement())
+  username          String    @unique
+  passwordHash      String
+  fullName          String?
+  email             String?
+  role              String    @default("admin")
+  isActive          Boolean   @default(true)
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  createdById       Int?
   passwordChangedAt DateTime?
 
   @@index([role])
@@ -708,12 +1003,12 @@ model BlockEvent {
   id         Int      @id @default(autoincrement())
   idServicio Int
   ipAddress  String
-  action     String   // "moroso" | "block" | "unblock"
+  action     String // "moroso" | "block" | "unblock"
   reason     String
-  createdBy  String?  // futuro: usuario que ejecuto
+  createdBy  String? // futuro: usuario que ejecuto
   createdAt  DateTime @default(now())
 
-  client     Client   @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+  client Client @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
 
   @@index([idServicio])
   @@index([action])
@@ -727,12 +1022,12 @@ model WebActivity {
   id          Int      @id @default(autoincrement())
   idServicio  Int
   domain      String
-  day         String   // YYYY-MM-DD
+  day         String // YYYY-MM-DD
   queryCount  Int      @default(0)
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
 
-  client      Client   @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
+  client Client @relation(fields: [idServicio], references: [idServicio], onDelete: Cascade)
 
   @@unique([idServicio, domain, day])
   @@index([idServicio, day])
@@ -746,7 +1041,7 @@ model WebActivity {
 /// value = JSON serializado con BufferJSON.replacer (preserva Buffer)
 model BaileysAuth {
   key       String   @id
-  value     String   @db.Text
+  value     String
   updatedAt DateTime @default(now()) @updatedAt
 }
 
@@ -765,34 +1060,109 @@ model Session {
   @@index([userId])
 }
 
+/// Credencial de una instalación confiable de ONU Studio.
+/// Solo se persiste el hash; el token real permanece cifrado con DPAPI en Windows.
+model TrustedDeviceSession {
+  id                String    @id @default(uuid())
+  tokenHash         String    @unique
+  userId            Int
+  username          String
+  role              String
+  deviceId          String
+  deviceName        String?
+  passwordChangedAt DateTime?
+  revokedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+
+  @@unique([userId, deviceId])
+  @@index([userId, revokedAt])
+  @@index([lastSeenAt])
+}
+
+/// Android sessions are isolated from administrator-only ONU Studio credentials.
+model MobileSession {
+  id              String    @id @default(uuid())
+  userId          Int
+  deviceName      String
+  accessHash      String    @unique
+  refreshHash     String    @unique
+  passwordStamp   String
+  accessExpiresAt DateTime
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  lastSeenAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+
+  @@index([userId, revokedAt])
+}
+
+/// Deduplication receipt for a committed mobile note. No external operations here.
+model BillingOperation {
+  id                String   @id @default(uuid())
+  userId            Int
+  requestKey        String
+  requestHash       String
+  invoiceId         Int
+  activeInvoiceId   Int?     @unique
+  clientId          Int?
+  clientName        String
+  amount            Float
+  baselineCollected Float
+  paymentMethodId   Int
+  paymentMethodName String
+  paidAt            DateTime
+  state             String   @default("uncertain")
+  taskId            String?
+  errorCode         String?
+  paymentLogId      Int?     @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, requestKey])
+  @@index([invoiceId, createdAt])
+  @@index([state])
+}
+
+model MobileMutation {
+  id          String   @id @default(uuid())
+  userId      Int
+  requestKey  String
+  requestHash String
+  resultJson  String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, requestKey])
+}
+
 /// Survey - encuesta forzada a clientes via captive portal HTTP redirect
 /// Admin activa por IP -> MikroTik redirige al cliente al form
 /// Cliente llena nombre+telefono -> queda guardado en esta tabla
 model SurveyResponse {
-  id           Int       @id @default(autoincrement())
-  clientIp     String              // IP del cliente (en address-list survey-pending)
-  idServicio   Int?                // si se pudo mapear a cliente WispHub
-  publicToken  String?             // enlace publico seguro para la encuesta en la nube
-  shortCode    String? @unique     // codigo corto (6 chars) para URL "camuflada" /s/<code>
-  fullName     String?             // lo que llena el cliente
-  phone        String?             // lo que llena el cliente
-  status       String    @default("pending")  // pending | submitted | expired | cancelled
-  sentBy       String              // username admin que activo
-  sentAt       DateTime  @default(now())
-  submittedAt  DateTime?
-  lastReminderAt DateTime?
-  nextReminderAt DateTime?
-  reminderCount  Int      @default(0)
+  id                 Int       @id @default(autoincrement())
+  clientIp           String // IP del cliente (en address-list survey-pending)
+  idServicio         Int? // si se pudo mapear a cliente WispHub
+  publicToken        String? // enlace publico seguro para la encuesta en la nube
+  shortCode          String?   @unique // codigo corto (6 chars) para URL "camuflada" /s/<code>
+  fullName           String? // lo que llena el cliente
+  phone              String? // lo que llena el cliente
+  status             String    @default("pending") // pending | submitted | expired | cancelled
+  sentBy             String // username admin que activo
+  sentAt             DateTime  @default(now())
+  submittedAt        DateTime?
+  lastReminderAt     DateTime?
+  nextReminderAt     DateTime?
+  reminderCount      Int       @default(0)
   lastReminderStatus String?
-  snoozedAt    DateTime?
-  snoozeCount  Int        @default(0)
-  paused       Boolean    @default(false)   // pausa por-survey desde la UI
-  pausedAt     DateTime?
-  pausedBy     String?
-  userAgent    String?             // navegador del cliente al enviar
-  notes        String?             // notas internas
+  snoozedAt          DateTime?
+  snoozeCount        Int       @default(0)
+  paused             Boolean   @default(false) // pausa por-survey desde la UI
+  pausedAt           DateTime?
+  pausedBy           String?
+  userAgent          String? // navegador del cliente al enviar
+  notes              String? // notas internas
 
-  client       Client?   @relation(fields: [idServicio], references: [idServicio], onDelete: SetNull)
+  client Client? @relation(fields: [idServicio], references: [idServicio], onDelete: SetNull)
 
   @@index([clientIp])
   @@index([status])
@@ -810,12 +1180,12 @@ model SurveyResponse {
 model EquipmentType {
   id          Int      @id @default(autoincrement())
   name        String   @unique
-  category    String   // wifi | cable | onu | antena | otro
-  unit        String   @default("u")   // u (unidad), m (metros), kg, etc.
+  category    String // wifi | cable | onu | antena | otro
+  unit        String   @default("u") // u (unidad), m (metros), kg, etc.
   description String?
   createdAt   DateTime @default(now())
 
-  equipment   Equipment[]
+  equipment     Equipment[]
   purchaseItems PurchaseItem[]
 
   @@index([category])
@@ -823,18 +1193,18 @@ model EquipmentType {
 
 /// Compra de equipos - un comprobante con varios items
 model Purchase {
-  id           Int      @id @default(autoincrement())
-  supplier     String?              // proveedor
-  invoiceRef   String?              // # factura del proveedor
-  purchasedAt  DateTime
-  total        Float    @default(0)
-  notes        String?
-  createdBy    String?              // username admin
-  createdAt    DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  supplier    String? // proveedor
+  invoiceRef  String? // # factura del proveedor
+  purchasedAt DateTime
+  total       Float    @default(0)
+  notes       String?
+  createdBy   String? // username admin
+  createdAt   DateTime @default(now())
 
-  items        PurchaseItem[]
-  equipment    Equipment[]
-  expense      Expense?             // gasto auto-generado
+  items     PurchaseItem[]
+  equipment Equipment[]
+  expense   Expense? // gasto auto-generado
 
   @@index([purchasedAt])
   @@index([supplier])
@@ -842,16 +1212,16 @@ model Purchase {
 
 /// Item de compra - cantidad y precio unitario por tipo
 model PurchaseItem {
-  id            Int     @id @default(autoincrement())
-  purchaseId    Int
-  typeId        Int
-  quantity      Float   @default(1)
-  unitPrice     Float   @default(0)
-  subtotal      Float   @default(0)
-  notes         String?
+  id         Int     @id @default(autoincrement())
+  purchaseId Int
+  typeId     Int
+  quantity   Float   @default(1)
+  unitPrice  Float   @default(0)
+  subtotal   Float   @default(0)
+  notes      String?
 
-  purchase      Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
-  type          EquipmentType @relation(fields: [typeId], references: [id])
+  purchase Purchase      @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  type     EquipmentType @relation(fields: [typeId], references: [id])
 
   @@index([purchaseId])
   @@index([typeId])
@@ -860,29 +1230,29 @@ model PurchaseItem {
 /// Equipo individual con serial - 1 fila = 1 unidad rastreable
 /// Para items por metros (cable) se crea 1 fila por rollo o por tramo asignado.
 model Equipment {
-  id              Int      @id @default(autoincrement())
-  typeId          Int
-  serialNumber    String?  @unique         // serial / SN / MAC del fabricante
-  macAddress      String?
-  brand           String?
-  model           String?
-  status          String   @default("stock")  // stock | assigned | rma | lost | retired
-  purchaseId      Int?                        // origen
-  unitCost        Float    @default(0)        // copia del unitPrice de la compra
-  notes           String?
+  id           Int     @id @default(autoincrement())
+  typeId       Int
+  serialNumber String? @unique // serial / SN / MAC del fabricante
+  macAddress   String?
+  brand        String?
+  model        String?
+  status       String  @default("stock") // stock | assigned | rma | lost | retired
+  purchaseId   Int? // origen
+  unitCost     Float   @default(0) // copia del unitPrice de la compra
+  notes        String?
 
   // Asignacion a cliente
-  assignedToClientId Int?                     // Client.idServicio
+  assignedToClientId Int? // Client.idServicio
   assignedAt         DateTime?
   assignedBy         String?
   installNotes       String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  type            EquipmentType @relation(fields: [typeId], references: [id])
-  purchase        Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
-  client          Client?       @relation("EquipmentAssignedClient", fields: [assignedToClientId], references: [idServicio], onDelete: SetNull)
+  type     EquipmentType @relation(fields: [typeId], references: [id])
+  purchase Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  client   Client?       @relation("EquipmentAssignedClient", fields: [assignedToClientId], references: [idServicio], onDelete: SetNull)
 
   @@index([typeId])
   @@index([status])
@@ -898,25 +1268,25 @@ model Equipment {
 /// Gasto - cualquier salida de dinero. Puede o no estar ligado a una compra/cliente/empleado.
 model Expense {
   id            Int      @id @default(autoincrement())
-  category      String   // inventario | nomina | servicios | transporte | otros
+  category      String // inventario | nomina | servicios | transporte | otros
   description   String
   amount        Float    @default(0)
   expenseDate   DateTime
-  paymentMethod String?  // efectivo | transferencia | tarjeta | etc.
-  reference     String?  // # comprobante
+  paymentMethod String? // efectivo | transferencia | tarjeta | etc.
+  reference     String? // # comprobante
 
   // Vinculaciones opcionales
-  purchaseId    Int?     @unique            // si proviene de una Purchase
-  payrollId     Int?                         // si proviene de PayrollEntry
-  clientIdServicio Int?                      // gasto dirigido a un cliente especifico
+  purchaseId       Int? @unique // si proviene de una Purchase
+  payrollId        Int? // si proviene de PayrollEntry
+  clientIdServicio Int? // gasto dirigido a un cliente especifico
 
-  notes         String?
-  createdBy     String?
-  createdAt     DateTime @default(now())
+  notes     String?
+  createdBy String?
+  createdAt DateTime @default(now())
 
-  purchase      Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
-  payroll       PayrollEntry? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
-  client        Client?       @relation("ExpenseClient", fields: [clientIdServicio], references: [idServicio], onDelete: SetNull)
+  purchase Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  payroll  PayrollEntry? @relation(fields: [payrollId], references: [id], onDelete: SetNull)
+  client   Client?       @relation("ExpenseClient", fields: [clientIdServicio], references: [idServicio], onDelete: SetNull)
 
   @@index([category])
   @@index([expenseDate])
@@ -930,21 +1300,21 @@ model Expense {
 
 /// Empleado de la empresa
 model Employee {
-  id            Int      @id @default(autoincrement())
-  fullName      String
-  documentId    String?  @unique    // cedula / id fiscal
-  position      String?              // tecnico, cajero, gerente
-  email         String?
-  phone         String?
-  baseSalary    Float    @default(0)
-  hiredAt       DateTime?
-  terminatedAt  DateTime?
-  active        Boolean  @default(true)
-  notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           Int       @id @default(autoincrement())
+  fullName     String
+  documentId   String?   @unique // cedula / id fiscal
+  position     String? // tecnico, cajero, gerente
+  email        String?
+  phone        String?
+  baseSalary   Float     @default(0)
+  hiredAt      DateTime?
+  terminatedAt DateTime?
+  active       Boolean   @default(true)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  payroll       PayrollEntry[]
+  payroll PayrollEntry[]
 
   @@index([active])
   @@index([position])
@@ -952,27 +1322,580 @@ model Employee {
 
 /// Pago de nomina - una fila por empleado por periodo
 model PayrollEntry {
-  id            Int      @id @default(autoincrement())
+  id            Int       @id @default(autoincrement())
   employeeId    Int
-  period        String                       // "2026-06" o "2026-Q2" o "2026-06-15"
+  period        String // "2026-06" o "2026-Q2" o "2026-06-15"
   periodStart   DateTime
   periodEnd     DateTime
-  baseAmount    Float    @default(0)
-  bonus         Float    @default(0)
-  deductions    Float    @default(0)
-  netAmount     Float    @default(0)         // baseAmount + bonus - deductions
+  baseAmount    Float     @default(0)
+  bonus         Float     @default(0)
+  deductions    Float     @default(0)
+  netAmount     Float     @default(0) // baseAmount + bonus - deductions
   paidAt        DateTime?
   paymentMethod String?
-  status        String   @default("pending") // pending | paid | cancelled
+  status        String    @default("pending") // pending | paid | cancelled
   notes         String?
   createdBy     String?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 
-  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  expenses      Expense[]                    // gasto(s) generado(s)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  expenses Expense[] // gasto(s) generado(s)
 
   @@index([employeeId])
   @@index([period])
   @@index([status])
   @@index([periodStart, periodEnd])
+}
+
+// OLT ZTE C320: inventario operativo e historial de monitoreo.
+model OltSnapshot {
+  id               Int      @id @default(autoincrement())
+  status           String
+  systemName       String?
+  model            String?
+  version          String?
+  uptimeText       String?
+  totalOnus        Int      @default(0)
+  onlineOnus       Int      @default(0)
+  offlineOnus      Int      @default(0)
+  unconfiguredOnus Int      @default(0)
+  activeAlarms     Int      @default(0)
+  criticalAlarms   Int      @default(0)
+  maxTemperatureC  Float?
+  durationMs       Int?
+  errorMessage     String?
+  capturedAt       DateTime @default(now())
+
+  @@index([capturedAt])
+  @@index([status])
+}
+
+model OltOnu {
+  id                Int       @id @default(autoincrement())
+  onuIndex          String    @unique
+  interfaceName     String
+  rack              Int
+  shelf             Int
+  pon               Int
+  onuId             Int
+  name              String?
+  model             String?
+  serial            String?
+  authMode          String?
+  adminState        String?
+  omccState         String?
+  phaseState        String?
+  channel           String?
+  online            Boolean   @default(false)
+  distanceM         Int?
+  rxPowerDbm        Float?
+  txPowerDbm        Float?
+  attenuationUpDb   Float?
+  attenuationDownDb Float?
+  onlineDuration    String?
+  lastOfflineCause  String?
+  clientIdServicio  Int?
+  mappingSource     String?
+  mappedAt          DateTime?
+  mappedBy          String?
+  firstSeenAt       DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  lastDetailAt      DateTime?
+  updatedAt         DateTime  @updatedAt
+
+  tr069Device Tr069Device?
+
+  @@index([pon, online])
+  @@index([serial])
+  @@index([phaseState])
+  @@index([clientIdServicio])
+}
+
+/// ONU inscrita expresamente para administracion remota mediante el agente local.
+model Tr069Device {
+  id               Int       @id @default(autoincrement())
+  serial           String    @unique
+  onuIndex         String?   @unique
+  clientIdServicio Int?
+  enabled          Boolean   @default(false)
+  status           String    @default("pending")
+  acsDeviceId      String?
+  manufacturer     String?
+  model            String?
+  softwareVersion  String?
+  lastInformAt     DateTime?
+  lastAgentAt      DateTime?
+  snapshotJson     String?
+  capabilitiesJson String?
+  enabledBy        String?
+  enabledAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  onu       OltOnu?          @relation(fields: [onuIndex], references: [onuIndex], onDelete: SetNull)
+  tasks     Tr069Task[]
+  telemetry Tr069Telemetry[]
+
+  @@index([enabled, status])
+  @@index([clientIdServicio])
+  @@index([lastInformAt])
+}
+
+/// Cola durable Railway -> agente local. Los secretos se cifran fuera del JSON visible.
+model Tr069Task {
+  id               String    @id @default(uuid())
+  idempotencyKey   String    @unique
+  deviceId         Int
+  serial           String
+  action           String
+  status           String    @default("pending")
+  payloadJson      String    @default("{}")
+  secretCiphertext String?
+  resultJson       String?
+  errorMessage     String?
+  errorCode        String?
+  riskLevel        String    @default("read")
+  stage            String    @default("queued")
+  progress         Int       @default(0)
+  rollbackJson     String?
+  verificationJson String?
+  scheduledAt      DateTime?
+  heartbeatAt      DateTime?
+  cancelledAt      DateTime?
+  attempts         Int       @default(0)
+  createdById      Int?
+  createdBy        String
+  claimedBy        String?
+  claimedAt        DateTime?
+  leaseExpiresAt   DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  device Tr069Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([serial, createdAt])
+  @@index([deviceId, status])
+  @@index([serial, status, scheduledAt])
+}
+
+/// Perfil certificado de comandos por fabricante, modelo y firmware.
+model Tr069CapabilityProfile {
+  id              Int       @id @default(autoincrement())
+  profileKey      String    @unique
+  manufacturer    String
+  model           String
+  softwarePattern String
+  dataModel       String    @default("InternetGatewayDevice")
+  actionsJson     String    @default("{}")
+  discoveredAt    DateTime  @default(now())
+  certifiedAt     DateTime?
+  certifiedBy     String?
+  updatedAt       DateTime  @updatedAt
+
+  @@index([manufacturer, model])
+}
+
+/// Muestras compactas; el snapshot mas reciente permanece en Tr069Device.
+model Tr069Telemetry {
+  id          Int      @id @default(autoincrement())
+  deviceId    Int
+  serial      String
+  collectedAt DateTime
+  interval    String   @default("normal")
+  metricsJson String
+  eventCode   String?
+  createdAt   DateTime @default(now())
+
+  device Tr069Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, collectedAt])
+  @@index([serial, collectedAt])
+  @@index([createdAt])
+}
+
+/// Credencial restringida para que ONU Studio consuma solo la cola TR-069.
+model Tr069Agent {
+  id               String    @id @default(uuid())
+  name             String    @unique
+  displayName      String?
+  tokenHash        String    @unique
+  active           Boolean   @default(true)
+  version          String?
+  hostname         String?
+  windowsUser      String?
+  osName           String?
+  architecture     String?
+  isAdmin          Boolean   @default(false)
+  capabilitiesJson String?
+  discoveryJson    String?
+  currentTaskId    String?
+  lastIp           String?
+  createdBy        String
+  tokenFingerprint String?
+  pairedAt         DateTime  @default(now())
+  revokedAt        DateTime?
+  revokedBy        String?
+  lastSeenAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  onuTasks OnuAgentTask[]
+
+  @@index([active, lastSeenAt])
+}
+
+/// Cola durable Railway -> ONU Studio para operaciones que necesitan acceso a la LAN local.
+/// Los secretos se cifran mientras el trabajo espera y nunca forman parte del DTO publico.
+model OnuAgentTask {
+  id               String    @id @default(uuid())
+  idempotencyKey   String    @unique
+  agentId          String
+  action           String
+  status           String    @default("pending")
+  payloadJson      String    @default("{}")
+  secretCiphertext String?
+  resultJson       String?
+  errorMessage     String?
+  errorCode        String?
+  stage            String    @default("queued")
+  stageLabel       String    @default("Trabajo en cola")
+  progress         Int       @default(0)
+  localJobId       String?
+  cloudJobId       String?
+  attempts         Int       @default(0)
+  createdById      Int?
+  createdBy        String
+  claimedAt        DateTime?
+  heartbeatAt      DateTime?
+  leaseExpiresAt   DateTime?
+  cancelledAt      DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  agent Tr069Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([cloudJobId])
+}
+
+model OltOpticalReading {
+  id                Int      @id @default(autoincrement())
+  onuIndex          String
+  online            Boolean
+  phaseState        String?
+  distanceM         Int?
+  rxPowerDbm        Float?
+  txPowerDbm        Float?
+  attenuationUpDb   Float?
+  attenuationDownDb Float?
+  capturedAt        DateTime @default(now())
+
+  @@index([onuIndex, capturedAt])
+  @@index([capturedAt])
+}
+
+model OltUnconfiguredOnu {
+  id                  Int       @id @default(autoincrement())
+  serial              String    @unique
+  ponIndex            String
+  rack                Int
+  shelf               Int
+  pon                 Int
+  active              Boolean   @default(true)
+  firstSeenAt         DateTime  @default(now())
+  lastSeenAt          DateTime  @default(now())
+  clearedAt           DateTime?
+  authorizationStatus String    @default("pending")
+  authorizationReason String?
+
+  @@index([active, pon])
+  @@index([lastSeenAt])
+}
+
+model OltAlarm {
+  id          Int       @id @default(autoincrement())
+  alarmId     String    @unique
+  code        String?
+  level       String
+  alarmTime   String?
+  description String
+  active      Boolean   @default(true)
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  clearedAt   DateTime?
+
+  @@index([active, level])
+  @@index([lastSeenAt])
+}
+
+model OltCard {
+  id              Int      @id @default(autoincrement())
+  location        String   @unique
+  rack            Int
+  shelf           Int
+  slot            Int
+  configuredType  String?
+  realType        String?
+  ports           Int?
+  hardwareVersion String?
+  softwareVersion String?
+  status          String?
+  temperatureC    Float?
+  lastSeenAt      DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([status])
+}
+
+/// Splitter fisico alimentado por un puerto PON de la OLT.
+model OltSplitter {
+  id              Int      @id @default(autoincrement())
+  name            String   @unique
+  ponIndex        String
+  splitterType    String   @default("balanced")
+  ratio           Int      @default(16)
+  insertionLossDb Float?
+  zone            String?
+  notes           String?
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  naps OltNap[]
+
+  @@index([ponIndex, active])
+}
+
+/// Caja NAP con capacidad y ubicacion persistentes.
+model OltNap {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique
+  name       String
+  splitterId Int?
+  capacity   Int      @default(16)
+  zone       String?
+  address    String?
+  latitude   Float?
+  longitude  Float?
+  notes      String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  splitter OltSplitter? @relation(fields: [splitterId], references: [id], onDelete: SetNull)
+  ports    OltNapPort[]
+
+  @@index([splitterId, active])
+  @@index([zone])
+}
+
+/// Salida individual de una NAP. Una ONU solo puede ocupar un puerto.
+model OltNapPort {
+  id               Int       @id @default(autoincrement())
+  napId            Int
+  portNumber       Int
+  status           String    @default("available")
+  onuIndex         String?   @unique
+  serial           String?
+  clientIdServicio Int?
+  assignedAt       DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  nap OltNap @relation(fields: [napId], references: [id], onDelete: Cascade)
+
+  @@unique([napId, portNumber])
+  @@index([napId, status])
+  @@index([clientIdServicio])
+}
+
+/// Perfil aprobado que evita volver a escribir VLAN y perfiles CLI en cada alta.
+model OltProvisioningProfile {
+  id                   Int      @id @default(autoincrement())
+  name                 String   @unique
+  onuType              String?
+  vendorPrefix         String?
+  vlan                 Int      @default(101)
+  tcontProfile         String
+  trafficProfile       String
+  serviceMode          String   @default("router")
+  lanPortsJson         String   @default("[1]")
+  managementMode       String   @default("iphost")
+  tr069Policy          String   @default("optional")
+  omciPolicy           String   @default("baseline")
+  compatibleModelsJson String   @default("[]")
+  isDefault            Boolean  @default(false)
+  active               Boolean  @default(true)
+  notes                String?
+  createdBy            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([active, isDefault])
+  @@index([vendorPrefix])
+}
+
+/// Catalogo maestro de hardware ONU. No contiene datos particulares de clientes.
+model OnuModelProfile {
+  id                  Int      @id @default(autoincrement())
+  profileKey          String   @unique
+  manufacturer        String
+  model               String
+  firmwarePattern     String   @default("*")
+  serialPrefixes      String   @default("[]")
+  ponType             String   @default("GPON")
+  oltVendor           String   @default("ZTE")
+  oltModel            String   @default("C320")
+  oltOnuType          String
+  omciMode            String   @default("baseline")
+  extendedOmci        Boolean  @default(false)
+  tr069ProfileKey     String?
+  certificationStatus String   @default("detected")
+  defaultsJson        String   @default("{}")
+  active              Boolean  @default(true)
+  builtIn             Boolean  @default(false)
+  version             Int      @default(1)
+  notes               String?
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  capabilities OnuModelCapability[]
+  devices      OnuDeviceProfile[]
+  versions     OnuModelProfileVersion[]
+
+  @@index([manufacturer, model])
+  @@index([active, certificationStatus])
+  @@index([oltVendor, oltModel, oltOnuType])
+}
+
+/// Capacidad tipada y certificada por canal. Nunca almacena comandos CLI libres.
+model OnuModelCapability {
+  id                Int       @id @default(autoincrement())
+  profileId         Int
+  action            String
+  channel           String
+  status            String    @default("detected")
+  rollbackSupported Boolean   @default(false)
+  destructive       Boolean   @default(false)
+  notes             String?
+  verifiedAt        DateTime?
+  lastError         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  profile OnuModelProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, action, channel])
+  @@index([action, channel, status])
+}
+
+/// Perfil resuelto para una ONU fisica. Sobrevive a cambios de puerto PON.
+model OnuDeviceProfile {
+  serial           String    @id
+  profileId        Int
+  source           String    @default("automatic")
+  confidence       String    @default("detected")
+  detectedModel    String?
+  detectedFirmware String?
+  matchedAt        DateTime  @default(now())
+  lastVerifiedAt   DateTime?
+  overridesJson    String    @default("{}")
+  updatedAt        DateTime  @updatedAt
+
+  profile OnuModelProfile @relation(fields: [profileId], references: [id], onDelete: Restrict)
+
+  @@index([profileId, confidence])
+  @@index([detectedModel])
+}
+
+/// Snapshot inmutable para auditar cada cambio de un perfil de modelo.
+model OnuModelProfileVersion {
+  id           Int      @id @default(autoincrement())
+  profileId    Int
+  version      Int
+  snapshotJson String
+  changedBy    String?
+  changeReason String?
+  createdAt    DateTime @default(now())
+
+  profile OnuModelProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, version])
+  @@index([profileId, createdAt])
+}
+
+/// Alerta calculada a partir del historial de potencia, no solo del estado instantaneo.
+model OltSignalAlert {
+  id              Int       @id @default(autoincrement())
+  fingerprint     String    @unique
+  onuIndex        String
+  type            String
+  severity        String
+  message         String
+  currentValue    Float?
+  baselineValue   Float?
+  active          Boolean   @default(true)
+  firstSeenAt     DateTime  @default(now())
+  lastSeenAt      DateTime  @default(now())
+  clearedAt       DateTime?
+  occurrenceCount Int       @default(1)
+
+  @@index([active, severity])
+  @@index([onuIndex, lastSeenAt])
+}
+
+// Centro NOC: incidentes correlacionados a partir de lecturas de red.
+model NetworkIncident {
+  id                Int       @id @default(autoincrement())
+  fingerprint       String
+  source            String    @default("mikrotik")
+  category          String
+  title             String
+  description       String?
+  severity          String    @default("medium")
+  status            String    @default("open") // open | acknowledged | resolved
+  scopeType         String
+  scopeKey          String
+  scopeLabel        String
+  affectedClients   Int       @default(0)
+  affectedClientIds String    @default("[]") // JSON de Client.idServicio
+  assignedTo        String?
+  detectionCount    Int       @default(1)
+  recoveryStreak    Int       @default(0)
+  detectedAt        DateTime  @default(now())
+  lastSeenAt        DateTime  @default(now())
+  acknowledgedAt    DateTime?
+  acknowledgedBy    String?
+  resolvedAt        DateTime?
+  resolvedBy        String?
+  resolutionNote    String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  events NetworkIncidentEvent[]
+
+  @@index([status, severity])
+  @@index([fingerprint, status])
+  @@index([detectedAt])
+  @@index([scopeType, scopeKey])
+}
+
+model NetworkIncidentEvent {
+  id         Int      @id @default(autoincrement())
+  incidentId Int
+  type       String
+  message    String
+  createdBy  String?
+  metadata   String?
+  createdAt  DateTime @default(now())
+
+  incident NetworkIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId, createdAt])
 }

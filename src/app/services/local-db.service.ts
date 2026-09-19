@@ -1,141 +1,202 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
 import { WispHubClient } from '../models/client.model';
 import { Invoice } from '../models/invoice.model';
 import { Ticket } from '../models/ticket.model';
 
 @Injectable({ providedIn: 'root' })
 export class LocalDbService {
-  private db!: IDBDatabase;
-  private readonly DB_NAME = 'WishubDB';
-  private readonly DB_VERSION = 1;
-  private initPromise: Promise<void> | null = null;
+  private http = inject(HttpClient);
+  private clientCache: WispHubClient[] | null = null;
+  private invoiceCache: Invoice[] | null = null;
 
   init(): Promise<void> {
-    if (this.initPromise) return this.initPromise;
-    this.initPromise = this._doInit();
-    return this.initPromise;
-  }
-
-  private _doInit(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.DB_NAME, this.DB_VERSION);
-
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-
-        if (!db.objectStoreNames.contains('clients')) {
-          const clientStore = db.createObjectStore('clients', { keyPath: 'id_servicio' });
-          clientStore.createIndex('nombre', 'nombre', { unique: false });
-          clientStore.createIndex('estado', 'estado', { unique: false });
-          clientStore.createIndex('zona', 'zona', { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('invoices')) {
-          const invoiceStore = db.createObjectStore('invoices', { keyPath: 'id_factura' });
-          invoiceStore.createIndex('id_servicio', 'id_servicio', { unique: false });
-          invoiceStore.createIndex('estado', 'estado', { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('tickets')) {
-          const ticketStore = db.createObjectStore('tickets', { keyPath: 'id_ticket' });
-          ticketStore.createIndex('id_servicio', 'id_servicio', { unique: false });
-          ticketStore.createIndex('estado', 'estado', { unique: false });
-        }
-
-        if (!db.objectStoreNames.contains('sync_log')) {
-          db.createObjectStore('sync_log', { keyPath: 'entity' });
-        }
-      };
-
-      request.onsuccess = (event) => {
-        this.db = (event.target as IDBOpenDBRequest).result;
-        resolve();
-      };
-
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  // ─── GENERIC CRUD ───
-  private putAll<T>(storeName: string, items: T[]): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      items.forEach(item => store.put(item));
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  private getAll<T>(storeName: string): Promise<T[]> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, 'readonly');
-      const store = tx.objectStore(storeName);
-      const request = store.getAll();
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  private getByKey<T>(storeName: string, key: any): Promise<T | undefined> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, 'readonly');
-      const store = tx.objectStore(storeName);
-      const request = store.get(key);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
-
-  private clearStore(storeName: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(storeName, 'readwrite');
-      const store = tx.objectStore(storeName);
-      const request = store.clear();
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
+    return Promise.resolve();
   }
 
   // ─── CLIENTS ───
-  saveClients(clients: WispHubClient[]): Promise<void> {
-    return this.putAll('clients', clients);
+  async saveClients(clients: WispHubClient[]): Promise<void> {
+    const existing = this.clientCache || [];
+    const merged = new Map(existing.map((client) => [client.id_servicio, client]));
+    for (const client of clients) {
+      const definedFields = Object.fromEntries(
+        Object.entries(client).filter(([, value]) => value !== undefined),
+      );
+      const next = { ...merged.get(client.id_servicio), ...definedFields } as WispHubClient;
+      merged.set(client.id_servicio, next);
+    }
+    this.clientCache = [...merged.values()];
   }
 
-  getClients(): Promise<WispHubClient[]> {
-    return this.getAll('clients');
+  async getClients(forceRefresh = false): Promise<WispHubClient[]> {
+    if (!forceRefresh && this.clientCache) return this.clientCache;
+    const rows = await firstValueFrom(this.http.get<any[]>('/db/clients?limit=100000'));
+    const clients = rows.map((row) => this.mapServerClient(row));
+    this.clientCache = clients;
+    return clients;
   }
 
-  getClient(idServicio: number): Promise<WispHubClient | undefined> {
-    return this.getByKey('clients', idServicio);
+  async getClient(idServicio: number): Promise<WispHubClient | undefined> {
+    const cached = this.clientCache?.find((client) => client.id_servicio === idServicio);
+    if (cached) return cached;
+    const row = await firstValueFrom(this.http.get<any>(`/db/clients/${idServicio}`));
+    if (!row) return undefined;
+    const client = this.mapServerClient(row);
+    await this.saveClients([client]);
+    return client;
+  }
+
+  private mapServerClient(row: any): WispHubClient {
+    const relation = (id: any, nombre: any) => id || nombre ? { id, nombre: nombre || '' } : null;
+    return {
+      id_servicio: row.idServicio,
+      usuario: row.usuario || '',
+      nombre: row.nombre || 'Sin nombre',
+      email: row.email || '',
+      email_cc: row.emailCc || '',
+      razon_social: row.razonSocial || '',
+      tipo_persona: row.tipoPersona || '',
+      cedula: row.cedula || '',
+      direccion: row.direccion || '',
+      localidad: row.localidad || '',
+      ciudad: row.ciudad || '',
+      telefono: row.telefono || '',
+      descuento: row.descuento || '',
+      saldo: row.saldo || '',
+      rfc: row.rfc || '',
+      informacion_adicional: null,
+      notificacion_sms: false,
+      aviso_pantalla: false,
+      notificaciones_push: false,
+      auto_activar_servicio: Boolean(row.autoActivar),
+      firewall: row.firewall !== false,
+      servicio: row.nombre || '',
+      password_servicio: '',
+      server_hotspot: '',
+      ip: row.ip || '',
+      ip_local: row.ipLocal || null,
+      estado: row.estado || '',
+      modelo_antena: relation(row.modeloAntenaId, row.modeloAntenaName) as any,
+      mac_cpe: row.macCpe || '',
+      interfaz_lan: row.interfazLan || '',
+      modelo_router_wifi: row.modeloRouterWifi || '',
+      ip_router_wifi: row.ipRouterWifi || null,
+      mac_router_wifi: row.macRouterWifi || '',
+      ssid_router_wifi: row.ssidRouterWifi || '',
+      password_ssid_router_wifi: row.passwordSsidWifi || '',
+      comentarios: row.comentarios || '',
+      coordenadas: row.coordenadas || '',
+      gpsLat: row.gpsLat ?? null,
+      gpsLng: row.gpsLng ?? null,
+      gpsAccuracy: row.gpsAccuracy ?? null,
+      gpsCapturedAt: row.gpsCapturedAt ?? null,
+      gpsCapturedBy: row.gpsCapturedBy ?? null,
+      costo_instalacion: '',
+      precio_plan: row.precioPlan || '',
+      forma_contratacion: row.formaContratacion || '',
+      sn_onu: row.snOnu || '',
+      estado_facturas: row.estadoFacturas || '',
+      fecha_instalacion: row.fechaInstalacion || '',
+      fecha_cancelacion: row.fechaCancelacion || null,
+      fecha_corte: row.fechaCorte || '',
+      ultimo_cambio: row.ultimoCambio || '',
+      plan_internet: relation(row.planInternetId, row.planInternetName),
+      zona: relation(row.zonaId, row.zonaNombre),
+      router: row.routerId || row.routerNombre ? {
+        id: row.routerId,
+        nombre: row.routerNombre || '',
+        falla_general: false,
+        falla_general_descripcion: null,
+      } : null,
+      sectorial: relation(row.sectorialId, row.sectorialNombre),
+      tecnico: relation(row.tecnicoId, row.tecnicoNombre),
+    } as WispHubClient;
   }
 
   // ─── INVOICES ───
   saveInvoices(invoices: Invoice[]): Promise<void> {
-    return this.putAll('invoices', invoices);
+    const merged = new Map((this.invoiceCache || []).map((invoice) => [invoice.id_factura, invoice]));
+    for (const invoice of invoices) merged.set(invoice.id_factura, invoice);
+    this.invoiceCache = [...merged.values()];
+    return Promise.resolve();
   }
 
-  getInvoices(): Promise<Invoice[]> {
-    return this.getAll('invoices');
+  async getInvoices(forceRefresh = false): Promise<Invoice[]> {
+    if (!forceRefresh && this.invoiceCache) return this.invoiceCache;
+    const rows = await firstValueFrom(this.http.get<any[]>('/db/invoices?limit=100000'));
+    const invoices = rows.map((row) => this.mapServerInvoice(row));
+    this.invoiceCache = invoices;
+    return invoices;
+  }
+
+  private mapServerInvoice(row: any): Invoice {
+    return {
+      id_factura: row.idFactura,
+      folio: row.folio,
+      fecha_emision: row.fechaEmision,
+      fecha_vencimiento: row.fechaVencimiento,
+      fecha_pago: row.fechaPago,
+      estado: row.estado,
+      tipo: row.tipo,
+      zona: row.zonaId || row.zonaNombre ? { id: row.zonaId, nombre: row.zonaNombre || '' } : null,
+      sub_total: row.subTotal || 0,
+      descuento: row.descuento || 0,
+      saldo: row.saldo || 0,
+      saldo_nuevo: row.saldoNuevo || 0,
+      impuestos_total: row.impuestosTotal || 0,
+      total_cobrado: row.totalCobrado || 0,
+      total: row.total || 0,
+      comprobante_pago: row.comprobantePago,
+      referencia: row.referencia || '',
+      total_pasarela: row.totalPasarela || 0,
+      retencion_porcentaje: row.retencionPorcentaje || 0,
+      retenciones_total: row.retencionesTotal || 0,
+      forma_pago: row.formaPagoId || row.formaPagoNombre
+        ? { id: row.formaPagoId, nombre: row.formaPagoNombre || '' }
+        : null,
+      cajero: row.cajeroId || row.cajeroNombre
+        ? { id: row.cajeroId, nombre: row.cajeroNombre || '' }
+        : null,
+      cliente: row.clienteNombre || row.clienteUsuario ? {
+        usuario: row.clienteUsuario || '',
+        nombre: row.clienteNombre || '',
+        email: row.clienteEmail || '',
+        cedula: row.clienteCedula || '',
+        direccion: row.clienteDireccion || '',
+        localidad: '',
+        telefono: row.clienteTelefono || '',
+        rfc: row.clienteRfc || '',
+      } : null,
+      articulos: (row.articles || []).map((article: any) => ({
+        id: article.remoteId || article.id,
+        cantidad: article.cantidad || 1,
+        descripcion: article.descripcion || '',
+        precio: String(article.precio || 0),
+        servicio: article.idServicio ? { id_servicio: article.idServicio } : null,
+      })),
+    } as Invoice;
   }
 
   // ─── TICKETS ───
-  saveTickets(tickets: Ticket[]): Promise<void> {
-    return this.putAll('tickets', tickets);
+  async saveTickets(tickets: Ticket[]): Promise<void> {
+    await firstValueFrom(this.http.post('/db/tickets/sync', { tickets }));
   }
 
   getTickets(): Promise<Ticket[]> {
-    return this.getAll('tickets');
+    return firstValueFrom(this.http.get<Ticket[]>('/db/tickets'));
   }
 
   // ─── SYNC LOG ───
   async updateSyncLog(entity: string): Promise<void> {
-    const tx = this.db.transaction('sync_log', 'readwrite');
-    tx.objectStore('sync_log').put({ entity, lastSync: new Date().toISOString() });
+    void entity;
   }
 
   async getLastSync(entity: string): Promise<string | null> {
-    const record = await this.getByKey<{ entity: string; lastSync: string }>('sync_log', entity);
-    return record?.lastSync ?? null;
+    void entity;
+    try {
+      const status = await firstValueFrom(this.http.get<{ lastSyncAt: string | null }>('/sync/status'));
+      return status.lastSyncAt;
+    } catch { return null; }
   }
 }

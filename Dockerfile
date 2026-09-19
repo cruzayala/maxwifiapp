@@ -18,7 +18,7 @@ COPY . .
 RUN npx prisma generate
 
 # Build Angular
-RUN npx ng build
+RUN npm run build
 
 # ─── RUNTIME STAGE ───
 FROM node:22-alpine
@@ -31,12 +31,13 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/server.js ./
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/lib ./lib
+COPY --from=build /app/agent-downloads ./agent-downloads
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 
 # Solo deps de producción
 RUN npm ci --omit=dev
 
-# Postgres en Railway (no requiere volume; DB es un servicio aparte)
+# SQLite en Railway: DATABASE_URL apunta al volumen persistente montado en /data
 EXPOSE 7400
 CMD ["npm", "run", "start:prod"]

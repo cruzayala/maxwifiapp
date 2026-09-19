@@ -1,0 +1,39 @@
+ONU STUDIO | ISP MAX 1.5.6
+==========================
+
+Requisitos:
+- Windows 10 u 11 de 64 bits.
+- Cable Ethernet conectado directamente a la ONU.
+- Una cuenta de Windows que pueda autorizar permisos de administrador.
+
+Asistente guiado:
+1. Abre ONU-Studio-ISP-Max.exe.
+2. Acepta la solicitud de administrador de Windows.
+3. Detectar: espera a que aparezca ONU detectada; el modelo, la IP y la tarjeta se completan automaticamente.
+   El agente inicia una sola lectura tecnica y convierte el serial hexadecimal de Huawei al formato usado por la OLT.
+4. Cliente e IP: conecta con ISP Max, elige cliente, segmento, IP libre, zona, plan y velocidad.
+5. Internet: ONU Studio reserva la IP en la nube y completa IP WAN, mascara, gateway, TR-069 y origen remoto.
+6. WiFi: ONU Studio propone un nombre y una clave segura, ambos editables.
+7. Revisar: confirma el resumen y pulsa Aprovisionar. El agente configura la ONU local, verifica el resultado y actualiza el expediente de la nube.
+
+Orden de seguridad:
+- La IP se reserva y el cliente se prepara primero en WispHub/MikroTik.
+- La ONU no se modifica hasta llegar al ultimo paso y confirmar Aprovisionar.
+- Si la coordinacion de nube falla, el proceso no avanza a la configuracion local.
+- Con TR-069 activo, la WAN se crea como TR069_INTERNET y registra la ONU en el ACS configurado.
+- Las claves del ACS se leen desde el archivo .env local y nunca se muestran en la interfaz ni en el historial.
+
+Segundo plano:
+- Al cerrar la ventana, el agente permanece en el area de notificacion de Windows.
+- Desde el icono puedes abrir ONU Studio o salir completamente.
+- Activa Iniciar con Windows para mantener disponible la integracion con ISP Max.
+
+El programa incluye Python y Chromium. No requiere instalarlos en la PC.
+El historial, respaldos y registros se guardan en:
+%LOCALAPPDATA%\ISP Max\ONU Studio
+
+Seguridad:
+- El servidor interno solo escucha en 127.0.0.1.
+- El ejecutable no incluye la contrasena tecnica de la ONU.
+- La primera ejecucion puede mostrar una advertencia de SmartScreen porque
+  el archivo no esta firmado con un certificado comercial.

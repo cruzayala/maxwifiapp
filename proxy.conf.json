@@ -1,60 +1,120 @@
 {
   "/api": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/db": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/billing": {
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/wa": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/clients-actions": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/web-activity": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
-  "/mikrotik": {
-    "target": "http://localhost:7402",
+  "/mikrotik/": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/olt-api": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/tr069-api": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/provisioning": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/client-provisioning": {
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/sync": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/noc": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/network-audit/status": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/network-audit/clients": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/network-audit/wan": {
+    "target": "http://localhost:7400",
+    "secure": false,
+    "changeOrigin": true,
+    "logLevel": "debug"
+  },
+  "/network-audit/collect": {
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/captive": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/auth": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"
   },
   "/health": {
-    "target": "http://localhost:7402",
+    "target": "http://localhost:7400",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"

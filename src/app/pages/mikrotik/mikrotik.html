@@ -1,0 +1,345 @@
+<app-navbar pageTitle="MikroTik" />
+
+<main class="mikrotik-page">
+  <section class="command-header">
+    <div class="router-identity">
+      <span class="router-mark" [class.offline]="!status().connected">
+        <svg lucideRouter size="24" aria-hidden="true"></svg>
+      </span>
+      <div>
+        <div class="status-line">
+          <span class="status-dot" [class.online]="status().connected"></span>
+          <span>{{ status().connected ? 'En linea' : 'Sin conexion' }}</span>
+          <span class="separator"></span>
+          <span class="mono">{{ status().host || 'No configurado' }}</span>
+        </div>
+        <h1>{{ system()?.identity || 'Router principal' }}</h1>
+        <p>{{ systemResource('board-name') }} &middot; RouterOS {{ systemResource('version') }}</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <div class="updated-at">
+        <span>Actualizado</span>
+        <strong>{{ lastUpdate()?.toLocaleTimeString() || '--:--:--' }}</strong>
+      </div>
+      <button class="icon-button" type="button" (click)="refreshAll()" [disabled]="refreshing()" title="Actualizar datos" aria-label="Actualizar datos">
+        <svg lucideRefreshCw size="18" [class.spinning]="refreshing()" aria-hidden="true"></svg>
+      </button>
+    </div>
+  </section>
+
+  @if (errorMessage()) {
+    <div class="inline-alert danger"><svg lucideCircleAlert size="18" aria-hidden="true"></svg><span>{{ errorMessage() }}</span></div>
+  }
+
+  <nav class="view-tabs" aria-label="Vistas MikroTik">
+    <button type="button" [class.active]="activeTab() === 'overview'" (click)="changeTab('overview')"><svg lucideCircleGauge size="16" aria-hidden="true"></svg>Resumen</button>
+    <button type="button" class="ip-availability-tab" [class.active]="activeTab() === 'ipam'" (click)="changeTab('ipam')"><svg lucideNetwork size="16" aria-hidden="true"></svg>IPs libres</button>
+    <button type="button" [class.active]="activeTab() === 'reconciliation'" (click)="changeTab('reconciliation')"><svg lucideDatabase size="16" aria-hidden="true"></svg>Clientes y colas <span>{{ live()?.stats?.differences || 0 }}</span></button>
+    <button type="button" [class.active]="activeTab() === 'unknown'" (click)="changeTab('unknown')"><svg lucideShieldAlert size="16" aria-hidden="true"></svg>Desconocidos <span class="warn-count">{{ unknown() ? unknown()!.stats.highRisk : '-' }}</span></button>
+    <button type="button" [class.active]="activeTab() === 'interfaces'" (click)="changeTab('interfaces')"><svg lucideNetwork size="16" aria-hidden="true"></svg>Infraestructura</button>
+    <button type="button" [class.active]="activeTab() === 'firewall'" (click)="changeTab('firewall')"><svg lucideShieldCheck size="16" aria-hidden="true"></svg>Firewall</button>
+    <button type="button" [class.active]="activeTab() === 'netwatch'" (click)="changeTab('netwatch')"><svg lucideRadioTower size="16" aria-hidden="true"></svg>Netwatch</button>
+    <button type="button" [class.active]="activeTab() === 'backups'" (click)="changeTab('backups')"><svg lucideHardDrive size="16" aria-hidden="true"></svg>Respaldos</button>
+    <button type="button" [class.active]="activeTab() === 'security'" (click)="changeTab('security')"><svg lucideShieldCheck size="16" aria-hidden="true"></svg>Seguridad</button>
+  </nav>
+
+  @if (!status().connected && !loading()) {
+    <section class="connection-empty">
+      <svg lucideWifiOff size="34" aria-hidden="true"></svg>
+      <h2>MikroTik no disponible</h2>
+      <p>{{ status().error || 'No se pudo establecer la sesion API.' }}</p>
+      <button type="button" (click)="refreshAll()"><svg lucideRefreshCw size="16" aria-hidden="true"></svg>Reintentar</button>
+    </section>
+  } @else {
+    @if (activeTab() === 'overview') {
+      <section class="kpi-strip" aria-label="Indicadores operativos">
+        <article>
+          <span class="kpi-icon blue"><svg lucideArrowDownToLine size="19" aria-hidden="true"></svg></span>
+          <div><small>WAN descarga</small><strong>{{ formatBps(wan()?.rxBps || 0) }}</strong><em>{{ wanUtilization().toFixed(0) }}% capacidad</em></div>
+        </article>
+        <article>
+          <span class="kpi-icon teal"><svg lucideArrowUpFromLine size="19" aria-hidden="true"></svg></span>
+          <div><small>WAN subida</small><strong>{{ formatBps(wan()?.txBps || 0) }}</strong><em>{{ wan()?.ifaceName || '-' }}</em></div>
+        </article>
+        <article>
+          <span class="kpi-icon green"><svg lucideWifi size="19" aria-hidden="true"></svg></span>
+          <div><small>Clientes online</small><strong>{{ live()?.stats?.onlineClients || 0 }}</strong><em>{{ live()?.stats?.transmittingClients || 0 }} transmitiendo</em></div>
+        </article>
+        <article>
+          <span class="kpi-icon amber"><svg lucideDatabase size="19" aria-hidden="true"></svg></span>
+          <div><small>Diferencias</small><strong>{{ live()?.stats?.differences || 0 }}</strong><em>WispHub / MikroTik</em></div>
+        </article>
+        <article>
+          <span class="kpi-icon red"><svg lucideShieldAlert size="19" aria-hidden="true"></svg></span>
+          <div><small>Desconocidos</small><strong>{{ unknown() ? unknown()!.stats.highRisk : '-' }}</strong><em>riesgo alto</em></div>
+        </article>
+        <article>
+          <span class="kpi-icon graphite"><svg lucideShieldCheck size="19" aria-hidden="true"></svg></span>
+          <div><small>Seguridad</small><strong>{{ security()?.score ?? '-' }}</strong><em>sobre 100</em></div>
+        </article>
+      </section>
+
+      <section class="overview-grid">
+        <article class="panel capacity-panel">
+          <header>
+            <div><span class="section-icon"><svg lucideActivity size="18" aria-hidden="true"></svg></span><div><h2>Capacidad del enlace</h2><p>{{ wan()?.ifaceName || 'WAN' }} · {{ formatBps(wan()?.maxBps || 0) }} contratado</p></div></div>
+            <strong [class.warning]="wanUtilization() >= 80">{{ wanUtilization().toFixed(0) }}%</strong>
+          </header>
+          <div class="capacity-track"><span [style.width.%]="wanUtilization()" [class.warning]="wanUtilization() >= 80"></span></div>
+          <div class="capacity-legend">
+            <div><span class="traffic-key download"></span><small>Descarga</small><strong>{{ formatBps(wan()?.rxBps || 0) }}</strong></div>
+            <div><span class="traffic-key upload"></span><small>Subida</small><strong>{{ formatBps(wan()?.txBps || 0) }}</strong></div>
+            <div><span class="traffic-key packets"></span><small>Paquetes</small><strong>{{ ((wan()?.rxPps || 0) + (wan()?.txPps || 0)).toLocaleString() }}/s</strong></div>
+          </div>
+        </article>
+
+        <article class="panel health-panel">
+          <header><div><span class="section-icon"><svg lucideServer size="18" aria-hidden="true"></svg></span><div><h2>Salud del CCR</h2><p>{{ systemResource('uptime') }} encendido</p></div></div></header>
+          <div class="health-list">
+            <div><span><svg lucideCpu size="16" aria-hidden="true"></svg>CPU</span><strong>{{ systemResource('cpu-load') }}%</strong><i><b [style.width.%]="+systemResource('cpu-load') || 0"></b></i></div>
+            <div><span><svg lucideHardDrive size="16" aria-hidden="true"></svg>Memoria</span><strong>{{ memoryUsage().toFixed(0) }}%</strong><i><b [style.width.%]="memoryUsage()"></b></i></div>
+            <div><span><svg lucideZap size="16" aria-hidden="true"></svg>Temperatura</span><strong>{{ temperature() }}</strong><i><b class="temperature" [style.width.%]="50"></b></i></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel top-panel">
+        <header>
+          <div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Mayor consumo ahora</h2><p>Tráfico instantáneo por cola</p></div></div>
+          <button class="text-button" type="button" (click)="changeTab('reconciliation')">Ver todos</button>
+        </header>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Cliente</th><th>IP</th><th>Plan</th><th>Subida</th><th>Descarga</th><th>Uso</th><th>Estado</th></tr></thead>
+            <tbody>
+              @for (row of topClients(); track row.ip) {
+                <tr>
+                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.zone || 'Sin zona' }}</small></div></div></td>
+                  <td class="mono">{{ row.ip }}</td>
+                  <td>{{ row.client?.plan || formatLimit(row.maxUploadBps + '/' + row.maxDownloadBps) }}</td>
+                  <td class="rate upload">{{ formatBps(row.uploadBps) }}</td>
+                  <td class="rate download">{{ formatBps(row.downloadBps) }}</td>
+                  <td><div class="mini-usage"><span [style.width.%]="Math.max(row.uploadPct, row.downloadPct)"></span></div></td>
+                  <td><span class="state-badge" [class.online]="row.isOnline">{{ row.isOnline ? 'Online' : 'Offline' }}</span></td>
+                </tr>
+              } @empty {
+                <tr><td colspan="7" class="empty-row">Sin tráfico activo</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </section>
+    }
+
+    @if (activeTab() === 'reconciliation') {
+      <section class="workspace-heading">
+        <div><h2>Clientes y colas</h2><p>{{ live()?.stats?.mikrotikQueues || 0 }} colas · {{ live()?.stats?.differences || 0 }} diferencias operativas</p></div>
+        <div class="toolbar-controls">
+          <label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="Cliente, usuario o IP" [ngModel]="clientQuery()" (ngModelChange)="setClientQuery($event)" /></label>
+          <label class="select-control"><svg lucideSlidersHorizontal size="16" aria-hidden="true"></svg><select [ngModel]="syncFilter()" (ngModelChange)="setSyncFilter($event)"><option value="all">Todos</option><option value="differences">Con diferencias</option><option value="online">Online</option><option value="offline">Offline</option><option value="disabled">Deshabilitados</option></select></label>
+        </div>
+      </section>
+      @if (canManage()) {
+        <section class="mt-control-bar">
+          <div class="mt-control-summary"><strong>{{ selectedQueueIds().size }}</strong><span>colas seleccionadas</span></div>
+          <label><span>Plantilla</span><select [(ngModel)]="selectedTemplateId">@for (item of speedTemplates(); track item.id) { <option [value]="item.id">{{ item.name }} ({{ item.uploadMbps }} / {{ item.downloadMbps }} Mbps)</option> }</select></label>
+          <button class="action-button" type="button" (click)="applySpeedTemplate()" [disabled]="!selectedQueueIds().size || controlSaving()"><svg lucideSlidersHorizontal size="15" aria-hidden="true"></svg>Aplicar</button>
+          <details>
+            <summary>Nueva plantilla</summary>
+            <div class="mt-inline-form">
+              <input type="text" [(ngModel)]="templateName" maxlength="50" placeholder="Nombre" />
+              <input type="number" [(ngModel)]="templateUploadMbps" min="0.1" max="10000" step="0.1" aria-label="Subida Mbps" />
+              <input type="number" [(ngModel)]="templateDownloadMbps" min="0.1" max="10000" step="0.1" aria-label="Descarga Mbps" />
+              <button class="icon-button small" type="button" (click)="saveSpeedTemplate()" title="Guardar plantilla"><svg lucideSave size="15" aria-hidden="true"></svg></button>
+            </div>
+          </details>
+        </section>
+      }
+      <section class="panel data-panel">
+        <div class="table-wrap">
+          <table>
+            <thead><tr>@if (canManage()) { <th class="check-col"><input type="checkbox" (change)="selectVisibleQueues($any($event.target).checked)" aria-label="Seleccionar colas visibles" /></th> }<th>Cliente</th><th>IP / MAC</th><th>Sincronización</th><th>Límite U/D</th><th>Tráfico actual</th><th>Estado</th><th></th></tr></thead>
+            <tbody>
+              @for (row of pagedClients(); track row.ip + row.queueName) {
+                <tr [class.attention-row]="row.syncState !== 'synced'">
+                  @if (canManage()) { <td class="check-col"><input type="checkbox" [disabled]="!row.queueId" [checked]="!!row.queueId && selectedQueueIds().has(row.queueId)" (change)="toggleQueueSelection(row.queueId, $any($event.target).checked)" [attr.aria-label]="'Seleccionar ' + (row.client?.name || row.queueName)" /></td> }
+                  <td><div class="client-cell"><span [class.online]="row.isOnline">{{ (row.client?.name || row.queueName).charAt(0) }}</span><div><strong>{{ row.client?.name || row.queueName }}</strong><small>{{ row.client?.username || 'Sin usuario ERP' }}</small></div></div></td>
+                  <td><strong class="mono">{{ row.ip || 'Sin IP' }}</strong><small class="cell-note mono">{{ row.macAddress || 'Sin MAC' }}</small></td>
+                  <td><span class="sync-badge" [class.issue]="row.syncState !== 'synced'">{{ syncLabel(row.syncState) }}</span></td>
+                  <td>{{ compactMbps(bpsToMbps(row.maxUploadBps)) }} / {{ compactMbps(bpsToMbps(row.maxDownloadBps)) }}</td>
+                  <td><strong class="rate download">{{ formatBps(row.downloadBps) }}</strong><small class="cell-note">↑ {{ formatBps(row.uploadBps) }}</small></td>
+                  <td><span class="state-badge" [class.online]="row.isOnline" [class.disabled]="row.isDisabled">{{ row.isDisabled ? 'Deshabilitado' : row.isOnline ? 'Online' : 'Offline' }}</span></td>
+                  <td class="actions-cell">
+                    @if (row.client?.id) { <a class="icon-button small" [routerLink]="['/clients', row.client?.id]" title="Abrir cliente"><svg lucideUsers size="15" aria-hidden="true"></svg></a> }
+                    @if (canManage() && row.ip) { <button class="icon-button small" type="button" (click)="openClientQueue(row)" title="Editar cola"><svg lucidePencil size="15" aria-hidden="true"></svg></button> }
+                  </td>
+                </tr>
+              } @empty {
+                <tr><td colspan="8" class="empty-row">No hay resultados para estos filtros</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-pagination"><span>{{ filteredClients().length }} resultados &middot; página {{ clientPage() }} de {{ clientPageCount() }}</span><div><button type="button" (click)="moveClientPage(-1)" [disabled]="clientPage() <= 1" title="Página anterior"><svg lucideChevronLeft size="16" aria-hidden="true"></svg></button><button type="button" (click)="moveClientPage(1)" [disabled]="clientPage() >= clientPageCount()" title="Página siguiente"><svg lucideChevronRight size="16" aria-hidden="true"></svg></button></div></footer>
+      </section>
+    }
+
+    @if (activeTab() === 'unknown') {
+      <section class="workspace-heading">
+        <div><h2>Dispositivos desconocidos</h2><p>Sin asociación exacta en WispHub o ERP</p></div>
+        <div class="toolbar-controls"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC o identidad" [ngModel]="unknownQuery()" (ngModelChange)="setUnknownQuery($event)" /></label><button class="icon-button" type="button" (click)="loadUnknown(true)" [disabled]="unknownLoading()" title="Actualizar análisis"><svg lucideRefreshCw size="17" [class.spinning]="unknownLoading()" aria-hidden="true"></svg></button></div>
+      </section>
+      <div class="filter-rail">
+        <button type="button" [class.active]="unknownFilter() === 'all'" (click)="setUnknownFilter('all')">Todos <span>{{ unknown()?.stats?.total || 0 }}</span></button>
+        <button type="button" [class.active]="unknownFilter() === 'high'" (click)="setUnknownFilter('high')">Riesgo alto <span>{{ unknown()?.stats?.highRisk || 0 }}</span></button>
+        <button type="button" [class.active]="unknownFilter() === 'unmanaged'" (click)="setUnknownFilter('unmanaged')">Sin control <span>{{ unknown()?.stats?.unmanaged || 0 }}</span></button>
+        <button type="button" [class.active]="unknownFilter() === 'infrastructure'" (click)="setUnknownFilter('infrastructure')">Posible infraestructura <span>{{ unknown()?.stats?.infrastructureCandidates || 0 }}</span></button>
+      </div>
+      <section class="panel data-panel">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>IP / identidad</th><th>MAC</th><th>Ruta física</th><th>Evidencia</th><th>Control</th><th>Riesgo</th><th></th></tr></thead>
+            <tbody>
+              @for (device of pagedUnknown(); track device.ip) {
+                <tr [class.high-risk-row]="device.risk === 'high'">
+                  <td><strong class="mono">{{ device.ip }}</strong><small class="cell-note">{{ device.identity || device.platform || 'Sin nombre detectado' }}</small></td>
+                  <td class="mono">{{ device.macAddress || '-' }}</td>
+                  <td><strong>{{ device.bridgePort || device.interface || '-' }}</strong><small class="cell-note">{{ device.platform || 'Equipo no identificado' }}</small></td>
+                  <td><strong>{{ device.connectionCount }} conexiones</strong><small class="cell-note">{{ formatBps(device.downloadBps) }} ↓ · {{ formatBps(device.uploadBps) }} ↑</small></td>
+                  <td><span class="sync-badge" [class.issue]="!device.queueId">{{ device.queueId ? formatLimit(device.maxLimit) : 'Sin cola' }}</span><small class="cell-note">{{ classificationLabel(device.classification) }}</small></td>
+                  <td><span class="risk-badge" [class]="device.risk">{{ device.risk === 'high' ? 'Alto' : device.risk === 'medium' ? 'Medio' : 'Bajo' }}</span></td>
+                  <td class="actions-cell">@if (canManage()) { <button class="action-button" type="button" (click)="openUnknownQueue(device)"><svg lucidePencil size="15" aria-hidden="true"></svg>{{ device.queueId ? 'Editar' : 'Limitar' }}</button> }</td>
+                </tr>
+              } @empty {
+                <tr><td colspan="7" class="empty-row">No hay dispositivos en esta categoría</td></tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        <footer class="table-pagination"><span>{{ filteredUnknown().length }} resultados &middot; página {{ unknownPage() }} de {{ unknownPageCount() }}</span><div><button type="button" (click)="moveUnknownPage(-1)" [disabled]="unknownPage() <= 1" title="Página anterior"><svg lucideChevronLeft size="16" aria-hidden="true"></svg></button><button type="button" (click)="moveUnknownPage(1)" [disabled]="unknownPage() >= unknownPageCount()" title="Página siguiente"><svg lucideChevronRight size="16" aria-hidden="true"></svg></button></div></footer>
+      </section>
+    }
+
+    @if (activeTab() === 'interfaces') {
+      <section class="workspace-heading"><div><h2>Infraestructura de red</h2><p>{{ activeInterfaces().length }} interfaces operativas</p></div><button class="text-button" type="button" (click)="loadInfrastructure()"><svg lucideRefreshCw size="16" aria-hidden="true"></svg>Actualizar</button></section>
+      <section class="infrastructure-grid">
+        <article class="panel data-panel">
+          <header><div><span class="section-icon"><svg lucideCable size="18" aria-hidden="true"></svg></span><div><h2>Interfaces</h2><p>Contadores desde el último reinicio</p></div></div></header>
+          <div class="table-wrap compact-table"><table><thead><tr><th>Interfaz</th><th>Tipo</th><th>Estado</th><th>RX</th><th>TX</th></tr></thead><tbody>@for (item of traffic(); track item.name) { <tr><td><strong>{{ item.name }}</strong><small class="cell-note mono">{{ item.macAddress || '-' }}</small></td><td>{{ item.type }}</td><td><span class="state-badge" [class.online]="item.running">{{ item.running ? 'UP' : 'DOWN' }}</span></td><td>{{ formatBytes(item.rxBytes) }}</td><td>{{ formatBytes(item.txBytes) }}</td></tr> }</tbody></table></div>
+        </article>
+        <aside class="panel sessions-panel">
+          <header><div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Sesiones</h2><p>PPPoE y Hotspot</p></div></div></header>
+          <div class="session-total"><strong>{{ (sessions()?.pppoe?.length || 0) + (sessions()?.hotspot?.length || 0) }}</strong><span>sesiones activas</span></div>
+          @for (session of sessions()?.pppoe || []; track session['.id']) { <div class="session-row"><span><svg lucideWifi size="15" aria-hidden="true"></svg></span><div><strong>{{ session.name }}</strong><small>{{ session.address }} · {{ session.uptime }}</small></div></div> }
+          @for (session of sessions()?.hotspot || []; track session['.id']) { <div class="session-row"><span><svg lucideRadioTower size="15" aria-hidden="true"></svg></span><div><strong>{{ session.user }}</strong><small>{{ session.address }} · {{ session.uptime }}</small></div></div> }
+          @if (!(sessions()?.pppoe?.length || 0) && !(sessions()?.hotspot?.length || 0)) { <div class="compact-empty"><svg lucideWifiOff size="24" aria-hidden="true"></svg><span>Sin sesiones PPPoE o Hotspot</span></div> }
+        </aside>
+      </section>
+    }
+
+    @if (activeTab() === 'firewall') {
+      <section class="workspace-heading"><div><h2>Firewall RouterOS</h2><p>Filtros, NAT, mangle y listas de direcciones con respaldo previo</p></div><button class="text-button" type="button" (click)="loadFirewall()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      <div class="filter-rail">
+        <button type="button" [class.active]="firewallTable() === 'filter'" (click)="setFirewallTable('filter')">Filtros <span>{{ firewall()?.tables?.filter?.length || 0 }}</span></button>
+        <button type="button" [class.active]="firewallTable() === 'nat'" (click)="setFirewallTable('nat')">NAT <span>{{ firewall()?.tables?.nat?.length || 0 }}</span></button>
+        <button type="button" [class.active]="firewallTable() === 'mangle'" (click)="setFirewallTable('mangle')">Mangle <span>{{ firewall()?.tables?.mangle?.length || 0 }}</span></button>
+        <button type="button" [class.active]="firewallTable() === 'address-list'" (click)="setFirewallTable('address-list')">Address lists <span>{{ firewall()?.tables?.['address-list']?.length || 0 }}</span></button>
+      </div>
+      <section class="panel data-panel">
+        <div class="table-wrap"><table><thead><tr><th>Regla</th><th>Cadena / acción</th><th>Coincidencia</th><th>Tráfico</th><th>Estado</th><th></th></tr></thead><tbody>
+          @for (rule of firewallRules(); track rule.id) {
+            <tr [class.attention-row]="rule.invalid">
+              <td><strong>{{ rule.comment || rule.list || 'Sin comentario' }}</strong><small class="cell-note mono">{{ rule.id }}</small></td>
+              <td><strong>{{ rule.chain || rule.list || '-' }}</strong><small class="cell-note">{{ rule.action || rule.address || '-' }}</small></td>
+              <td><span class="mono">{{ rule.srcAddress || '*' }} → {{ rule.dstAddress || rule.address || '*' }}</span><small class="cell-note">{{ rule.protocol || 'all' }} {{ rule.dstPort || '' }} {{ rule.inInterface || rule.outInterface || '' }}</small></td>
+              <td><strong>{{ formatBytes(rule.bytes) }}</strong><small class="cell-note">{{ rule.packets.toLocaleString() }} paquetes</small></td>
+              <td><span class="state-badge" [class.online]="!rule.disabled && !rule.invalid" [class.disabled]="rule.disabled || rule.invalid">{{ rule.dynamic ? 'Dinámica' : rule.invalid ? 'Inválida' : rule.disabled ? 'Deshabilitada' : 'Activa' }}</span></td>
+              <td class="actions-cell">@if (canManage() && !rule.dynamic) { <button class="icon-button small" type="button" (click)="toggleFirewallRule(rule)" [disabled]="controlSaving()" [title]="rule.disabled ? 'Habilitar regla' : 'Deshabilitar regla'"><svg lucideCircleCheck size="15" aria-hidden="true"></svg></button><button class="icon-button small danger-icon" type="button" (click)="deleteFirewallRule(rule)" [disabled]="controlSaving()" title="Eliminar regla"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td>
+            </tr>
+          } @empty { <tr><td colspan="6" class="empty-row">No hay reglas en esta tabla</td></tr> }
+        </tbody></table></div>
+      </section>
+    }
+
+    @if (activeTab() === 'ipam') {
+      <section class="workspace-heading"><div><h2>Inventario y disponibilidad IP</h2><p>Rangos MikroTik cruzados con WispHub, queues, DHCP, ARP y direcciones del router</p></div><div class="toolbar-controls ipam-toolbar"><label class="search-control"><svg lucideSearch size="16" aria-hidden="true"></svg><input type="search" placeholder="IP, MAC, queue, host o cliente" [ngModel]="ipamQuery()" (ngModelChange)="setIpamQuery($event)" /></label><button class="icon-button" type="button" (click)="loadIpam()" [disabled]="controlLoading()" title="Actualizar IPAM"><svg lucideRefreshCw size="17" [class.spinning]="controlLoading()" aria-hidden="true"></svg></button></div></section>
+      @if (ipam()?.stale) { <div class="ipam-stale"><svg lucideDatabase size="16" aria-hidden="true"></svg> MikroTik no respondió. Se muestra el último inventario persistente de SQLite.</div> }
+      <section class="mt-mini-kpis">
+        <div class="success"><span>Disponibles seguras</span><strong>{{ ipam()?.stats?.available || 0 }}</strong></div><div><span>Clientes WispHub</span><strong>{{ ipam()?.stats?.matchedClients || 0 }}</strong></div><div class="warning"><span>Ocupadas sin cliente</span><strong>{{ ipam()?.stats?.occupiedWithoutClient || 0 }}</strong></div><div><span>IPs inventariadas</span><strong>{{ ipam()?.stats?.total || 0 }}</strong></div><div class="danger"><span>Conflictos IP / MAC</span><strong>{{ (ipam()?.stats?.ipConflicts || 0) + (ipam()?.stats?.macMoves || 0) }}</strong></div>
+      </section>
+      <section class="mt-network-band">@for (network of ipam()?.networks || []; track network.cidr) { <button type="button" [class.active]="ipamNetwork() === network.cidr" (click)="setIpamNetwork(ipamNetwork() === network.cidr ? null : network.cidr)"><header><strong class="mono">{{ network.cidr }}</strong><span>{{ network.used }} / {{ network.capacity }} · {{ network.utilization }}%</span></header><i><b [style.width.%]="Math.min(network.utilization, 100)"></b></i><small>{{ network.available }} disponibles</small>@if (network.recommended.length) { <em>Sugeridas: {{ network.recommended.join(', ') }}</em> }</button> }</section>
+      <div class="filter-rail ipam-filters">
+        <button type="button" [class.active]="ipamFilter() === 'all'" (click)="setIpamFilter('all')">Todas <span>{{ ipam()?.stats?.total || 0 }}</span></button>
+        <button type="button" [class.active]="ipamFilter() === 'available'" (click)="setIpamFilter('available')">Disponibles <span>{{ ipam()?.stats?.available || 0 }}</span></button>
+        <button type="button" [class.active]="ipamFilter() === 'client'" (click)="setIpamFilter('client')">Con cliente <span>{{ ipam()?.stats?.matchedClients || 0 }}</span></button>
+        <button type="button" [class.active]="ipamFilter() === 'occupied'" (click)="setIpamFilter('occupied')">Sin cliente <span>{{ ipam()?.stats?.occupiedWithoutClient || 0 }}</span></button>
+        <button type="button" [class.active]="ipamFilter() === 'conflict'" (click)="setIpamFilter('conflict')">Conflictos <span>{{ (ipam()?.stats?.ipConflicts || 0) + (ipam()?.stats?.macMoves || 0) }}</span></button>
+        @if (ipamNetwork()) { <button type="button" class="clear-network" (click)="setIpamNetwork(null)">Quitar rango {{ ipamNetwork() }}</button> }
+      </div>
+      <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>IP</th><th>MAC / host</th><th>Asignación</th><th>Origen</th><th>Estado</th><th></th></tr></thead><tbody>
+        @for (row of pagedIpamRows(); track row.ip) {
+          <tr [class.high-risk-row]="row.conflict" [class.available-ip-row]="row.available">
+            <td><strong class="mono">{{ row.ip }}</strong><small class="cell-note">{{ row.cidr || 'Fuera de rangos' }}</small></td>
+            <td><strong class="mono">{{ row.macAddress || (row.available ? 'Sin uso detectado' : '-') }}</strong><small class="cell-note">{{ row.hostName || row.interface || row.poolName || '-' }}</small></td>
+            <td><strong>{{ row.client?.name || row.queueName || (row.available ? 'Lista para nuevo equipo' : 'Sin cliente WispHub') }}</strong><small class="cell-note">{{ row.client?.username || row.server || '-' }}</small></td>
+            <td><span class="sync-badge" [class.issue]="!row.available && row.classification !== 'client'">{{ row.sources.length ? row.sources.join(' + ') : 'Sin registros' }}</span></td>
+            <td><span class="state-badge" [class.online]="row.available || row.status === 'bound'" [class.disabled]="row.disabled || row.conflict">{{ ipamClassificationLabel(row) }}</span></td>
+            <td class="actions-cell">@if (row.available) { <button class="action-button" type="button" (click)="copyAvailableIp(row.ip)"><svg lucideCopy size="15" aria-hidden="true"></svg>Copiar</button> } @else if (canManage() && row.dynamic && row.leaseId) { <button class="action-button" type="button" (click)="makeLeaseStatic(row)" [disabled]="controlSaving()"><svg lucideSave size="15" aria-hidden="true"></svg>Fijar</button> }</td>
+          </tr>
+        } @empty { <tr><td colspan="6" class="empty-row">No hay direcciones para este filtro</td></tr> }
+      </tbody></table></div><footer class="table-pagination"><span>{{ filteredIpamRows().length }} resultados · página {{ ipamPage() }} de {{ ipamPageCount() }}</span><div><button type="button" (click)="moveIpamPage(-1)" [disabled]="ipamPage() <= 1" title="Página anterior"><svg lucideChevronLeft size="16" aria-hidden="true"></svg></button><button type="button" (click)="moveIpamPage(1)" [disabled]="ipamPage() >= ipamPageCount()" title="Página siguiente"><svg lucideChevronRight size="16" aria-hidden="true"></svg></button></div></footer></section>
+    }
+
+    @if (activeTab() === 'netwatch') {
+      <section class="workspace-heading"><div><h2>Netwatch</h2><p>Sondas activas ejecutadas directamente por el MikroTik</p></div><button class="text-button" type="button" (click)="loadNetwatch()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      @if (canManage()) { <section class="mt-form-band"><label><span>Host</span><input type="text" [(ngModel)]="netwatchHost" placeholder="1.1.1.1 o dominio" /></label><label><span>Tipo</span><select [(ngModel)]="netwatchType"><option value="icmp">ICMP</option><option value="simple">Simple</option><option value="tcp-conn">TCP</option><option value="http-get">HTTP</option><option value="https-get">HTTPS</option><option value="dns">DNS</option></select></label><label><span>Intervalo</span><input type="text" [(ngModel)]="netwatchInterval" placeholder="1m" /></label><label><span>Puerto</span><input type="number" [(ngModel)]="netwatchPort" min="1" max="65535" placeholder="Opcional" /></label><label class="wide"><span>Comentario</span><input type="text" [(ngModel)]="netwatchComment" maxlength="120" placeholder="Enlace principal, DNS..." /></label><button class="action-button" type="button" (click)="createNetwatch()" [disabled]="controlSaving()"><svg lucideSave size="15" aria-hidden="true"></svg>Crear sonda</button></section> }
+      <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>Destino</th><th>Prueba</th><th>Intervalo</th><th>Último estado</th><th>Comentario</th><th></th></tr></thead><tbody>
+        @for (item of netwatch(); track item.id) { <tr><td><strong class="mono">{{ item.host }}</strong><small class="cell-note mono">{{ item.id }}</small></td><td>{{ item.type }}<small class="cell-note">{{ item.port || '-' }}</small></td><td>{{ item.interval || '-' }}</td><td><span class="state-badge" [class.online]="item.status === 'up' && !item.disabled" [class.disabled]="item.disabled">{{ item.disabled ? 'Deshabilitada' : item.status }}</span><small class="cell-note">{{ item.since || '-' }}</small></td><td>{{ item.comment || '-' }}</td><td class="actions-cell">@if (canManage()) { <button class="icon-button small" type="button" (click)="toggleNetwatch(item)" [disabled]="controlSaving()" [title]="item.disabled ? 'Habilitar sonda' : 'Deshabilitar sonda'"><svg lucideCircleCheck size="15" aria-hidden="true"></svg></button><button class="icon-button small danger-icon" type="button" (click)="deleteNetwatch(item)" [disabled]="controlSaving()" title="Eliminar sonda"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td></tr> }
+        @empty { <tr><td colspan="6" class="empty-row">No hay sondas configuradas</td></tr> }
+      </tbody></table></div></section>
+    }
+
+    @if (activeTab() === 'backups') {
+      <section class="workspace-heading"><div><h2>Respaldos del router</h2><p>Backups binarios y exports sin secretos almacenados en RouterOS</p></div><button class="text-button" type="button" (click)="loadBackups()" [disabled]="controlLoading()"><svg lucideRefreshCw size="16" [class.spinning]="controlLoading()" aria-hidden="true"></svg>Actualizar</button></section>
+      @if (canManage()) { <section class="mt-form-band backup-form"><label class="wide"><span>Nombre</span><input type="text" [(ngModel)]="backupName" maxlength="48" /></label><label><span>Formato</span><select [(ngModel)]="backupType"><option value="backup">Backup binario</option><option value="export">Export .rsc</option></select></label><button class="action-button" type="button" (click)="createBackup()" [disabled]="controlSaving()"><svg lucideHardDrive size="15" aria-hidden="true"></svg>Crear respaldo</button></section> }
+      <section class="panel data-panel"><div class="table-wrap"><table><thead><tr><th>Archivo</th><th>Formato</th><th>Tamaño</th><th>Creado</th><th></th></tr></thead><tbody>
+        @for (item of backups(); track item.id) { <tr><td><strong>{{ item.name }}</strong><small class="cell-note mono">{{ item.id }}</small></td><td><span class="sync-badge">{{ item.type === 'backup' ? 'Binario' : 'Export RSC' }}</span></td><td>{{ formatBytes(item.size) }}</td><td>{{ item.creationTime || '-' }}</td><td class="actions-cell">@if (canManage()) { <button class="icon-button small danger-icon" type="button" (click)="deleteBackup(item)" [disabled]="controlSaving()" title="Eliminar respaldo"><svg lucideTrash2 size="15" aria-hidden="true"></svg></button> }</td></tr> }
+        @empty { <tr><td colspan="5" class="empty-row">No hay archivos de respaldo</td></tr> }
+      </tbody></table></div></section>
+    }
+
+    @if (activeTab() === 'security') {
+      <section class="workspace-heading"><div><h2>Seguridad y diagnóstico</h2><p>Auditoría de configuración y acceso administrativo</p></div><button class="text-button" type="button" (click)="loadSecurity(true)" [disabled]="securityLoading()"><svg lucideRefreshCw size="16" [class.spinning]="securityLoading()" aria-hidden="true"></svg>Auditar</button></section>
+      <section class="security-layout">
+        <article class="security-score" [class.good]="(security()?.score || 0) >= 80"><svg lucideShieldCheck size="28" aria-hidden="true"></svg><strong>{{ security()?.score ?? '-' }}</strong><span>Puntuación de seguridad</span><small>RouterOS {{ security()?.version || '-' }}</small></article>
+        <article class="panel findings-panel">
+          <header><div><span class="section-icon"><svg lucideShieldAlert size="18" aria-hidden="true"></svg></span><div><h2>Hallazgos</h2><p>{{ security()?.findings?.length || 0 }} revisiones pendientes</p></div></div></header>
+          <div class="findings-list">
+            @for (finding of security()?.findings || []; track finding.code) { <div class="finding" [class]="finding.severity"><span><svg lucideCircleAlert size="17" aria-hidden="true"></svg></span><div><strong>{{ finding.title }}</strong><p>{{ finding.detail }}</p></div><em>{{ severityLabel(finding.severity) }}</em></div> }
+            @if (!(security()?.findings?.length || 0)) { <div class="compact-empty success"><svg lucideCircleCheck size="24" aria-hidden="true"></svg><span>Sin hallazgos críticos</span></div> }
+          </div>
+        </article>
+        <aside class="security-side">
+          <article class="panel admin-panel"><header><div><span class="section-icon"><svg lucideUsers size="18" aria-hidden="true"></svg></span><div><h2>Administradores activos</h2><p>{{ security()?.activeAdministrators?.length || 0 }} sesiones</p></div></div></header>@for (user of security()?.activeAdministrators || []; track user.name + user.address) { <div class="admin-row"><span>{{ user.name.charAt(0).toUpperCase() }}</span><div><strong>{{ user.name }}</strong><small>{{ user.address }} · {{ user.via }}</small></div></div> }</article>
+          <article class="panel ping-panel"><header><div><span class="section-icon"><svg lucideSquareTerminal size="18" aria-hidden="true"></svg></span><div><h2>Diagnóstico</h2><p>Ping desde el router</p></div></div></header><div class="ping-form"><input type="text" [(ngModel)]="pingTarget" placeholder="IP o dominio" (keyup.enter)="runPing()" /><button type="button" (click)="runPing()" [disabled]="pinging()"><svg lucideRadioTower size="16" aria-hidden="true"></svg>{{ pinging() ? 'Probando' : 'Ping' }}</button></div>@if (pingResult().length) { <div class="terminal-output">@for (row of pingResult(); track $index) { <span>{{ pingLine(row) }}</span> }</div> }</article>
+        </aside>
+      </section>
+    }
+  }
+</main>
+
+@if (queueEditor(); as editor) {
+  <div class="modal-backdrop" (click)="closeQueueEditor()">
+    <section class="queue-modal" role="dialog" aria-modal="true" aria-labelledby="queue-title" (click)="$event.stopPropagation()">
+      <header><div><span class="section-icon"><svg lucideSlidersHorizontal size="18" aria-hidden="true"></svg></span><div><h2 id="queue-title">{{ editor.id ? 'Editar control de ancho de banda' : 'Crear control de ancho de banda' }}</h2><p class="mono">{{ editor.ip }}</p></div></div><button class="icon-button small" type="button" (click)="closeQueueEditor()" title="Cerrar"><svg lucideX size="17" aria-hidden="true"></svg></button></header>
+      <div class="modal-body">
+        <label><span>Nombre de la cola</span><input type="text" [(ngModel)]="queueName" maxlength="80" /></label>
+        <div class="limit-grid"><label><span>Subida máxima</span><div class="unit-input"><input type="number" [(ngModel)]="queueUploadMbps" min="0.1" max="10000" step="0.1" /><em>Mbps</em></div></label><label><span>Descarga máxima</span><div class="unit-input"><input type="number" [(ngModel)]="queueDownloadMbps" min="0.1" max="10000" step="0.1" /><em>Mbps</em></div></label></div>
+        <label><span>Comentario operativo</span><textarea [(ngModel)]="queueComment" maxlength="200" rows="2"></textarea></label>
+        <label class="switch-row"><input type="checkbox" [(ngModel)]="queueDisabled" /><span><strong>Cola deshabilitada</strong><small>Conserva la configuración sin aplicar el límite.</small></span></label>
+      </div>
+      <footer><button class="cancel-button" type="button" (click)="closeQueueEditor()">Cancelar</button><button class="save-button" type="button" (click)="saveQueue()" [disabled]="queueSaving()"><svg lucideSave size="16" aria-hidden="true"></svg>{{ queueSaving() ? 'Guardando' : 'Guardar cambios' }}</button></footer>
+    </section>
+  </div>
+}

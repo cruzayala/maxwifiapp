@@ -1,0 +1,15 @@
+{
+  "name": "isp-max-tr069-acs",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GenieACS runtime for the ISP Max TR-069 pilot",
+  "dependencies": {
+    "genieacs": "1.2.16"
+  },
+  "overrides": {
+    "fast-xml-builder": "1.3.0",
+    "fast-xml-parser": "5.10.1",
+    "ip-address": "10.4.0",
+    "qs": "6.15.3"
+  }
+}
