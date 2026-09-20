@@ -4170,6 +4170,30 @@ clientProvisioningRouter.post('/cleanup/:jobId', asyncHandler(async (req, res) =
 
 app.use('/client-provisioning', clientProvisioningRouter);
 
+// Alta y edicion de tickets desde la web. Reusa la misma implementacion que la
+// app movil (misma validacion, misma idempotencia y el mismo control de version
+// contra WispHub) para que un ticket creado aqui y uno creado en el telefono
+// terminen identicos. Lo unico propio es el usuario: el movil trae su sesion de
+// dispositivo y aqui se toma la sesion del navegador.
+const webTicketsRouter = express.Router();
+webTicketsRouter.use(authMiddleware);
+webTicketsRouter.use((req, res, next) => {
+  req.mobileUser = { id: req.session.userId, username: req.session.username, role: req.session.role };
+  next();
+});
+require('./lib/mobile-tickets').registerMobileTickets(webTicketsRouter, {
+  prisma,
+  wrap: asyncHandler,
+  permission: (roles) => requireAnyRole(roles),
+  positiveId: require('./lib/mobile-api').positiveId,
+  provider: {
+    read: readWisphubTicket,
+    create: (input) => writeWisphubTicket(null, input),
+    update: writeWisphubTicket,
+  },
+});
+app.use('/tickets-api', webTicketsRouter);
+
 // Mobile shares the same provisioning implementation so WispHub, MikroTik and
 // SQLite cannot diverge between the web and Android clients.
 app.use('/mobile/v1', require('./lib/mobile-api').createMobileRouter({
