@@ -2,6 +2,7 @@ import { Component, DestroyRef, HostListener, OnInit, inject, signal, computed }
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { formatDrPhone, internationalDrPhone, telLink, whatsappLink } from '../../pipes/phone';
+import { isInvoicePaid, isInvoicePending } from '../../utils/invoice-status';
 import { ClientListStateService } from '../../services/client-list-state.service';
 import { ConfigService } from '../../services/config.service';
 import { AuthService } from '../../services/auth.service';
@@ -862,19 +863,14 @@ export class ClientDetailComponent implements OnInit {
     if (this.invoiceModalOpen()) this.closeInvoicePortfolio();
   }
 
+  // Las reglas viven en utils/invoice-status para que Cobranza y el expediente
+  // cuenten exactamente la misma deuda.
   private isClientInvoicePending(invoice: Invoice): boolean {
-    const status = (invoice.estado || '').toLowerCase();
-    // "Se Transfirió": el saldo pasó a otra factura; no se cobra ni suma deuda aquí.
-    if (status.includes('cancelad') || status.includes('anulad') || status.includes('transfir')) return false;
-    return !this.isClientInvoicePaid(invoice);
+    return isInvoicePending(invoice);
   }
 
   private isClientInvoicePaid(invoice: Invoice): boolean {
-    const status = (invoice.estado || '').toLowerCase();
-    const total = invoice.total || 0;
-    if (status.includes('pendiente') || status.includes('cancelad') || status.includes('anulad') || status.includes('transfer') || status.includes('transfir')) return false;
-    if (status.includes('pagad') || status.includes('cobro completo')) return true;
-    return Boolean(invoice.fecha_pago) && total > 0 && (invoice.total_cobrado || 0) >= total - 0.01;
+    return isInvoicePaid(invoice);
   }
 
   ngOnInit() {

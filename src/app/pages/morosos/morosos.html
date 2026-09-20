@@ -22,13 +22,13 @@
         <span class="kpi-icon"><svg lucideBanknote size="19"></svg></span>
         <div><small>Saldo por cobrar</small><strong>RD$ {{ montoTotalPendiente() | number:'1.2-2' }}</strong><p>{{ totalFacturasPendientes() }} facturas abiertas</p></div>
       </article>
+      <article class="kpi-item pending">
+        <span class="kpi-icon"><svg lucideBellRing size="19"></svg></span>
+        <div><small>Falta contactar</small><strong>{{ sinGestionar() }}</strong><p>{{ gestionados() }} ya tienen aviso o corte</p></div>
+      </article>
       <article class="kpi-item rate">
         <span class="kpi-icon"><svg lucideCircleCheck size="19"></svg></span>
-        <div><small>Cartera al día</small><strong>{{ tasaCobro() | number:'1.1-1' }}%</strong><p>de clientes activos</p></div>
-      </article>
-      <article class="kpi-item overdue">
-        <span class="kpi-icon"><svg lucideCalendarClock size="19"></svg></span>
-        <div><small>Promedio de mora</small><strong>{{ promedioVencido() | number:'1.0-0' }} días</strong><p>{{ totalContactables() }} con teléfono</p></div>
+        <div><small>Cartera al día</small><strong>{{ tasaCobro() | number:'1.1-1' }}%</strong><p>mora promedio {{ promedioVencido() | number:'1.0-0' }} días</p></div>
       </article>
     </section>
 
@@ -63,19 +63,35 @@
       <header class="workspace-header">
         <div><span>Seguimiento operativo</span><h2 id="queue-title">Cola de cobranza</h2></div>
         <div class="workspace-actions">
+          <div class="view-switch" role="group" aria-label="Forma de ver la lista">
+            <button type="button" [class.active]="view() === 'queue'" [attr.aria-pressed]="view() === 'queue'" (click)="setView('queue')" title="Tarjetas con las acciones de cada cliente"><svg lucideLayoutGrid size="15"></svg><span>Cola</span></button>
+            <button type="button" [class.active]="view() === 'table'" [attr.aria-pressed]="view() === 'table'" (click)="setView('table')" title="Tabla compacta para revisar muchos clientes"><svg lucideList size="15"></svg><span>Tabla</span></button>
+          </div>
           <button type="button" class="action-button secondary" aria-label="Exportar" (click)="exportMorosos()" [disabled]="!filtered().length" [title]="filtered().length ? 'Descargar la lista visible en CSV' : 'No hay clientes para exportar'"><svg lucideDownload size="16"></svg><span>Exportar</span></button>
-          <a routerLink="/whatsapp" class="action-button primary" aria-label="Enviar recordatorios" title="Enviar recordatorios de pago por WhatsApp"><svg lucideMessageCircle size="16"></svg><span>Enviar recordatorios</span></a>
+          <a routerLink="/whatsapp" class="action-button primary" aria-label="Envío masivo" title="Enviar recordatorios a muchos clientes a la vez"><svg lucideMessageCircle size="16"></svg><span>Envío masivo</span></a>
         </div>
       </header>
+
+      <div class="stage-chips" role="group" aria-label="Filtrar por gestión">
+        <button type="button" class="chip pending" [class.active]="manageFilter === 'pending'" [attr.aria-pressed]="manageFilter === 'pending'" (click)="filterByManage('pending')">
+          <svg lucideBellRing size="14"></svg><span>Sin gestionar</span><b>{{ sinGestionar() }}</b>
+        </button>
+        <button type="button" class="chip warn" [class.active]="manageFilter === 'aviso'" [attr.aria-pressed]="manageFilter === 'aviso'" (click)="filterByManage('aviso')">
+          <svg lucideCheckCheck size="14"></svg><span>Con aviso de pago</span><b>{{ conAviso() }}</b>
+        </button>
+        <button type="button" class="chip danger" [class.active]="manageFilter === 'corte'" [attr.aria-pressed]="manageFilter === 'corte'" (click)="filterByManage('corte')">
+          <svg lucideWifiOff size="14"></svg><span>Internet cortado</span><b>{{ cortados() }}</b>
+        </button>
+      </div>
 
       <div class="filters">
         <label class="search-field">
           <svg lucideSearch size="17"></svg>
           <input type="search" placeholder="Buscar cliente, usuario, IP o teléfono" [(ngModel)]="searchTerm" (input)="filter()" />
         </label>
-        <label class="select-field"><svg lucideSlidersHorizontal size="16"></svg><select [(ngModel)]="riskFilter" (change)="filter()"><option value="">Todos los riesgos</option><option value="alto">Riesgo alto</option><option value="medio">Riesgo medio</option><option value="bajo">Riesgo reciente</option></select></label>
-        <label class="select-field"><svg lucidePhone size="16"></svg><select [(ngModel)]="contactFilter" (change)="filter()"><option value="">Todos los contactos</option><option value="with-phone">Con teléfono</option><option value="without-phone">Sin teléfono</option></select></label>
-        <label class="select-field"><svg lucideFileText size="16"></svg><select [(ngModel)]="sortBy" (change)="filter()"><option value="priority">Prioridad</option><option value="amount">Mayor deuda</option><option value="invoices">Más facturas</option><option value="name">Nombre A-Z</option></select></label>
+        <label class="select-field"><svg lucideSlidersHorizontal size="16"></svg><select [(ngModel)]="riskFilter" (change)="filter()" aria-label="Filtrar por riesgo"><option value="">Todos los riesgos</option><option value="alto">Riesgo alto</option><option value="medio">Riesgo medio</option><option value="bajo">Riesgo reciente</option></select></label>
+        <label class="select-field"><svg lucidePhone size="16"></svg><select [(ngModel)]="contactFilter" (change)="filter()" aria-label="Filtrar por contacto"><option value="">Todos los contactos</option><option value="with-phone">Con teléfono</option><option value="without-phone">Sin teléfono</option></select></label>
+        <label class="select-field"><svg lucideFileText size="16"></svg><select [(ngModel)]="sortBy" (change)="filter()" aria-label="Ordenar"><option value="priority">Prioridad</option><option value="amount">Mayor deuda</option><option value="invoices">Más facturas</option><option value="name">Nombre A-Z</option></select></label>
         <button type="button" class="reset-button" (click)="resetFilters()" title="Limpiar filtros"><svg lucideRotateCcw size="16"></svg><span>Limpiar</span></button>
       </div>
 
@@ -84,34 +100,112 @@
         <span>Saldo visible <strong>RD$ {{ visibleAmount() | number:'1.2-2' }}</strong></span>
       </div>
 
-      @if (filtered().length) {
-        <div class="table-wrap">
-          <table class="collection-table">
-            <thead><tr><th>Cliente</th><th>Contacto</th><th>Servicio</th><th>Deuda</th><th>Mora</th><th>Riesgo</th><th>Corte</th><th aria-label="Abrir"></th></tr></thead>
-            <tbody>
-              @for (item of filtered(); track item.client.id_servicio) {
-                <tr>
-                  <td data-label="Cliente"><div class="client-cell"><span class="client-avatar">{{ initials(item.client.nombre) }}</span><div><a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a><small>{{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small></div></div></td>
-                  <td data-label="Contacto">@if (item.client.telefono) { <a class="contact-ok" [href]="'tel:' + item.client.telefono" [title]="'Llamar a ' + item.client.nombre"><svg lucidePhone size="14"></svg>{{ item.client.telefono }}</a> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
-                  <td data-label="Servicio"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small class="mono">{{ item.client.ip || '—' }}</small></div></td>
-                  <td data-label="Deuda"><div class="stack debt"><strong>RD$ {{ item.montoTotal | number:'1.2-2' }}</strong><small>{{ item.facturasPendientes }} {{ item.facturasPendientes === 1 ? 'factura' : 'facturas' }}</small></div></td>
-                  <td data-label="Mora"><span class="days" [class]="'days-' + item.riesgo">{{ item.diasVencido }} días</span></td>
-                  <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ riskLabel(item.riesgo) }}</span></td>
-                  <td data-label="Corte">{{ item.client.fecha_corte || '—' }}</td>
-                  <td data-label="Detalle"><a [routerLink]="['/clients', item.client.id_servicio]" class="row-action" [attr.aria-label]="'Abrir ' + item.client.nombre"><svg lucideArrowUpRight size="17"></svg></a></td>
-                </tr>
-              }
-            </tbody>
-          </table>
-        </div>
-      } @else {
+      @if (!filtered().length) {
         <div class="empty-state">
           <span><svg lucideCircleCheck size="26"></svg></span>
           <h3>{{ totalMorosos() ? 'No hay coincidencias' : 'Cartera al día' }}</h3>
           <p>{{ totalMorosos() ? 'Ajusta la búsqueda o limpia los filtros activos.' : 'No hay clientes activos con facturas pendientes.' }}</p>
           @if (totalMorosos()) { <button type="button" (click)="resetFilters()">Limpiar filtros</button> }
         </div>
+      } @else if (view() === 'queue') {
+        <div class="queue-grid">
+          @for (item of filtered(); track item.client.id_servicio) {
+            <article class="queue-card" [class.handled]="gestionOf(item) !== 'none'">
+              <header class="qc-head">
+                <span class="client-avatar">{{ initials(item.client.nombre) }}</span>
+                <div class="qc-name">
+                  <a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a>
+                  <small>{{ item.client.plan_internet?.nombre | planLabel:'Sin plan' }} · {{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small>
+                </div>
+                <span class="risk-badge" [class]="'risk-' + item.riesgo">{{ riskLabel(item.riesgo) }}</span>
+              </header>
+
+              <div class="qc-figures">
+                <div><small>Debe</small><strong class="debt">RD$ {{ item.montoTotal | number:'1.2-2' }}</strong></div>
+                <div><small>Atraso</small><strong>{{ item.diasVencido }} días</strong></div>
+                <div><small>Facturas</small><strong>{{ item.facturasPendientes }}</strong></div>
+              </div>
+
+              <p class="qc-state" [class]="'state-' + gestionOf(item)">
+                @switch (gestionOf(item)) {
+                  @case ('corte') { <svg lucideWifiOff size="14"></svg> }
+                  @case ('aviso') { <svg lucideCheckCheck size="14"></svg> }
+                  @default { <svg lucideBellRing size="14"></svg> }
+                }
+                <span>{{ gestionLabel(item) }}</span>
+              </p>
+
+              <div class="qc-contact">
+                @if (item.telHref) {
+                  <a [href]="item.telHref" [title]="'Llamar a ' + item.client.nombre"><svg lucidePhone size="14"></svg>{{ item.telefonoBonito }}</a>
+                } @else {
+                  <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono registrado</span>
+                }
+                <span class="qc-cut">Corte: {{ item.client.fecha_corte || '—' }}</span>
+              </div>
+
+              <div class="qc-actions">
+                @if (item.waHref) {
+                  <a class="qa wa" [href]="item.waHref" target="_blank" rel="noopener" [title]="'Abrir WhatsApp con el recordatorio ya escrito para ' + item.client.nombre"><svg lucideMessageCircle size="15"></svg>WhatsApp</a>
+                } @else {
+                  <button type="button" class="qa wa" disabled title="Este cliente no tiene un número de WhatsApp válido"><svg lucideMessageCircle size="15"></svg>WhatsApp</button>
+                }
+                <button type="button" class="qa ghost" (click)="copyMessage(item)" title="Copiar el mensaje de cobro para pegarlo donde quieras"><svg lucideCopy size="15"></svg>Copiar</button>
+                @if (canCollect()) {
+                  <button type="button" class="qa pay" (click)="openPayment(item)" [title]="item.invoices.length ? 'Registrar el pago de la factura más antigua' : 'Sin facturas guardadas para cobrar'"><svg lucideCircleDollarSign size="15"></svg>Cobrar</button>
+                }
+                <a class="qa ghost" [routerLink]="['/clients', item.client.id_servicio]" title="Abrir el expediente completo"><svg lucideArrowUpRight size="15"></svg>Expediente</a>
+              </div>
+
+              <div class="qc-service">
+                <span>Control del servicio</span>
+                <app-client-block-actions
+                  [idServicio]="item.client.id_servicio"
+                  [clientName]="item.client.nombre"
+                  [crmAction]="crmActionFor(item.client.id_servicio)"
+                  [paymentPilotEnabled]="paymentPilotFor(item.client.id_servicio)"
+                  (changed)="onActionChanged($event, item.client.id_servicio)" />
+              </div>
+            </article>
+          }
+        </div>
+      } @else {
+        <div class="table-wrap">
+          <table class="collection-table">
+            <thead><tr><th>Cliente</th><th>Contacto</th><th>Servicio</th><th>Deuda</th><th>Mora</th><th>Riesgo</th><th>Gestión</th><th>Acciones</th></tr></thead>
+            <tbody>
+              @for (item of filtered(); track item.client.id_servicio) {
+                <tr>
+                  <td data-label="Cliente"><div class="client-cell"><span class="client-avatar">{{ initials(item.client.nombre) }}</span><div><a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a><small>{{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small></div></div></td>
+                  <td data-label="Contacto">@if (item.telHref) { <a class="contact-ok" [href]="item.telHref" [title]="'Llamar a ' + item.client.nombre"><svg lucidePhone size="14"></svg>{{ item.telefonoBonito }}</a> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
+                  <td data-label="Servicio"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small class="mono">{{ item.client.ip || '—' }}</small></div></td>
+                  <td data-label="Deuda"><div class="stack debt"><strong>RD$ {{ item.montoTotal | number:'1.2-2' }}</strong><small>{{ item.facturasPendientes }} {{ item.facturasPendientes === 1 ? 'factura' : 'facturas' }}</small></div></td>
+                  <td data-label="Mora"><span class="days" [class]="'days-' + item.riesgo">{{ item.diasVencido }} días</span></td>
+                  <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ riskLabel(item.riesgo) }}</span></td>
+                  <td data-label="Gestión"><span class="manage-badge" [class]="'manage-' + gestionOf(item)">{{ gestionLabel(item) }}</span></td>
+                  <td data-label="Acciones">
+                    <div class="row-actions">
+                      @if (item.waHref) {
+                        <a class="row-action wa" [href]="item.waHref" target="_blank" rel="noopener" [attr.aria-label]="'Enviar WhatsApp a ' + item.client.nombre" title="Abrir WhatsApp con el recordatorio ya escrito"><svg lucideMessageCircle size="16"></svg></a>
+                      }
+                      @if (canCollect()) {
+                        <button type="button" class="row-action pay" (click)="openPayment(item)" [attr.aria-label]="'Cobrar a ' + item.client.nombre" title="Registrar el pago de la factura más antigua"><svg lucideCircleDollarSign size="16"></svg></button>
+                      }
+                      <a class="row-action" [routerLink]="['/clients', item.client.id_servicio]" [attr.aria-label]="'Abrir ' + item.client.nombre" title="Abrir el expediente"><svg lucideArrowUpRight size="16"></svg></a>
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
       }
     </section>
+
+    <app-payment-modal
+      [visible]="showPayment()"
+      [invoice]="payingInvoice()"
+      (onClose)="closePayment()"
+      (onSuccess)="onPaymentSuccess()" />
   }
 </main>
