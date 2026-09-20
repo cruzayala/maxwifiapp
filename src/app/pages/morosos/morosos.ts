@@ -28,6 +28,7 @@ import { invoicePendingBalance, isInvoicePending, parseInvoiceDate } from '../..
 type RiskLevel = 'alto' | 'medio' | 'bajo';
 type SortMode = 'priority' | 'amount' | 'invoices' | 'name';
 type ManageFilter = '' | 'pending' | 'aviso' | 'corte';
+type ServiceFilter = '' | 'activo' | 'suspendido' | 'otro';
 type ViewMode = 'queue' | 'table';
 
 interface MorosoInfo {
@@ -42,6 +43,8 @@ interface MorosoInfo {
   telefonoBonito: string;
   waHref: string | null;
   telHref: string | null;
+  /** Estado del servicio en WispHub: activo, suspendido, gratis... */
+  servicio: string;
 }
 
 const VIEW_KEY = 'ispmax.morosos.view';
@@ -101,11 +104,14 @@ export class MorososComponent implements OnInit, OnDestroy {
   sinGestionar = computed(() => this.totalMorosos() - this.gestionados());
   conAviso = computed(() => this.allMorosos().filter((item) => this.gestionOf(item) === 'aviso').length);
   cortados = computed(() => this.allMorosos().filter((item) => this.gestionOf(item) === 'corte').length);
+  conServicioActivo = computed(() => this.allMorosos().filter((item) => this.isActive(item)).length);
+  suspendidos = computed(() => this.allMorosos().filter((item) => this.isSuspended(item)).length);
 
   searchTerm = '';
   riskFilter: RiskLevel | '' = '';
   contactFilter: 'with-phone' | 'without-phone' | '' = '';
   manageFilter: ManageFilter = '';
+  serviceFilter: ServiceFilter = '';
   sortBy: SortMode = 'priority';
 
   ngOnInit() {
@@ -136,10 +142,10 @@ export class MorososComponent implements OnInit, OnDestroy {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const morosos: MorosoInfo[] = [];
+    // Deben tambien los suspendidos y los cortados: dejarlos fuera escondia la
+    // mayor parte de la cartera vencida, que es justo la que hay que perseguir.
     const pendientes = clients.filter((client) =>
-      client.estado_facturas?.toLowerCase().includes('pendiente') &&
-      client.estado?.toLowerCase() === 'activo'
-    );
+      client.estado_facturas?.toLowerCase().includes('pendiente'));
 
     for (const client of pendientes) {
       // Solo cuentan las facturas realmente abiertas: las anuladas o transferidas
@@ -177,6 +183,7 @@ export class MorososComponent implements OnInit, OnDestroy {
         telefonoBonito: phone ? formatDrPhone(phone) : '',
         waHref: null,
         telHref: telLink(phone),
+        servicio: (client.estado || '').trim() || 'Sin estado',
       });
     }
 
@@ -191,8 +198,11 @@ export class MorososComponent implements OnInit, OnDestroy {
     this.riesgoBajo.set(morosos.filter((item) => item.riesgo === 'bajo').length);
     this.promedioVencido.set(morosos.length ? morosos.reduce((sum, item) => sum + item.diasVencido, 0) / morosos.length : 0);
 
+    // La cartera al dia se mide solo entre los clientes activos, que son los que
+    // deberian estar pagando este mes.
     const activeClients = clients.filter((client) => client.estado?.toLowerCase() === 'activo').length;
-    this.tasaCobro.set(activeClients ? ((activeClients - morosos.length) / activeClients) * 100 : 100);
+    const activeMorosos = morosos.filter((item) => this.isActive(item)).length;
+    this.tasaCobro.set(activeClients ? ((activeClients - activeMorosos) / activeClients) * 100 : 100);
     this.filter();
   }
 
@@ -239,6 +249,26 @@ export class MorososComponent implements OnInit, OnDestroy {
     if (action === 'block') return 'corte';
     if (action === 'moroso') return 'aviso';
     return 'none';
+  }
+
+  /** El servicio sigue encendido: son los que todavia se pueden presionar con un corte. */
+  isActive(item: MorosoInfo): boolean {
+    return item.servicio.toLowerCase() === 'activo';
+  }
+
+  isSuspended(item: MorosoInfo): boolean {
+    const state = item.servicio.toLowerCase();
+    return state.includes('suspend') || state.includes('cortad');
+  }
+
+  serviceLabel(item: MorosoInfo): string {
+    return item.servicio;
+  }
+
+  serviceTone(item: MorosoInfo): 'ok' | 'off' | 'other' {
+    if (this.isActive(item)) return 'ok';
+    if (this.isSuspended(item)) return 'off';
+    return 'other';
   }
 
   gestionLabel(item: MorosoInfo): string {
@@ -343,13 +373,20 @@ export class MorososComponent implements OnInit, OnDestroy {
     if (this.manageFilter === 'pending') result = result.filter((item) => this.gestionOf(item) === 'none');
     if (this.manageFilter === 'aviso') result = result.filter((item) => this.gestionOf(item) === 'aviso');
     if (this.manageFilter === 'corte') result = result.filter((item) => this.gestionOf(item) === 'corte');
+    if (this.serviceFilter === 'activo') result = result.filter((item) => this.isActive(item));
+    if (this.serviceFilter === 'suspendido') result = result.filter((item) => this.isSuspended(item));
+    if (this.serviceFilter === 'otro') result = result.filter((item) => !this.isActive(item) && !this.isSuspended(item));
 
     const riskOrder: Record<RiskLevel, number> = { alto: 3, medio: 2, bajo: 1 };
     result.sort((left, right) => {
       if (this.sortBy === 'amount') return right.montoTotal - left.montoTotal;
       if (this.sortBy === 'invoices') return right.facturasPendientes - left.facturasPendientes || right.montoTotal - left.montoTotal;
       if (this.sortBy === 'name') return (left.client.nombre || '').localeCompare(right.client.nombre || '', 'es');
-      // Prioridad: primero lo que nadie ha tocado todavía y, dentro de eso, lo más grave.
+      // Prioridad: primero el que aun tiene servicio (se le puede cortar), luego
+      // lo que nadie ha tocado todavia y, dentro de eso, lo mas grave.
+      const leftActive = this.isActive(left) ? 0 : 1;
+      const rightActive = this.isActive(right) ? 0 : 1;
+      if (leftActive !== rightActive) return leftActive - rightActive;
       const leftDone = this.gestionOf(left) === 'none' ? 0 : 1;
       const rightDone = this.gestionOf(right) === 'none' ? 0 : 1;
       return leftDone - rightDone ||
@@ -375,6 +412,7 @@ export class MorososComponent implements OnInit, OnDestroy {
     this.riskFilter = '';
     this.contactFilter = '';
     this.manageFilter = '';
+    this.serviceFilter = '';
     this.sortBy = 'priority';
     this.filter();
   }
@@ -402,6 +440,7 @@ export class MorososComponent implements OnInit, OnDestroy {
       monto_total: item.montoTotal,
       dias_vencido: item.diasVencido,
       riesgo: this.riskLabel(item.riesgo),
+      servicio: item.servicio,
       gestion: this.gestionLabel(item),
       fecha_corte: item.client.fecha_corte,
       ip: item.client.ip,
@@ -414,6 +453,7 @@ export class MorososComponent implements OnInit, OnDestroy {
       { key: 'monto_total', label: 'Monto total' },
       { key: 'dias_vencido', label: 'Días vencido' },
       { key: 'riesgo', label: 'Riesgo' },
+      { key: 'servicio', label: 'Estado del servicio' },
       { key: 'gestion', label: 'Gestión' },
       { key: 'fecha_corte', label: 'Fecha de corte' },
       { key: 'ip', label: 'IP' },

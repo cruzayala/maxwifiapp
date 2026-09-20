@@ -16,7 +16,7 @@
     <section class="kpi-strip" aria-label="Resumen de cobranza">
       <article class="kpi-item debtors">
         <span class="kpi-icon"><svg lucideUsers size="19"></svg></span>
-        <div><small>Clientes en mora</small><strong>{{ totalMorosos() }}</strong><p>{{ riesgoAlto() }} requieren prioridad</p></div>
+        <div><small>Clientes en mora</small><strong>{{ totalMorosos() }}</strong><p>{{ conServicioActivo() }} con servicio activo · {{ suspendidos() }} suspendidos</p></div>
       </article>
       <article class="kpi-item amount">
         <span class="kpi-icon"><svg lucideBanknote size="19"></svg></span>
@@ -91,6 +91,7 @@
         </label>
         <label class="select-field"><svg lucideSlidersHorizontal size="16"></svg><select [(ngModel)]="riskFilter" (change)="filter()" aria-label="Filtrar por riesgo"><option value="">Todos los riesgos</option><option value="alto">Riesgo alto</option><option value="medio">Riesgo medio</option><option value="bajo">Riesgo reciente</option></select></label>
         <label class="select-field"><svg lucidePhone size="16"></svg><select [(ngModel)]="contactFilter" (change)="filter()" aria-label="Filtrar por contacto"><option value="">Todos los contactos</option><option value="with-phone">Con teléfono</option><option value="without-phone">Sin teléfono</option></select></label>
+        <label class="select-field"><svg lucideCircleCheck size="16"></svg><select [(ngModel)]="serviceFilter" (change)="filter()" aria-label="Filtrar por estado del servicio"><option value="">Todos los servicios</option><option value="activo">Con servicio activo</option><option value="suspendido">Suspendidos o cortados</option><option value="otro">Otros estados</option></select></label>
         <label class="select-field"><svg lucideFileText size="16"></svg><select [(ngModel)]="sortBy" (change)="filter()" aria-label="Ordenar"><option value="priority">Prioridad</option><option value="amount">Mayor deuda</option><option value="invoices">Más facturas</option><option value="name">Nombre A-Z</option></select></label>
         <button type="button" class="reset-button" (click)="resetFilters()" title="Limpiar filtros"><svg lucideRotateCcw size="16"></svg><span>Limpiar</span></button>
       </div>
@@ -119,6 +120,8 @@
                 </div>
                 <span class="risk-badge" [class]="'risk-' + item.riesgo">{{ riskLabel(item.riesgo) }}</span>
               </header>
+
+              <p class="qc-service-state" [class]="'svc-' + serviceTone(item)">Servicio: <strong>{{ serviceLabel(item) }}</strong></p>
 
               <div class="qc-figures">
                 <div><small>Debe</small><strong class="debt">RD$ {{ item.montoTotal | number:'1.2-2' }}</strong></div>
@@ -172,16 +175,17 @@
       } @else {
         <div class="table-wrap">
           <table class="collection-table">
-            <thead><tr><th>Cliente</th><th>Contacto</th><th>Servicio</th><th>Deuda</th><th>Mora</th><th>Riesgo</th><th>Gestión</th><th>Acciones</th></tr></thead>
+            <thead><tr><th>Cliente</th><th>Contacto</th><th>Plan e IP</th><th>Deuda</th><th>Mora</th><th>Riesgo</th><th>Servicio</th><th>Gestión</th><th>Acciones</th></tr></thead>
             <tbody>
               @for (item of filtered(); track item.client.id_servicio) {
                 <tr>
                   <td data-label="Cliente"><div class="client-cell"><span class="client-avatar">{{ initials(item.client.nombre) }}</span><div><a [routerLink]="['/clients', item.client.id_servicio]">{{ item.client.nombre }}</a><small>{{ item.client.usuario || ('Cliente #' + item.client.id_servicio) }}</small></div></div></td>
                   <td data-label="Contacto">@if (item.telHref) { <a class="contact-ok" [href]="item.telHref" [title]="'Llamar a ' + item.client.nombre"><svg lucidePhone size="14"></svg>{{ item.telefonoBonito }}</a> } @else { <span class="contact-missing"><svg lucidePhoneOff size="14"></svg>Sin teléfono</span> }</td>
-                  <td data-label="Servicio"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small class="mono">{{ item.client.ip || '—' }}</small></div></td>
+                  <td data-label="Plan e IP"><div class="stack"><strong [title]="item.client.plan_internet?.nombre || ''">{{ item.client.plan_internet?.nombre | planLabel:'-' }}</strong><small class="mono">{{ item.client.ip || '—' }}</small></div></td>
                   <td data-label="Deuda"><div class="stack debt"><strong>RD$ {{ item.montoTotal | number:'1.2-2' }}</strong><small>{{ item.facturasPendientes }} {{ item.facturasPendientes === 1 ? 'factura' : 'facturas' }}</small></div></td>
                   <td data-label="Mora"><span class="days" [class]="'days-' + item.riesgo">{{ item.diasVencido }} días</span></td>
                   <td data-label="Riesgo"><span class="risk-badge" [class]="'risk-' + item.riesgo">{{ riskLabel(item.riesgo) }}</span></td>
+                  <td data-label="Servicio"><span class="svc-badge" [class]="'svc-' + serviceTone(item)">{{ serviceLabel(item) }}</span></td>
                   <td data-label="Gestión"><span class="manage-badge" [class]="'manage-' + gestionOf(item)">{{ gestionLabel(item) }}</span></td>
                   <td data-label="Acciones">
                     <div class="row-actions">
