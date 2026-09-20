@@ -1,9 +1,13 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
-import { LucideBot, LucideChevronRight, LucideMessageCircle, LucideRefreshCw, LucideX } from '@lucide/angular';
+import {
+  LucideBot, LucideChevronRight, LucideExternalLink, LucideMessageCircle, LucideRefreshCw,
+  LucideSearch, LucideX,
+} from '@lucide/angular';
+import { whatsappLink } from '../../pipes/phone';
 import { ToastService } from '../../services/toast.service';
 
 interface Conversation {
@@ -25,7 +29,10 @@ interface BotStatus {
 @Component({
   selector: 'app-whatsapp-bot',
   standalone: true,
-  imports: [NavbarComponent, FormsModule, RouterLink, LucideBot, LucideChevronRight, LucideMessageCircle, LucideRefreshCw, LucideX],
+  imports: [
+    NavbarComponent, FormsModule, RouterLink, LucideBot, LucideChevronRight, LucideExternalLink,
+    LucideMessageCircle, LucideRefreshCw, LucideSearch, LucideX,
+  ],
   template: `
     <app-navbar pageTitle="Bot de WhatsApp" />
 
@@ -108,8 +115,15 @@ interface BotStatus {
               <svg lucideRefreshCw size="13"></svg> Actualizar
             </button>
           </div>
+          @if (conversations().length > 4) {
+            <label class="conv-search">
+              <svg lucideSearch size="15"></svg>
+              <input type="search" placeholder="Buscar por nombre o número" aria-label="Buscar conversación"
+                [ngModel]="search()" (ngModelChange)="search.set($event)" />
+            </label>
+          }
           <div class="conv-scroll">
-            @for (c of conversations(); track c.phone) {
+            @for (c of visibleConversations(); track c.phone) {
               <button type="button" class="conv-item" [class.selected]="selectedPhone() === c.phone" (click)="selectConversation(c.phone)">
                 <div class="conv-info">
                   <strong>{{ c.clientName || c.phone }}</strong>
@@ -121,7 +135,9 @@ interface BotStatus {
                 </div>
               </button>
             } @empty {
-              <p class="empty">No hay conversaciones todavía. Cuando un cliente escriba al WhatsApp del negocio, aparecerá aquí.</p>
+              <p class="empty">
+                {{ conversations().length ? 'Ninguna conversación coincide con la búsqueda.' : 'No hay conversaciones todavía. Cuando un cliente escriba al WhatsApp del negocio, aparecerá aquí.' }}
+              </p>
             }
           </div>
         </div>
@@ -133,9 +149,19 @@ interface BotStatus {
                 <h3>Conversación con {{ selectedConvName() }}</h3>
                 <span>{{ selectedPhone() }}</span>
               </div>
-              <button type="button" class="btn-close" aria-label="Cerrar conversación" title="Cerrar conversación" (click)="selectedPhone.set(null)">
-                <svg lucideX size="16"></svg>
-              </button>
+              <div class="detail-actions">
+                @if (selectedClientId(); as id) {
+                  <a class="btn-mini" [routerLink]="['/clients', id]" title="Abrir el expediente de este cliente">Expediente</a>
+                }
+                @if (selectedWaLink(); as link) {
+                  <a class="btn-mini" [href]="link" target="_blank" rel="noopener" title="Seguir la conversación en WhatsApp">
+                    <svg lucideExternalLink size="13"></svg>WhatsApp
+                  </a>
+                }
+                <button type="button" class="btn-close" aria-label="Cerrar conversación" title="Cerrar conversación" (click)="selectedPhone.set(null)">
+                  <svg lucideX size="16"></svg>
+                </button>
+              </div>
             </div>
             <div class="messages">
               @for (m of selectedMessages(); track m.id) {
@@ -183,6 +209,20 @@ interface BotStatus {
     }
     .state-pill.on { background: #e9f8f1; color: #13875a; }
     .state-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    .conv-search {
+      display: flex; align-items: center; gap: 8px; margin: 0 12px 8px; padding: 0 10px;
+      height: 34px; border: 1px solid #dfe5ea; border-radius: 6px; background: #fff; color: #667582;
+    }
+    .conv-search:focus-within { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18,103,221,.12); }
+    .conv-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #334250; font: inherit; font-size: 13px; }
+    .detail-actions { display: inline-flex; align-items: center; gap: 6px; }
+    .btn-mini {
+      display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 10px;
+      border: 1px solid #dfe5ea; border-radius: 6px; background: #fff; color: #334250;
+      font-size: 12px; font-weight: 700; text-decoration: none; cursor: pointer;
+    }
+    .btn-mini:hover { border-color: #1267dd; background: #f2f7ff; color: #1267dd; }
 
     .btn-link {
       display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 6px;
@@ -292,6 +332,15 @@ export class WhatsappBotComponent implements OnInit, OnDestroy {
   conversations = signal<Conversation[]>([]);
   selectedPhone = signal<string | null>(null);
   selectedMessages = signal<any[]>([]);
+  search = signal('');
+
+  /** Filtra por nombre o numero para encontrar una conversacion entre muchas. */
+  visibleConversations = computed(() => {
+    const term = this.search().trim().toLowerCase();
+    if (!term) return this.conversations();
+    return this.conversations().filter((c) =>
+      (c.clientName || '').toLowerCase().includes(term) || c.phone.includes(term));
+  });
 
   private refreshInterval: any;
 
@@ -347,6 +396,18 @@ export class WhatsappBotComponent implements OnInit, OnDestroy {
       next: (msgs) => this.selectedMessages.set(msgs),
       error: () => {},
     });
+  }
+
+  /** Devuelve el id de servicio del cliente de la conversacion abierta, si se reconocio. */
+  selectedClientId(): number | null {
+    const phone = this.selectedPhone();
+    if (!phone) return null;
+    return this.conversations().find((c) => c.phone === phone)?.idServicio ?? null;
+  }
+
+  selectedWaLink(): string | null {
+    const phone = this.selectedPhone();
+    return phone ? whatsappLink(phone) : null;
   }
 
   selectedConvName(): string {
