@@ -4,7 +4,7 @@ import { NavbarComponent } from '../../components/layout/navbar';
 import { LocalDbService } from '../../services/local-db.service';
 import { SyncService } from '../../services/sync.service';
 import { WispHubClient } from '../../models/client.model';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { ExportService } from '../../services/export.service';
 import { ClientBlockActionsComponent } from '../../components/client-block-actions/client-block-actions';
@@ -777,6 +777,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   private survey = inject(SurveyService);
   private toast = inject(ToastService);
   private router = inject(Router);
+  private route = inject(ActivatedRoute);
   private listState = inject(ClientListStateService);
   metrics = inject(MetricsService);
 
@@ -861,6 +862,7 @@ export class ClientsComponent implements OnInit, OnDestroy {
   async ngOnInit() {
     document.addEventListener('click', this.closeMenusOnClick, true);
     this.restoreView();
+    this.applyQueryFilters();
     await this.loadLocal();
     this.applyPendingRestore();
     this.loadCrmStates();
@@ -886,6 +888,17 @@ export class ClientsComponent implements OnInit, OnDestroy {
     if ([25, 50, 100].includes(Number(s.pageSize))) this.pageSize = Number(s.pageSize);
     this.filtersExpanded = !!s.filtersExpanded;
     this.pendingRestore = { page: Number(s.page) || 1, scrollY: Number(s.scrollY) || 0 };
+  }
+
+  /** Permite llegar desde otra pantalla con la lista ya filtrada, p. ej. /clients?plan=10M|10M. */
+  private applyQueryFilters() {
+    const plan = this.route.snapshot.queryParamMap.get('plan');
+    if (!plan) return;
+    this.searchTerm = '';
+    this.quickFilter = 'all';
+    this.planFilter = plan;
+    this.filtersExpanded = true;
+    this.pendingRestore = { page: 1, scrollY: 0 };
   }
 
   private applyPendingRestore() {

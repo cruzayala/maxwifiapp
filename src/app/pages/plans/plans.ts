@@ -1,6 +1,10 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { LucideAlertTriangle, LucideRefreshCw, LucideSearch, LucideZap } from '@lucide/angular';
+import { RouterLink } from '@angular/router';
+import {
+  LucideAlertTriangle, LucideBanknote, LucideCircleAlert, LucideRefreshCw, LucideSearch,
+  LucideUsers, LucideZap,
+} from '@lucide/angular';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
@@ -14,18 +18,50 @@ interface PlanWithStats {
   nombre: string;
   tipo: string;
   clientCount: number;
+  /** Precio que paga la mayoria de los clientes de este plan. */
   price: string;
+  /** true cuando no todos pagan lo mismo por el mismo plan. */
+  priceVaries: boolean;
+  /** Suma real de lo que pagan los clientes de este plan al mes. */
+  monthlyRevenue: number;
   pct: number;
 }
+
+type PlanSort = 'clients' | 'revenue' | 'price' | 'name';
 
 @Component({
   selector: 'app-plans',
   standalone: true,
-  imports: [NavbarComponent, DecimalPipe, FormsModule, LucideAlertTriangle, LucideRefreshCw, LucideSearch, LucideZap],
+  imports: [
+    NavbarComponent, DecimalPipe, FormsModule, RouterLink,
+    LucideAlertTriangle, LucideBanknote, LucideCircleAlert, LucideRefreshCw, LucideSearch,
+    LucideUsers, LucideZap,
+  ],
   template: `
     <app-navbar pageTitle="Planes de internet" />
 
     <div class="page">
+      @if (plans().length) {
+        <section class="kpi-strip" aria-label="Resumen de planes">
+          <article class="kpi-item revenue">
+            <span class="kpi-icon"><svg lucideBanknote size="19"></svg></span>
+            <div><small>Ingreso mensual</small><strong>RD$ {{ totalRevenue() | number:'1.2-2' }}</strong><p>lo que suman los planes de los clientes</p></div>
+          </article>
+          <article class="kpi-item assigned">
+            <span class="kpi-icon"><svg lucideUsers size="19"></svg></span>
+            <div><small>Clientes con plan</small><strong>{{ totalAssigned() }}</strong><p>en {{ plansInUse() }} de {{ plans().length }} planes</p></div>
+          </article>
+          <article class="kpi-item average">
+            <span class="kpi-icon"><svg lucideZap size="19"></svg></span>
+            <div><small>Promedio por cliente</small><strong>RD$ {{ averageTicket() | number:'1.2-2' }}</strong><p>{{ topPlanLabel() }}</p></div>
+          </article>
+          <article class="kpi-item attention">
+            <span class="kpi-icon"><svg lucideCircleAlert size="19"></svg></span>
+            <div><small>Requieren revisión</small><strong>{{ plansNeedingReview() }}</strong><p>sin clientes o con precios distintos</p></div>
+          </article>
+        </section>
+      }
+
       <div class="toolbar">
         <div class="toolbar-title">
           <h3>{{ plans().length }} {{ plans().length === 1 ? 'plan configurado' : 'planes configurados' }}</h3>
@@ -34,6 +70,14 @@ interface PlanWithStats {
           }
         </div>
         <div class="toolbar-actions">
+          @if (plans().length > 1) {
+            <select class="plain-select" aria-label="Ordenar planes" [ngModel]="sortBy()" (ngModelChange)="sortBy.set($event)">
+              <option value="clients">Más clientes</option>
+              <option value="revenue">Mayor ingreso</option>
+              <option value="price">Precio más alto</option>
+              <option value="name">Nombre</option>
+            </select>
+          }
           @if (plans().length > 6) {
             <label class="search-field">
               <svg lucideSearch size="16"></svg>
@@ -71,9 +115,9 @@ interface PlanWithStats {
       } @else {
         <div class="plans-grid">
           @for (plan of visiblePlans(); track plan.id) {
-            <article class="plan-card" [class.popular]="plan.clientCount > 20" [class.unused]="plan.clientCount === 0">
-              @if (plan.clientCount > 20) {
-                <div class="popular-badge">Más usado</div>
+            <article class="plan-card" [class.popular]="plan.id === mostUsedPlanId()" [class.unused]="plan.clientCount === 0">
+              @if (plan.id === mostUsedPlanId()) {
+                <div class="popular-badge">El más usado</div>
               }
               <div class="plan-icon"><svg lucideZap size="24"></svg></div>
               <h4 [title]="plan.nombre">{{ planLabel(plan.nombre) }}</h4>
@@ -82,6 +126,9 @@ interface PlanWithStats {
               }
               @if (hasPrice(plan.price)) {
                 <div class="plan-price">{{ priceText(plan.price) }}<span>/mes</span></div>
+                @if (plan.priceVaries) {
+                  <p class="plan-note" title="Hay clientes con este plan pagando montos distintos">Hay clientes pagando otro monto</p>
+                }
               } @else {
                 <div class="plan-price no-price">Sin precio registrado</div>
               }
@@ -98,7 +145,17 @@ interface PlanWithStats {
               <div class="plan-bar" role="presentation">
                 <div class="plan-bar-fill" [style.width.%]="plan.pct"></div>
               </div>
-              <span class="plan-type">{{ typeLabel(plan.tipo) }}</span>
+              @if (plan.monthlyRevenue > 0) {
+                <p class="plan-revenue">Genera <strong>RD$ {{ plan.monthlyRevenue | number:'1.2-2' }}</strong> al mes</p>
+              } @else {
+                <p class="plan-revenue empty">Nadie lo está usando</p>
+              }
+              <div class="plan-foot">
+                <span class="plan-type">{{ typeLabel(plan.tipo) }}</span>
+                @if (plan.clientCount) {
+                  <a class="plan-link" [routerLink]="['/clients']" [queryParams]="{ plan: plan.nombre }" [title]="'Ver los ' + plan.clientCount + ' clientes de este plan'">Ver clientes</a>
+                }
+              </div>
             </article>
           }
         </div>
@@ -161,7 +218,28 @@ interface PlanWithStats {
     .plan-bar { height: 6px; margin-bottom: 12px; overflow: hidden; border-radius: 3px; background: #edf1f4; }
     .plan-bar-fill { height: 100%; border-radius: 3px; background: #1267dd; transition: width 0.4s; }
 
+    .plan-note { margin: -6px 0 10px; color: #9a5b0f; font-size: 11px; font-weight: 600; }
+    .plan-revenue { margin: 0 0 12px; color: #334250; font-size: 12px; }
+    .plan-revenue strong { color: #13875a; font-weight: 800; }
+    .plan-revenue.empty { color: #8a98a5; font-style: italic; }
+    .plan-foot { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
     .plan-type { display: inline-block; padding: 3px 10px; border-radius: 12px; background: #f1f4f6; color: #667582; font-size: 11px; font-weight: 600; }
+    .plan-link { color: #1267dd; font-size: 12px; font-weight: 700; text-decoration: none; }
+    .plan-link:hover { text-decoration: underline; }
+    .plain-select { height: 38px; min-width: 160px; padding: 0 10px; border: 1px solid #dfe5ea; border-radius: 6px; background: #fff; color: #334250; font: inherit; font-size: 12px; cursor: pointer; }
+    .plain-select:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
+
+    .kpi-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; overflow: hidden; margin-bottom: 16px; border: 1px solid #dfe5ea; border-radius: 8px; background: #dfe5ea; }
+    .kpi-item { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 16px 18px; background: #fff; text-align: left; }
+    .kpi-icon { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border-radius: 7px; }
+    .kpi-item > div { min-width: 0; }
+    .kpi-item small { display: block; color: #728294; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .kpi-item strong { display: block; margin-top: 3px; color: #14283d; font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
+    .kpi-item p { margin: 5px 0 0; color: #8291a0; font-size: 11px; }
+    .revenue .kpi-icon { color: #13875a; background: #e9f8f1; }
+    .assigned .kpi-icon { color: #1267dd; background: #edf4ff; }
+    .average .kpi-icon { color: #b36b12; background: #fff6e8; }
+    .attention .kpi-icon { color: #c93643; background: #fff0f1; }
 
     .loading-state, .empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 64px 20px; color: #667582; text-align: center; }
     .empty-state svg { color: #ccd6de; }
@@ -173,10 +251,14 @@ interface PlanWithStats {
     .spinner { width: 32px; height: 32px; border: 3px solid #dfe5ea; border-top-color: #1267dd; border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    @media (max-width: 1120px) { .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 640px) {
       .page { padding: 14px 16px 24px; }
       .toolbar-actions, .search-field { width: 100%; min-width: 0; }
-      .toolbar-actions .btn { width: 100%; }
+      .toolbar-actions .btn, .toolbar-actions .plain-select { width: 100%; }
+      .kpi-item { display: block; }
+      .kpi-icon { margin-bottom: 8px; }
+      .kpi-item strong { font-size: 16px; }
     }
     @media (prefers-reduced-motion: reduce) { .spin, .spinner { animation: none; } }
   `]
@@ -190,14 +272,42 @@ export class PlansComponent implements OnInit {
   loadError = signal('');
   search = signal('');
 
+  sortBy = signal<PlanSort>('clients');
+
   visiblePlans = computed(() => {
     const term = this.search().trim().toLowerCase();
-    if (!term) return this.plans();
-    return this.plans().filter((plan) =>
+    const mode = this.sortBy();
+    const filtered = !term ? this.plans() : this.plans().filter((plan) =>
       plan.nombre.toLowerCase().includes(term) || formatPlanName(plan.nombre).toLowerCase().includes(term));
+    return [...filtered].sort((left, right) => {
+      if (mode === 'revenue') return right.monthlyRevenue - left.monthlyRevenue;
+      if (mode === 'price') return Number.parseFloat(right.price || '0') - Number.parseFloat(left.price || '0');
+      if (mode === 'name') return formatPlanName(left.nombre).localeCompare(formatPlanName(right.nombre), 'es', { numeric: true });
+      return right.clientCount - left.clientCount || right.monthlyRevenue - left.monthlyRevenue;
+    });
   });
   plansInUse = computed(() => this.plans().filter((plan) => plan.clientCount > 0).length);
   totalAssigned = computed(() => this.plans().reduce((sum, plan) => sum + plan.clientCount, 0));
+  totalRevenue = computed(() => this.plans().reduce((sum, plan) => sum + plan.monthlyRevenue, 0));
+  averageTicket = computed(() => {
+    const clients = this.totalAssigned();
+    return clients ? this.totalRevenue() / clients : 0;
+  });
+  /** Planes que conviene revisar: sin nadie usandolos, o con clientes pagando montos distintos. */
+  plansNeedingReview = computed(() =>
+    this.plans().filter((plan) => plan.clientCount === 0 || plan.priceVaries).length);
+
+  /** Id del plan con mas clientes; solo ese lleva la etiqueta destacada. */
+  mostUsedPlanId = computed(() => {
+    const top = [...this.plans()].sort((left, right) => right.clientCount - left.clientCount)[0];
+    return top && top.clientCount > 0 ? top.id : -1;
+  });
+
+  topPlanLabel = computed(() => {
+    const top = [...this.plans()].sort((left, right) => right.monthlyRevenue - left.monthlyRevenue)[0];
+    if (!top || top.monthlyRevenue <= 0) return 'sin ingresos registrados';
+    return `el que más aporta: ${formatPlanName(top.nombre)}`;
+  });
 
   async ngOnInit() {
     await this.loadPlans();
@@ -219,31 +329,41 @@ export class PlansComponent implements OnInit {
       next: (res: PlanResponse) => {
         const apiPlans = res.results || [];
 
-        // Cross-reference with clients
-        const planMap = new Map<string, { count: number; price: string }>();
+        // Se cruza con los clientes guardados para saber cuantos usan cada plan,
+        // cuanto paga la mayoria y cuanto entra al mes de verdad. Antes se tomaba
+        // el precio mas alto encontrado, que no era lo que cobra el negocio.
+        const planMap = new Map<string, { count: number; revenue: number; prices: Map<string, number> }>();
         clients.forEach(c => {
           const name = c.plan_internet?.nombre;
           if (!name) return;
-          const entry = planMap.get(name) || { count: 0, price: c.precio_plan || '0.00' };
+          const entry = planMap.get(name) || { count: 0, revenue: 0, prices: new Map<string, number>() };
+          const amount = Number.parseFloat(String(c.precio_plan || '0').replace(/[^0-9.-]/g, '')) || 0;
           entry.count++;
-          if (parseFloat(c.precio_plan || '0') > parseFloat(entry.price || '0')) {
-            entry.price = c.precio_plan;
-          }
+          entry.revenue += amount;
+          const key = amount.toFixed(2);
+          entry.prices.set(key, (entry.prices.get(key) || 0) + 1);
           planMap.set(name, entry);
         });
 
         const totalClients = clients.length || 1;
         const enriched: PlanWithStats[] = apiPlans.map(p => {
-          const stats = planMap.get(p.nombre) || { count: 0, price: '0.00' };
+          const stats = planMap.get(p.nombre);
+          if (!stats) {
+            return { id: p.id, nombre: p.nombre, tipo: p.tipo || 'Simple Queue', clientCount: 0, price: '0.00', priceVaries: false, monthlyRevenue: 0, pct: 0 };
+          }
+          // Precio tipico = el que paga la mayoria de los clientes de ese plan.
+          const [commonPrice] = [...stats.prices.entries()].sort((a, b) => b[1] - a[1])[0] || ['0.00'];
           return {
             id: p.id,
             nombre: p.nombre,
             tipo: p.tipo || 'Simple Queue',
             clientCount: stats.count,
-            price: stats.price,
-            pct: (stats.count / totalClients) * 100
+            price: commonPrice,
+            priceVaries: stats.prices.size > 1,
+            monthlyRevenue: stats.revenue,
+            pct: (stats.count / totalClients) * 100,
           };
-        }).sort((a, b) => b.clientCount - a.clientCount);
+        });
 
         this.plans.set(enriched);
         this.loading.set(false);
