@@ -24,6 +24,7 @@ export const routes: Routes = [
   { path: 'incidents', canActivate: [authGuard, roleGuard], data: { roles: ['tecnico'] }, loadComponent: () => import('./pages/incidents/incidents').then(m => m.IncidentsComponent) },
   { path: 'whatsapp', canActivate: [authGuard, roleGuard], data: { roles: ['cobranza'] }, loadComponent: () => import('./pages/whatsapp/whatsapp').then(m => m.WhatsappComponent) },
   { path: 'whatsapp-bot', canActivate: [authGuard, roleGuard], data: { roles: ['cobranza'] }, loadComponent: () => import('./pages/whatsapp-bot/whatsapp-bot').then(m => m.WhatsappBotComponent) },
+  { path: 'encuestas', canActivate: [authGuard, roleGuard], data: { roles: ['cobranza'] }, loadComponent: () => import('./pages/encuestas/encuestas').then(m => m.EncuestasComponent) },
   { path: 'morosos', canActivate: [authGuard, roleGuard], data: { roles: ['cobranza'] }, loadComponent: () => import('./pages/morosos/morosos').then(m => m.MorososComponent) },
   { path: 'mapa', canActivate: [authGuard, roleGuard], data: { roles: ['tecnico'] }, loadComponent: () => import('./pages/mapa/mapa').then(m => m.MapaComponent) },
   { path: 'inventory', canActivate: [authGuard, roleGuard], data: { roles: ['admin'] }, loadComponent: () => import('./pages/inventory/inventory').then(m => m.InventoryComponent) },

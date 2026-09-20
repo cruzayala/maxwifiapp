@@ -129,6 +129,7 @@ export class SidebarComponent implements OnInit {
       items: [
         { label: 'WhatsApp', path: '/whatsapp', exact: true },
         { label: 'Bot', path: '/whatsapp-bot', exact: true },
+        { label: 'Encuestas', path: '/encuestas', exact: true },
       ],
     },
     {
