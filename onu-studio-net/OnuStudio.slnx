@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/OnuStudio.App/OnuStudio.App.csproj" />
+    <Project Path="src/OnuStudio.Core/OnuStudio.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/OnuStudio.Tests/OnuStudio.Tests.csproj" />
+  </Folder>
+</Solution>

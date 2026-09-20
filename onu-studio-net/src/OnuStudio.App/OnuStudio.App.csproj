@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ONU Studio</AssemblyName>
+    <RootNamespace>OnuStudio.App</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\onu-studio.ico</ApplicationIcon>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <Version>2.0.0</Version>
+    <Product>ONU Studio | ISP Max</Product>
+    <Company>ISP Max</Company>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- WinForms solo se usa para el icono junto al reloj; sin esto choca con WPF
+         en nombres como Application y UserControl. -->
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\OnuStudio.Core\OnuStudio.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Assets\onu-studio.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Las pruebas comprueban reglas internas (seriales, nombres WAN, sanitizado). -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>OnuStudio.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

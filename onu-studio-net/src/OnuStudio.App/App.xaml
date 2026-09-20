@@ -1,0 +1,20 @@
+<Application x:Class="OnuStudio.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:OnuStudio.App.Controls"
+             ShutdownMode="OnExplicitShutdown">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Theme.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <controls:ToneToBrushConverter x:Key="Tone" />
+            <controls:ToneToBrushConverter x:Key="ToneSoft" Soft="True" />
+            <controls:TextToVisibilityConverter x:Key="TextToVisibility" />
+            <controls:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
+            <controls:EqualsToBoolConverter x:Key="EqualsToBool" />
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

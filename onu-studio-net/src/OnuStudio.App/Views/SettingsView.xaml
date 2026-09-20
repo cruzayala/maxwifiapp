@@ -1,0 +1,224 @@
+<UserControl x:Class="OnuStudio.App.Views.SettingsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:OnuStudio.App.Controls"
+             FontFamily="{StaticResource UiFont}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="32,24">
+        <StackPanel MaxWidth="980" HorizontalAlignment="Left">
+
+            <!-- ── Credenciales de las ONU ── -->
+            <Border Style="{StaticResource Card}">
+                <StackPanel>
+                    <TextBlock Text="Acceso a las ONU" Style="{StaticResource SectionTitle}" />
+                    <TextBlock Style="{StaticResource Body}" Margin="0,6,0,14"
+                               Text="Se guardan cifradas con Windows en esta cuenta. El programa no las muestra nunca en el historial ni en la nube." />
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Grid.Column="0">
+                            <TextBlock Text="Usuario Huawei / Novatech" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding HuaweiUsername, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="2">
+                            <TextBlock Text="Contrasena Huawei / Novatech" Style="{StaticResource FieldLabel}" />
+                            <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding HuaweiPassword, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,0,0">
+                            <TextBlock Text="Usuario ZTE" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding ZteUsername, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,14,0,0">
+                            <TextBlock Text="Contrasena ZTE" Style="{StaticResource FieldLabel}" />
+                            <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding ZtePassword, Mode=TwoWay}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ── TR-069 ── -->
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                <StackPanel>
+                    <TextBlock Text="Gestion remota TR-069" Style="{StaticResource SectionTitle}" />
+                    <TextBlock Style="{StaticResource Body}" Margin="0,6,0,14"
+                               Text="Con esto la ONU queda registrada en el ACS y se puede atender sin ir al domicilio." />
+
+                    <CheckBox Content="Registrar las ONU en el ACS" IsChecked="{Binding Tr069Enabled}" />
+
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <StackPanel Grid.Row="0" Grid.Column="0">
+                            <TextBlock Text="Direccion del ACS" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding AcsUrl, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="2">
+                            <TextBlock Text="Usuario" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding Tr069Username, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="0" Grid.Column="4">
+                            <TextBlock Text="Contrasena" Style="{StaticResource FieldLabel}" />
+                            <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding Tr069Password, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,0,0">
+                            <TextBlock Text="Usuario de solicitud de conexion" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding ConnectionRequestUsername, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,14,0,0">
+                            <TextBlock Text="Su contrasena" Style="{StaticResource FieldLabel}" />
+                            <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding ConnectionRequestPassword, Mode=TwoWay}" />
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="4" Margin="0,14,0,0">
+                            <TextBlock Text="Reporte cada (segundos)" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding PeriodicInformInterval, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid Margin="0,14,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="16" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Servidor ACS local (GenieACS)" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding GenieAcsUrl, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="Acceso remoto permitido desde" Style="{StaticResource FieldLabel}" />
+                            <TextBox Text="{Binding DefaultRemoteSource, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Comportamiento ── -->
+            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+                <StackPanel>
+                    <TextBlock Text="Comportamiento del agente" Style="{StaticResource SectionTitle}" />
+                    <CheckBox Content="Abrir ONU Studio al iniciar Windows" IsChecked="{Binding StartWithWindows}" Margin="0,12,0,0" />
+                    <CheckBox Content="Trabajar sin mostrar el navegador interno" IsChecked="{Binding Headless}" />
+                    <TextBlock Text="{Binding StorageSummary}" Style="{StaticResource Hint}" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+
+            <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                <Button Content="Guardar ajustes" Style="{StaticResource PrimaryButton}" Command="{Binding SaveCommand}" />
+            </StackPanel>
+
+            <!-- ── Rangos de IP ── -->
+            <Border Style="{StaticResource Card}" Margin="0,20,0,0">
+                <StackPanel>
+                    <TextBlock Text="Rangos de IP para clientes" Style="{StaticResource SectionTitle}" />
+                    <TextBlock Style="{StaticResource Body}" Margin="0,6,0,12"
+                               Text="De aqui salen las IP libres que ofrece el asistente. La puerta de enlace y las direcciones fuera del rango nunca se ofrecen." />
+
+                    <ItemsControl ItemsSource="{Binding Ranges}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource SoftCard}" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="2*" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Nombre" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Rango (CIDR)" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding Cidr, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="4">
+                                                <TextBlock Text="VLAN" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding Vlan, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="6">
+                                                <TextBlock Text="Puerta de enlace" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding Gateway, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <Grid Margin="0,12,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="DNS principal" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding PrimaryDns, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Desde" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding AllocationStart, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="4">
+                                                <TextBlock Text="Hasta" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding AllocationEnd, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
+                                                <CheckBox Content="Activo" IsChecked="{Binding Active}" />
+                                                <Button Content="Quitar" Style="{StaticResource LinkButton}"
+                                                        Command="{Binding DataContext.RemoveRangeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Content="Agregar rango" Style="{StaticResource GhostButton}" Command="{Binding AddRangeCommand}" />
+                        <Button Content="Guardar rangos" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding SaveRangesCommand}" Margin="10,0,0,0" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Conexion con ISP Max ── -->
+            <Border Style="{StaticResource Card}" Margin="0,14,0,28">
+                <StackPanel>
+                    <TextBlock Text="Conexion con ISP Max" Style="{StaticResource SectionTitle}" />
+                    <TextBlock Text="{Binding CloudSummary}" Style="{StaticResource Body}" Margin="0,8,0,0" />
+                    <Button Content="Desconectar esta computadora" Style="{StaticResource GhostButton}"
+                            HorizontalAlignment="Left" Margin="0,14,0,0" Command="{Binding LogoutCommand}" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

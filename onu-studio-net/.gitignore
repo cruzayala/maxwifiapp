@@ -1,0 +1,10 @@
+bin/
+obj/
+artifacts/
+release/
+*.user
+.probe/
+.probe/
+src/OnuStudio.App/app-dev.manifest
+.probe2/
+src/OnuStudio.App/app-dev-run.manifest

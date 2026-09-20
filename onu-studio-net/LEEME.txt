@@ -1,0 +1,54 @@
+ONU STUDIO | ISP MAX  (version .NET)
+=====================================
+
+QUE NECESITAS
+- Windows 10 u 11 de 64 bits.
+- Cable Ethernet conectado directamente a la ONU.
+- Una cuenta de Windows que pueda dar permisos de administrador.
+- Tu usuario de ISP Max (admin o super_admin).
+
+COMO SE USA
+1. Abre ONU-Studio-ISP-Max-vX.Y.Z.exe y acepta el permiso de administrador.
+2. CONECTAR: enchufa el cable a la ONU. El programa la busca solo. Cuando aparezca
+   "ONU detectada", pulsa "Leer la ONU": te muestra el serial, el firmware y la
+   senal optica.
+3. CLIENTE: la primera vez entra con tu usuario de ISP Max (esta PC queda recordada).
+   Elige que vas a hacer (cliente nuevo, restaurar, cambiar ONU o mover de PON),
+   busca el cliente o escribe el nombre del nuevo, elige zona, plan y la IP libre.
+   Pulsa "Reservar la IP y abrir el expediente".
+4. INTERNET: los datos ya vienen puestos desde la reserva. Cambia lo que necesites.
+5. WIFI: el nombre y la clave se proponen solos. Puedes editarlos o generar otra clave.
+6. REVISAR: lee el resumen y pulsa "Aprovisionar la ONU". Veras el avance paso a paso.
+
+ORDEN DE SEGURIDAD
+- Primero se reserva la IP y se prepara el cliente en WispHub y MikroTik.
+- La ONU no se toca hasta el ultimo paso.
+- Se guarda un respaldo antes y despues de configurar.
+- Cada cambio se vuelve a leer; si algo no coincide, el proceso se detiene
+  (y en la ZTE se restaura el respaldo previo).
+
+SEGUNDO PLANO
+- Al cerrar la ventana el agente sigue trabajando junto al reloj de Windows.
+- Desde ese icono puedes abrirlo, buscar una ONU o salir del todo.
+- Mientras este abierto, ISP Max puede enviarle trabajos desde la oficina.
+
+DONDE QUEDAN LOS DATOS
+%LOCALAPPDATA%\ISP Max\ONU Studio
+  provisioner.db        historial
+  backups\              respaldos y capturas de diagnostico
+  logs\onu-studio.log   registro del programa
+  cloud-session.dat     sesion con ISP Max (cifrada)
+  agent-settings.dat    credenciales tecnicas (cifradas)
+
+SEGURIDAD
+- Las contrasenas tecnicas se guardan cifradas con Windows (DPAPI) y solo las puede
+  leer tu cuenta en esta computadora.
+- El ejecutable no trae ninguna contrasena dentro.
+- Los mensajes de error nunca muestran claves.
+- La primera vez Windows puede avisar con SmartScreen porque el archivo no esta
+  firmado con un certificado comercial.
+
+NAVEGADOR INTERNO
+ONU Studio configura las ONU a traves de su panel web. Para eso usa el Microsoft
+Edge que ya trae Windows (o Google Chrome si lo prefieres). Solo si la PC no
+tuviera ninguno de los dos, descarga su propio navegador una sola vez.
