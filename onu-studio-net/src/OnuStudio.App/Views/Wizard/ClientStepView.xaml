@@ -3,15 +3,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:OnuStudio.App.Controls">
 
-    <!-- Paso 2: cliente, zona, plan e IP reservada en ISP Max. El DataContext es el WizardViewModel. -->
+    <!-- Paso 2: que se hace, tipo de servicio, cliente, plan e IP. Cada decision abre la
+         siguiente. El DataContext es el WizardViewModel. -->
     <StackPanel>
 
-        <Border Style="{StaticResource Card}"
-                Visibility="{Binding CloudConnected, Converter={StaticResource InverseBoolToVisibility}}">
+        <!-- Sin sesion con ISP Max no se puede seguir -->
+        <controls:WizardSection Number="!" Title="Conecta ONU Studio con ISP Max"
+                                Hint="Con tu usuario de ISP Max. Esta PC queda recordada de forma segura."
+                                Visibility="{Binding CloudConnected, Converter={StaticResource InverseBoolToVisibility}}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
             <StackPanel>
-                <TextBlock Text="Conecta ONU Studio con ISP Max" Style="{StaticResource SectionTitle}" />
-                <TextBlock Text="Con tu usuario de ISP Max. Esta PC queda recordada de forma segura."
-                           Style="{StaticResource Body}" Margin="0,6,0,14" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*" />
@@ -33,119 +34,111 @@
                         <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding CloudPassword, Mode=TwoWay}" />
                     </StackPanel>
                 </Grid>
-                <Button Content="Conectar" Style="{StaticResource PrimaryButton}"
+                <Button Content="Conectar" Style="{StaticResource PrimaryButton}" MinWidth="140"
                         Command="{Binding LoginCommand}" HorizontalAlignment="Left" Margin="0,16,0,0" />
             </StackPanel>
-        </Border>
+        </controls:WizardSection>
 
-        <StackPanel Visibility="{Binding CloudConnected, Converter={StaticResource BoolToVisibility}}">
-            <Border Style="{StaticResource Card}">
+        <Grid Visibility="{Binding CloudConnected, Converter={StaticResource BoolToVisibility}}">
+
+            <!-- 1. Que se va a hacer -->
+            <controls:WizardSection Number="1" Title="Que vas a hacer" IsDone="{Binding HasOperation}"
+                                    Hint="Elige una opcion para seguir."
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=1}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
+                <ListBox Style="{StaticResource ChoiceList}" ItemsSource="{Binding Operations}"
+                         SelectedItem="{Binding SelectedOperation}" />
+            </controls:WizardSection>
+
+            <!-- 2. Tipo de servicio -->
+            <controls:WizardSection Number="2" Title="Como se entrega el servicio" IsDone="{Binding HasServiceMode}"
+                                    Hint="Define si la ONU hace de router con WiFi o solo pasa la senal."
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=2}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
+                <ListBox Style="{StaticResource ChoiceList}" ItemsSource="{Binding ServiceModes}"
+                         SelectedItem="{Binding SelectedServiceMode}" />
+            </controls:WizardSection>
+
+            <!-- 3. Cliente -->
+            <controls:WizardSection Number="3" Title="{Binding ClientSectionTitle}" Hint="{Binding ClientSectionHint}"
+                                    IsDone="{Binding HasClientIdentity}"
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=3}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
                 <StackPanel>
-                    <TextBlock Text="Que vas a hacer" Style="{StaticResource SectionTitle}" />
-                    <ListBox ItemsSource="{Binding Operations}" SelectedItem="{Binding Operation}"
-                             Margin="0,12,0,0" BorderThickness="0" Background="Transparent"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <UniformGrid Columns="2" />
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem">
-                                <Setter Property="Margin" Value="0,0,10,10" />
-                                <Setter Property="Padding" Value="0" />
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="ListBoxItem">
-                                            <Border x:Name="Shape" Background="#FBFCFE" BorderBrush="{StaticResource Line}"
-                                                    BorderThickness="1" CornerRadius="10" Padding="14,12" Cursor="Hand">
-                                                <ContentPresenter />
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Shape" Property="BorderBrush" Value="#BBCEDF" />
-                                                </Trigger>
-                                                <Trigger Property="IsSelected" Value="True">
-                                                    <Setter TargetName="Shape" Property="BorderBrush" Value="{StaticResource Accent}" />
-                                                    <Setter TargetName="Shape" Property="Background" Value="{StaticResource AccentSoft}" />
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold"
-                                               Foreground="{StaticResource Ink}" />
-                                    <TextBlock Text="{Binding Detail}" FontSize="11.5"
-                                               Foreground="{StaticResource InkSoft}" TextWrapping="Wrap"
-                                               Margin="0,4,0,0" />
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <!-- Cliente nuevo: solo el nombre -->
+                    <StackPanel Visibility="{Binding IsNewClient, Converter={StaticResource BoolToVisibility}}">
+                        <TextBlock Text="Nombre del servicio" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding ClientName, UpdateSourceTrigger=PropertyChanged, Delay=350}" />
+                    </StackPanel>
+
+                    <!-- Cliente existente: buscar y elegir -->
+                    <StackPanel Visibility="{Binding IsNewClient, Converter={StaticResource InverseBoolToVisibility}}">
+                        <TextBlock Text="Buscar" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding ClientSearch, UpdateSourceTrigger=PropertyChanged}" />
+                        <ItemsControl ItemsSource="{Binding ClientResults}" Margin="0,10,0,0" MaxHeight="230">
+                            <ItemsControl.Template>
+                                <ControlTemplate TargetType="ItemsControl">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsPresenter />
+                                    </ScrollViewer>
+                                </ControlTemplate>
+                            </ItemsControl.Template>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Style="{StaticResource GhostButton}" Margin="0,0,0,6"
+                                            HorizontalContentAlignment="Stretch" MinHeight="50"
+                                            controls:Motion.Entrance="True" controls:Motion.OffsetY="6"
+                                            Command="{Binding DataContext.SelectClientCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                            CommandParameter="{Binding}">
+                                        <StackPanel HorizontalAlignment="Left">
+                                            <TextBlock Text="{Binding Display}" FontSize="13" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Detail}" FontSize="11.5" Foreground="{StaticResource InkSoft}" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Border Background="{StaticResource SuccessSoft}" CornerRadius="10" Padding="14,12" Margin="0,6,0,0"
+                                Visibility="{Binding HasSelectedClient, Converter={StaticResource BoolToVisibility}}"
+                                controls:Motion.Entrance="True">
+                            <StackPanel>
+                                <TextBlock Text="Cliente elegido" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Success}" />
+                                <TextBlock Text="{Binding SelectedClient.Display}" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource Ink}" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding SelectedClient.Detail}" Style="{StaticResource Body}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
-            </Border>
+            </controls:WizardSection>
 
-            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+            <!-- 4. Zona y plan -->
+            <controls:WizardSection Number="4" Title="Zona y plan" IsDone="{Binding HasPlan}"
+                                    Hint="Con el plan se ajusta sola la velocidad de subida y bajada."
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=4}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
                 <StackPanel>
-                    <TextBlock Text="Cliente" Style="{StaticResource SectionTitle}" />
-                    <TextBlock Text="Busca un cliente que ya existe o escribe el nombre del nuevo."
-                               Style="{StaticResource Body}" Margin="0,6,0,12" />
-
-                    <TextBox Text="{Binding ClientSearch, UpdateSourceTrigger=PropertyChanged}" />
-                    <ItemsControl ItemsSource="{Binding ClientResults}" Margin="0,8,0,0" MaxHeight="220">
-                        <ItemsControl.Template>
-                            <ControlTemplate TargetType="ItemsControl">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </ControlTemplate>
-                        </ItemsControl.Template>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Style="{StaticResource GhostButton}" Margin="0,0,0,6"
-                                        HorizontalContentAlignment="Left" MinHeight="46"
-                                        Command="{Binding DataContext.SelectClientCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                        CommandParameter="{Binding}">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Display}" FontSize="13" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding Detail}" FontSize="11.5"
-                                                   Foreground="{StaticResource InkSoft}" />
-                                    </StackPanel>
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <Grid Margin="0,12,0,0">
+                    <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="2*" />
-                            <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="16" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="Nombre del servicio" Style="{StaticResource FieldLabel}" />
-                            <TextBox Text="{Binding ClientName, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2">
                             <TextBlock Text="Zona" Style="{StaticResource FieldLabel}" />
                             <ComboBox ItemsSource="{Binding Zones}" SelectedItem="{Binding SelectedZone}"
                                       DisplayMemberPath="Name" />
                         </StackPanel>
-                        <StackPanel Grid.Column="4">
+                        <StackPanel Grid.Column="2">
                             <TextBlock Text="Plan" Style="{StaticResource FieldLabel}" />
                             <ComboBox ItemsSource="{Binding Plans}" SelectedItem="{Binding SelectedPlan}"
                                       DisplayMemberPath="Name" />
                         </StackPanel>
                     </Grid>
 
-                    <Grid Margin="0,14,0,0">
+                    <Grid Margin="0,14,0,0" Visibility="{Binding HasPlan, Converter={StaticResource BoolToVisibility}}"
+                          controls:Motion.Entrance="True">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="16" />
@@ -167,50 +160,68 @@
                         </StackPanel>
                     </Grid>
                 </StackPanel>
-            </Border>
+            </controls:WizardSection>
 
-            <Border Style="{StaticResource Card}" Margin="0,14,0,0">
+            <!-- 5. IP y expediente -->
+            <controls:WizardSection Number="5" Title="IP y expediente" IsDone="{Binding IsReserved}"
+                                    Hint="{Binding CloudNote}"
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=5}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
                 <StackPanel>
-                    <Grid>
-                        <TextBlock Text="IP del cliente" Style="{StaticResource SectionTitle}" />
-                        <Button Content="Actualizar lista" Style="{StaticResource LinkButton}"
-                                HorizontalAlignment="Right" Command="{Binding RefreshIpsCommand}" />
-                    </Grid>
-                    <TextBlock Text="{Binding CloudNote}" Style="{StaticResource Body}" Margin="0,6,0,10" />
+                    <StackPanel Visibility="{Binding IsNewClient, Converter={StaticResource BoolToVisibility}}">
+                        <Grid>
+                            <Border Background="{StaticResource AccentSoft}" CornerRadius="10" Padding="16,12">
+                                <StackPanel>
+                                    <TextBlock Text="IP QUE VA A USAR" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Accent}" />
+                                    <TextBlock Text="{Binding SelectedIpText}" FontSize="16" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Accent}" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Border>
+                            <Button Content="Actualizar lista" Style="{StaticResource LinkButton}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                    Command="{Binding RefreshIpsCommand}" />
+                        </Grid>
 
-                    <Border Background="{StaticResource AccentSoft}" CornerRadius="8" Padding="14,10">
-                        <TextBlock Text="{Binding SelectedIpText}" FontSize="14" FontWeight="SemiBold"
-                                   Foreground="{StaticResource Accent}" />
-                    </Border>
+                        <Expander Header="Elegir otra IP libre" Margin="0,10,0,0">
+                            <ItemsControl ItemsSource="{Binding FreeIps}" Margin="0,8,0,0" MaxHeight="190">
+                                <ItemsControl.Template>
+                                    <ControlTemplate TargetType="ItemsControl">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <ItemsPresenter />
+                                        </ScrollViewer>
+                                    </ControlTemplate>
+                                </ItemsControl.Template>
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Button Style="{StaticResource GhostButton}" Margin="0,0,8,8" MinHeight="36"
+                                                Command="{Binding DataContext.PickIpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}">
+                                            <TextBlock Text="{Binding Ip}" FontFamily="{StaticResource MonoFont}" FontSize="12.5" />
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                    </StackPanel>
 
-                    <ItemsControl ItemsSource="{Binding FreeIps}" Margin="0,10,0,0" MaxHeight="190">
-                        <ItemsControl.Template>
-                            <ControlTemplate TargetType="ItemsControl">
-                                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                    <ItemsPresenter />
-                                </ScrollViewer>
-                            </ControlTemplate>
-                        </ItemsControl.Template>
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <WrapPanel />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Button Style="{StaticResource GhostButton}" Margin="0,0,8,8" MinHeight="36"
-                                        Command="{Binding DataContext.PickIpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                        CommandParameter="{Binding}">
-                                    <TextBlock Text="{Binding Ip}" FontFamily="{StaticResource MonoFont}" FontSize="12.5" />
-                                </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <Button Content="Reservar la IP y abrir el expediente" Style="{StaticResource PrimaryButton}"
-                            Command="{Binding ReserveCommand}" HorizontalAlignment="Left" Margin="0,14,0,0" />
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                        <Button Content="{Binding ReserveLabel}" Style="{StaticResource PrimaryButton}"
+                                Command="{Binding ReserveCommand}"
+                                Visibility="{Binding IsReserved, Converter={StaticResource InverseBoolToVisibility}}" />
+                        <Border Background="{StaticResource SuccessSoft}" CornerRadius="10" Padding="14,10"
+                                Visibility="{Binding IsReserved, Converter={StaticResource BoolToVisibility}}"
+                                controls:Motion.Entrance="True">
+                            <TextBlock Text="Expediente abierto. Ya puedes continuar con internet." FontWeight="SemiBold"
+                                       Foreground="{StaticResource Success}" />
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
-            </Border>
-        </StackPanel>
+            </controls:WizardSection>
+        </Grid>
     </StackPanel>
 </UserControl>

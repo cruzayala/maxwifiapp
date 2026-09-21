@@ -3,7 +3,7 @@ namespace OnuStudio.Core;
 /// <summary>Datos de identidad del agente, compartidos por la nube y la interfaz.</summary>
 public static class AppInfo
 {
-    public const string Version = "2.0.0";
+    public const string Version = "2.1.0";
     public const string ProductName = "ONU Studio | ISP Max";
     public const string ShortName = "ONU Studio";
 

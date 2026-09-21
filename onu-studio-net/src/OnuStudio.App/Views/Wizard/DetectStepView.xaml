@@ -3,93 +3,126 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:controls="clr-namespace:OnuStudio.App.Controls">
 
-    <!-- Paso 1: detectar la ONU y leer su inventario. El DataContext es el WizardViewModel. -->
-    <StackPanel>
-        <Border Style="{StaticResource Card}">
+    <!-- Paso 1 en dos tarjetas: encontrar la ONU y leerla. Solo se ve la tarjeta actual. -->
+    <Grid>
+
+        <!-- 1. Encontrar la ONU -->
+        <controls:WizardSection Number="1" Title="Conecta el cable y espera"
+                                Hint="La busco sola en la tarjeta Ethernet; no tienes que escribir nada."
+                                IsDone="{Binding OnuDetected}"
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=1}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0"
+                                controls:Motion.OffsetX="{Binding SlideFrom}">
+            <StackPanel>
+                <Border Background="{Binding DiscoveryTone, Converter={StaticResource ToneSoft}}" CornerRadius="12" Padding="20,18">
+                    <DockPanel>
+                        <Grid Width="22" Height="22" VerticalAlignment="Top" Margin="0,2,0,0" DockPanel.Dock="Left">
+                            <Ellipse Fill="{Binding DiscoveryTone, Converter={StaticResource Tone}}" Opacity="0.3"
+                                     controls:Motion.Pulse="True" />
+                            <Ellipse Width="12" Height="12" Fill="{Binding DiscoveryTone, Converter={StaticResource Tone}}" />
+                        </Grid>
+                        <Button Content="Buscar de nuevo" Style="{StaticResource GhostButton}" DockPanel.Dock="Right"
+                                MinHeight="36" Padding="14,0" VerticalAlignment="Center"
+                                Command="{Binding ScanCommand}" />
+                        <StackPanel Margin="14,0,14,0">
+                            <TextBlock Text="{Binding DiscoveryTitle}" FontSize="16" FontWeight="SemiBold"
+                                       Foreground="{Binding DiscoveryTone, Converter={StaticResource Tone}}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding DiscoveryDetail}" Style="{StaticResource Body}" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <Expander Header="Ajustar la conexion a mano" Margin="0,16,0,0"
+                          IsExpanded="{Binding ShowConnectionSettings}">
+                    <Border Style="{StaticResource SoftCard}" Margin="0,8,0,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="20" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Grid.Column="0">
+                                <TextBlock Text="Tarjeta de red" Style="{StaticResource FieldLabel}" />
+                                <ComboBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
+                                          DisplayMemberPath="DisplayName" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="0" Grid.Column="2">
+                                <TextBlock Text="Modelo de la ONU" Style="{StaticResource FieldLabel}" />
+                                <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding DeviceModel}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,0,0">
+                                <TextBlock Text="IP de la ONU" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding DeviceHost, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,14,0,0">
+                                <TextBlock Text="IP que usa la PC" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding LocalAddress, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,14,0,0">
+                                <TextBlock Text="Usuario tecnico (opcional)" Style="{StaticResource FieldLabel}" />
+                                <TextBox Text="{Binding DeviceUser, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Text="Si lo dejas vacio se usa el guardado en Ajustes." Style="{StaticResource Hint}" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="2" Grid.Column="2" Margin="0,14,0,0">
+                                <TextBlock Text="Contrasena tecnica (opcional)" Style="{StaticResource FieldLabel}" />
+                                <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding DevicePassword, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Expander>
+            </StackPanel>
+        </controls:WizardSection>
+
+        <!-- 2. Leer la ONU y ver lo que reporta -->
+        <controls:WizardSection Number="2" Title="Lee la ONU"
+                                Hint="Entro con el usuario tecnico, confirmo el modelo y leo su informacion. No cambio nada."
+                                IsDone="{Binding HasSerial}"
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=2}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0"
+                                controls:Motion.OffsetX="{Binding SlideFrom}">
             <StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <Grid Width="14" Height="14" VerticalAlignment="Center">
-                        <Ellipse Fill="{Binding DiscoveryTone, Converter={StaticResource ToneSoft}}"
-                                 controls:Motion.Pulse="True" />
-                        <Ellipse Width="9" Height="9"
-                                 Fill="{Binding DiscoveryTone, Converter={StaticResource Tone}}" />
-                    </Grid>
-                    <TextBlock Text="{Binding DiscoveryTitle}" Style="{StaticResource SectionTitle}"
-                               Margin="10,0,0,0" />
+                    <Button Content="Leer la ONU" Style="{StaticResource PrimaryButton}" MinWidth="180" MinHeight="46"
+                            FontSize="14" Command="{Binding CheckCommand}" />
+                    <controls:Spinner Foreground="{StaticResource Accent}" Margin="18,0,10,0" VerticalAlignment="Center"
+                                      Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
+                    <TextBlock Text="{Binding BusyMessage}" Style="{StaticResource Body}" VerticalAlignment="Center"
+                               Visibility="{Binding BusyMessage, Converter={StaticResource TextToVisibility}}" />
                 </StackPanel>
-                <TextBlock Text="{Binding DiscoveryDetail}" Style="{StaticResource Body}" Margin="20,8,0,0" />
 
-                <UniformGrid Columns="3" Margin="0,18,0,0"
+                <UniformGrid Columns="3" Margin="0,22,0,0"
                              Visibility="{Binding HasSerial, Converter={StaticResource BoolToVisibility}}">
-                    <StackPanel Margin="0,0,14,0">
-                        <TextBlock Text="SERIAL GPON" Style="{StaticResource Eyebrow}" />
-                        <TextBlock Text="{Binding Serial}" Style="{StaticResource Mono}" Margin="0,4,0,0" />
-                    </StackPanel>
-                    <StackPanel Margin="0,0,14,0">
-                        <TextBlock Text="FIRMWARE" Style="{StaticResource Eyebrow}" />
-                        <TextBlock Text="{Binding Firmware}" Style="{StaticResource Body}" Margin="0,4,0,0" />
-                    </StackPanel>
-                    <StackPanel>
-                        <TextBlock Text="SENAL OPTICA" Style="{StaticResource Eyebrow}" />
-                        <TextBlock Text="{Binding OpticalSummary}" Style="{StaticResource Body}" Margin="0,4,0,0" />
-                    </StackPanel>
+                    <Border Style="{StaticResource SoftCard}" Margin="0,0,10,0"
+                            controls:Motion.Entrance="True" controls:Motion.Delay="60">
+                        <StackPanel>
+                            <TextBlock Text="SERIAL GPON" Style="{StaticResource Eyebrow}" />
+                            <TextBlock Text="{Binding Serial}" Style="{StaticResource Mono}" FontSize="14" Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SoftCard}" Margin="0,0,10,0"
+                            controls:Motion.Entrance="True" controls:Motion.Delay="140">
+                        <StackPanel>
+                            <TextBlock Text="FIRMWARE" Style="{StaticResource Eyebrow}" />
+                            <TextBlock Text="{Binding Firmware}" FontSize="14" Foreground="{StaticResource Ink}" Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource SoftCard}" controls:Motion.Entrance="True" controls:Motion.Delay="220">
+                        <StackPanel>
+                            <TextBlock Text="SENAL OPTICA" Style="{StaticResource Eyebrow}" />
+                            <TextBlock Text="{Binding OpticalSummary}" FontSize="13.5" Foreground="{StaticResource Ink}"
+                                       TextWrapping="Wrap" Margin="0,6,0,0" />
+                        </StackPanel>
+                    </Border>
                 </UniformGrid>
-
-                <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
-                    <Button Content="Leer la ONU" Style="{StaticResource PrimaryButton}"
-                            Command="{Binding CheckCommand}" />
-                    <Button Content="Buscar de nuevo" Style="{StaticResource GhostButton}"
-                            Command="{Binding ScanCommand}" Margin="10,0,0,0" />
-                </StackPanel>
-                <TextBlock Text="{Binding BusyMessage}" Style="{StaticResource Hint}"
-                           Visibility="{Binding BusyMessage, Converter={StaticResource TextToVisibility}}" />
             </StackPanel>
-        </Border>
-
-        <Expander Header="Ajustar la conexion con la ONU" Margin="0,14,0,0" Foreground="{StaticResource InkMuted}">
-            <Border Style="{StaticResource SoftCard}" Margin="0,10,0,0">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="20" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-
-                    <StackPanel Grid.Row="0" Grid.Column="0">
-                        <TextBlock Text="Tarjeta de red" Style="{StaticResource FieldLabel}" />
-                        <ComboBox ItemsSource="{Binding Adapters}" SelectedItem="{Binding SelectedAdapter}"
-                                  DisplayMemberPath="DisplayName" />
-                    </StackPanel>
-                    <StackPanel Grid.Row="0" Grid.Column="2">
-                        <TextBlock Text="Modelo de la ONU" Style="{StaticResource FieldLabel}" />
-                        <ComboBox ItemsSource="{Binding Models}" SelectedItem="{Binding DeviceModel}" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,14,0,0">
-                        <TextBlock Text="IP de la ONU" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding DeviceHost, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-                    <StackPanel Grid.Row="1" Grid.Column="2" Margin="0,14,0,0">
-                        <TextBlock Text="IP que usa la PC" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding LocalAddress, UpdateSourceTrigger=PropertyChanged}" />
-                    </StackPanel>
-
-                    <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,14,0,0">
-                        <TextBlock Text="Usuario tecnico (opcional)" Style="{StaticResource FieldLabel}" />
-                        <TextBox Text="{Binding DeviceUser, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBlock Text="Si lo dejas vacio se usa el guardado en Ajustes." Style="{StaticResource Hint}" />
-                    </StackPanel>
-                    <StackPanel Grid.Row="2" Grid.Column="2" Margin="0,14,0,0">
-                        <TextBlock Text="Contrasena tecnica (opcional)" Style="{StaticResource FieldLabel}" />
-                        <PasswordBox controls:PasswordBoxAssistant.BoundPassword="{Binding DevicePassword, Mode=TwoWay}" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-        </Expander>
-    </StackPanel>
+        </controls:WizardSection>
+    </Grid>
 </UserControl>

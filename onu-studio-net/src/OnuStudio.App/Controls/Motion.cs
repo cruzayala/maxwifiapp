@@ -58,6 +58,13 @@ public static class Motion
         if (args.NewValue is true && sender is FrameworkElement element) PlayEntrance(element);
     }
 
+    /// <summary>Retraso antes de entrar, para que varias piezas aparezcan una tras otra.</summary>
+    public static readonly DependencyProperty DelayProperty = DependencyProperty.RegisterAttached(
+        "Delay", typeof(int), typeof(Motion), new PropertyMetadata(0));
+
+    public static int GetDelay(DependencyObject element) => (int)element.GetValue(DelayProperty);
+    public static void SetDelay(DependencyObject element, int value) => element.SetValue(DelayProperty, value);
+
     public static void PlayEntrance(FrameworkElement element)
     {
         var translate = element.RenderTransform as TranslateTransform;
@@ -67,13 +74,54 @@ public static class Motion
             element.RenderTransform = translate;
         }
 
-        var duration = TimeSpan.FromMilliseconds(260);
-        element.BeginAnimation(UIElement.OpacityProperty,
-            new DoubleAnimation(0, 1, duration) { EasingFunction = EaseOut });
-        translate.BeginAnimation(TranslateTransform.YProperty,
-            new DoubleAnimation(GetOffsetY(element), 0, duration) { EasingFunction = EaseOut });
-        translate.BeginAnimation(TranslateTransform.XProperty,
-            new DoubleAnimation(GetOffsetX(element), 0, duration) { EasingFunction = EaseOut });
+        // Fotogramas clave: durante el retraso el elemento ya esta invisible y desplazado,
+        // asi no parpadea antes de entrar.
+        var delay = TimeSpan.FromMilliseconds(GetDelay(element));
+        var end = delay + TimeSpan.FromMilliseconds(300);
+        element.BeginAnimation(UIElement.OpacityProperty, Frames(0, 1, delay, end));
+        translate.BeginAnimation(TranslateTransform.YProperty, Frames(GetOffsetY(element), 0, delay, end));
+        translate.BeginAnimation(TranslateTransform.XProperty, Frames(GetOffsetX(element), 0, delay, end));
+    }
+
+    private static DoubleAnimationUsingKeyFrames Frames(double from, double to, TimeSpan delay, TimeSpan end)
+    {
+        var animation = new DoubleAnimationUsingKeyFrames();
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(delay)));
+        animation.KeyFrames.Add(new EasingDoubleKeyFrame(to, KeyTime.FromTimeSpan(end), EaseOut));
+        return animation;
+    }
+
+    // ─────────── Revelar: al aparecer una seccion nueva, la pantalla baja hasta ella ───────────
+
+    public static readonly DependencyProperty RevealProperty = DependencyProperty.RegisterAttached(
+        "Reveal", typeof(bool), typeof(Motion), new PropertyMetadata(false, OnRevealChanged));
+
+    public static bool GetReveal(DependencyObject element) => (bool)element.GetValue(RevealProperty);
+    public static void SetReveal(DependencyObject element, bool value) => element.SetValue(RevealProperty, value);
+
+    private static readonly System.ComponentModel.DependencyPropertyDescriptor VisibilityDescriptor =
+        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(UIElement.VisibilityProperty, typeof(FrameworkElement));
+
+    private static void OnRevealChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
+    {
+        if (sender is not FrameworkElement element) return;
+        VisibilityDescriptor.RemoveValueChanged(element, OnOwnVisibilityChanged);
+        if (args.NewValue is true) VisibilityDescriptor.AddValueChanged(element, OnOwnVisibilityChanged);
+    }
+
+    /// <summary>
+    /// Solo reacciona cuando cambia la visibilidad propia del elemento (se revelo una
+    /// seccion), no cuando aparece todo el paso: al cambiar de paso no hay que saltar.
+    /// </summary>
+    private static void OnOwnVisibilityChanged(object? sender, EventArgs args)
+    {
+        if (sender is not FrameworkElement { Visibility: Visibility.Visible } element) return;
+        element.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            if (!element.IsVisible) return;
+            element.BringIntoView(new Rect(0, 0, element.ActualWidth, element.ActualHeight + 24));
+        });
     }
 
     // ─────────── Valor suave: la barra de progreso avanza sin saltos ───────────

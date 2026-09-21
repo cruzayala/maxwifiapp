@@ -55,10 +55,20 @@ public sealed class StepChip : ObservableObject
     public int Number { get; }
     public string Label { get; }
 
+    /// <summary>Solo el nombre del paso, sin el numero ("Conectar").</summary>
+    public string Caption => Label.Contains('·') ? Label[(Label.IndexOf('·') + 1)..].Trim() : Label;
+
+    public bool IsFirst => Number == 1;
+    public bool IsDone => Tone == "ok";
+    public bool IsCurrent => Tone == "info";
+
     public string Tone
     {
         get => _tone;
-        set => SetProperty(ref _tone, value);
+        set
+        {
+            if (SetProperty(ref _tone, value)) Notify(nameof(IsDone), nameof(IsCurrent));
+        }
     }
 }
 

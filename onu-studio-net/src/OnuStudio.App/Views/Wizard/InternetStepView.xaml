@@ -1,13 +1,30 @@
 <UserControl x:Class="OnuStudio.App.Views.Wizard.InternetStepView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:OnuStudio.App.Controls">
 
-    <!-- Paso 3: modo de servicio, VLAN y datos WAN. El DataContext es el WizardViewModel. -->
-    <StackPanel>
-        <Border Style="{StaticResource Card}">
+    <!-- Paso 3: datos de la conexion, que recibe internet y gestion remota. Todo viene
+         puesto desde la reserva; las secciones entran una tras otra. -->
+    <Grid>
+
+        <!-- 1. Datos de la conexion -->
+        <controls:WizardSection Number="1" IsDone="{Binding HasWanData}"
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=1}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
+            <controls:WizardSection.Style>
+                <Style TargetType="controls:WizardSection" BasedOn="{StaticResource {x:Type controls:WizardSection}}">
+                    <Setter Property="Title" Value="Datos de la conexion" />
+                    <Setter Property="Hint" Value="Vienen de la IP reservada. Cambia algo solo si el cliente lo necesita." />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsBridgeMode}" Value="True">
+                            <Setter Property="Title" Value="VLAN del servicio" />
+                            <Setter Property="Hint" Value="En bridge la ONU solo pasa esta VLAN; el router del cliente hace el resto." />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </controls:WizardSection.Style>
             <StackPanel>
-                <TextBlock Text="Conexion a internet" Style="{StaticResource SectionTitle}" />
-                <Grid Margin="0,14,0,0">
+                <Grid Visibility="{Binding IsRouterMode, Converter={StaticResource BoolToVisibility}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="16" />
@@ -47,38 +64,60 @@
                     </StackPanel>
                 </Grid>
 
-                <WrapPanel Margin="0,16,0,0">
-                    <CheckBox Content="Compartir internet (NAT)" IsChecked="{Binding WanNat}" Margin="0,0,20,0" />
-                    <CheckBox Content="Dar internet al WiFi" IsChecked="{Binding BindSsid1}" Margin="0,0,20,0" />
-                    <CheckBox Content="Registrar en TR-069" IsChecked="{Binding Tr069Enabled}" />
-                </WrapPanel>
+                <StackPanel Width="220" HorizontalAlignment="Left"
+                            Visibility="{Binding IsBridgeMode, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="VLAN" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding WanVlan, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
 
-                <TextBlock Text="Puertos LAN con internet" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
+                <Border Background="{StaticResource DangerSoft}" CornerRadius="8" Padding="12,10" Margin="0,14,0,0"
+                        Visibility="{Binding HasInternetError, Converter={StaticResource BoolToVisibility}}"
+                        controls:Motion.Entrance="True">
+                    <TextBlock Text="{Binding InternetError}" Foreground="{StaticResource Danger}"
+                               FontSize="12.5" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </controls:WizardSection>
+
+        <!-- 2. Que recibe internet -->
+        <controls:WizardSection Number="2" Title="Que recibe internet" IsDone="{Binding HasWanData}"
+                                Hint="Por defecto todo: WiFi y los cuatro puertos."
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=2}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
+            <StackPanel>
                 <WrapPanel>
-                    <CheckBox Content="LAN1" IsChecked="{Binding Lan1}" Margin="0,0,16,0" />
-                    <CheckBox Content="LAN2" IsChecked="{Binding Lan2}" Margin="0,0,16,0" />
-                    <CheckBox Content="LAN3" IsChecked="{Binding Lan3}" Margin="0,0,16,0" />
+                    <CheckBox Content="Compartir internet (NAT)" IsChecked="{Binding WanNat}" Margin="0,0,24,0" />
+                    <CheckBox Content="Dar internet al WiFi" IsChecked="{Binding BindSsid1}" />
+                </WrapPanel>
+                <TextBlock Text="Puertos LAN con internet" Style="{StaticResource FieldLabel}" Margin="0,14,0,6" />
+                <WrapPanel>
+                    <CheckBox Content="LAN1" IsChecked="{Binding Lan1}" Margin="0,0,18,0" />
+                    <CheckBox Content="LAN2" IsChecked="{Binding Lan2}" Margin="0,0,18,0" />
+                    <CheckBox Content="LAN3" IsChecked="{Binding Lan3}" Margin="0,0,18,0" />
                     <CheckBox Content="LAN4" IsChecked="{Binding Lan4}" />
                 </WrapPanel>
+            </StackPanel>
+        </controls:WizardSection>
 
-                <TextBlock Text="Acceso remoto para soporte" Style="{StaticResource FieldLabel}" Margin="0,18,0,6" />
-                <Grid>
+        <!-- 3. Gestion remota -->
+        <controls:WizardSection Number="3" Title="Soporte a distancia" IsDone="{Binding HasWanData}"
+                                Hint="Para atender al cliente sin ir a la casa."
+                                Visibility="{Binding SubStep, Converter={StaticResource ShowWhen}, ConverterParameter=3}"
+                                controls:Motion.Entrance="True" controls:Motion.OffsetY="0" controls:Motion.OffsetX="{Binding SlideFrom}">
+            <StackPanel>
+                <CheckBox Content="Registrar la ONU en TR-069 (ACS)" IsChecked="{Binding Tr069Enabled}" />
+                <Grid Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="16" />
                         <ColumnDefinition Width="260" />
                     </Grid.ColumnDefinitions>
-                    <CheckBox Grid.Column="0" Content="Permitir solo desde" IsChecked="{Binding RemoteEnabled}"
+                    <CheckBox Grid.Column="0" Content="Permitir la web de la ONU solo desde" IsChecked="{Binding RemoteEnabled}"
                               VerticalAlignment="Center" />
-                    <TextBox Grid.Column="2" Text="{Binding RemoteSource, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBox Grid.Column="2" Text="{Binding RemoteSource, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding RemoteEnabled}" />
                 </Grid>
-
-                <Border Background="{StaticResource DangerSoft}" CornerRadius="8" Padding="12,10" Margin="0,16,0,0"
-                        Visibility="{Binding HasInternetError, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock Text="{Binding InternetError}" Foreground="{StaticResource Danger}"
-                               FontSize="12.5" TextWrapping="Wrap" />
-                </Border>
             </StackPanel>
-        </Border>
-    </StackPanel>
+        </controls:WizardSection>
+    </Grid>
 </UserControl>

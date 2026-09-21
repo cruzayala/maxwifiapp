@@ -23,44 +23,117 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border CornerRadius="20" Padding="14,7" Margin="0,0,8,0" controls:Motion.Entrance="True"
-                                controls:Motion.OffsetY="6"
-                                Background="{Binding Tone, Converter={StaticResource ToneSoft}}">
-                            <TextBlock Text="{Binding Label}" FontSize="12.5" FontWeight="SemiBold"
-                                       Foreground="{Binding Tone, Converter={StaticResource Tone}}" />
-                        </Border>
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Linea que une con el paso anterior; se pone verde al avanzar -->
+                            <Border x:Name="Link" Width="44" Height="2" CornerRadius="1" Margin="10,0"
+                                    VerticalAlignment="Center" Background="{StaticResource Line}" />
+                            <Grid Width="30" Height="30" RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <ScaleTransform x:Name="Pop" ScaleX="1" ScaleY="1" />
+                                </Grid.RenderTransform>
+                                <Ellipse x:Name="Dot" Fill="{StaticResource LineSoft}" Stroke="{StaticResource Line}" StrokeThickness="1.5" />
+                                <TextBlock x:Name="Num" Text="{Binding Number}" FontSize="12.5" FontWeight="Bold"
+                                           Foreground="{StaticResource InkSoft}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Path x:Name="Tick" Data="M 9,15.5 L 13,19.5 L 21.5,10.5" Stroke="White" StrokeThickness="2.4"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed" />
+                            </Grid>
+                            <TextBlock x:Name="Caption" Text="{Binding Caption}" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource InkSoft}" VerticalAlignment="Center" Margin="9,0,0,0" />
+                        </StackPanel>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsFirst}" Value="True">
+                                <Setter TargetName="Link" Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Dot" Property="Stroke" Value="{StaticResource Accent}" />
+                                <Setter TargetName="Num" Property="Foreground" Value="White" />
+                                <Setter TargetName="Caption" Property="Foreground" Value="{StaticResource Ink}" />
+                                <Setter TargetName="Link" Property="Background" Value="{StaticResource Accent}" />
+                                <DataTrigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="Pop" Storyboard.TargetProperty="ScaleX"
+                                                             From="0.7" To="1" Duration="0:0:0.35">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <BackEase EasingMode="EaseOut" Amplitude="0.5" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="Pop" Storyboard.TargetProperty="ScaleY"
+                                                             From="0.7" To="1" Duration="0:0:0.35">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <BackEase EasingMode="EaseOut" Amplitude="0.5" />
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </DataTrigger.EnterActions>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsDone}" Value="True">
+                                <Setter TargetName="Dot" Property="Fill" Value="{StaticResource Success}" />
+                                <Setter TargetName="Dot" Property="Stroke" Value="{StaticResource Success}" />
+                                <Setter TargetName="Num" Property="Visibility" Value="Collapsed" />
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible" />
+                                <Setter TargetName="Caption" Property="Foreground" Value="{StaticResource Success}" />
+                                <Setter TargetName="Link" Property="Background" Value="{StaticResource Success}" />
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </Border>
 
         <!-- ── Contenido del paso ── -->
-        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="32,24">
-            <StackPanel MaxWidth="980" HorizontalAlignment="Left">
+        <ScrollViewer x:Name="Scroller" Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="32,26">
+            <!-- Una sola tarjeta en el centro; arriba, donde vas y lo que ya elegiste -->
+            <StackPanel MaxWidth="860" HorizontalAlignment="Stretch">
 
-                <TextBlock Text="{Binding StepTitle}" Style="{StaticResource PageTitle}" FontSize="20" />
-                <TextBlock Text="{Binding StepHint}" Style="{StaticResource Body}" Margin="0,6,0,18" />
+                <Grid Margin="0,0,0,16">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding HasSubSteps, Converter={StaticResource BoolToVisibility}}">
+                        <ItemsControl ItemsSource="{Binding SubStepDots}" VerticalAlignment="Center">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border x:Name="Dot" Width="8" Height="8" CornerRadius="4" Margin="0,0,6,0"
+                                            Background="{StaticResource Line}" />
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding}" Value="ok">
+                                            <Setter TargetName="Dot" Property="Background" Value="{StaticResource Success}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding}" Value="info">
+                                            <Setter TargetName="Dot" Property="Background" Value="{StaticResource Accent}" />
+                                            <Setter TargetName="Dot" Property="Width" Value="26" />
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding SubStepLabel}" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource InkSoft}" Margin="6,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
 
-                <!-- ══ Paso 1: detectar ══ -->
-                <wizard:DetectStepView Visibility="{Binding IsStep1, Converter={StaticResource BoolToVisibility}}"
-                                    controls:Motion.Entrance="True" />
+                <Border Background="{StaticResource AccentSoft}" CornerRadius="10" Padding="16,10" Margin="0,0,0,16"
+                        Visibility="{Binding HasStepAnswers, Converter={StaticResource BoolToVisibility}}">
+                    <DockPanel>
+                        <TextBlock Text="ELEGIDO" Style="{StaticResource Eyebrow}" Foreground="{StaticResource Accent}"
+                                   VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <TextBlock Text="{Binding StepAnswers}" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentDark}" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+                </Border>
 
-                <!-- ══ Paso 2: cliente e IP ══ -->
-                <wizard:ClientStepView Visibility="{Binding IsStep2, Converter={StaticResource BoolToVisibility}}"
-                                    controls:Motion.Entrance="True" />
-
-                <!-- ══ Paso 3: internet ══ -->
-                <wizard:InternetStepView Visibility="{Binding IsStep3, Converter={StaticResource BoolToVisibility}}"
-                                    controls:Motion.Entrance="True" />
-
-                <!-- ══ Paso 4: WiFi ══ -->
-                <wizard:WifiStepView Visibility="{Binding IsStep4, Converter={StaticResource BoolToVisibility}}"
-                                    controls:Motion.Entrance="True" />
-
-                <!-- ══ Paso 5: revisar y aplicar ══ -->
-                <wizard:ReviewStepView Visibility="{Binding IsStep5, Converter={StaticResource BoolToVisibility}}"
-                                    controls:Motion.Entrance="True" />
-
+                <wizard:DetectStepView Visibility="{Binding IsStep1, Converter={StaticResource BoolToVisibility}}" />
+                <wizard:ClientStepView Visibility="{Binding IsStep2, Converter={StaticResource BoolToVisibility}}" />
+                <wizard:InternetStepView Visibility="{Binding IsStep3, Converter={StaticResource BoolToVisibility}}" />
+                <wizard:WifiStepView Visibility="{Binding IsStep4, Converter={StaticResource BoolToVisibility}}" />
+                <wizard:ReviewStepView Visibility="{Binding IsStep5, Converter={StaticResource BoolToVisibility}}" />
             </StackPanel>
         </ScrollViewer>
 
@@ -81,7 +154,11 @@
                             Visibility="{Binding IsStep5, Converter={StaticResource InverseBoolToVisibility}}" />
                     <Button Content="Aprovisionar la ONU" Style="{StaticResource SuccessButton}"
                             Command="{Binding ProvisionCommand}"
-                            Visibility="{Binding IsStep5, Converter={StaticResource BoolToVisibility}}" />
+                            Visibility="{Binding ShowProvisionButton, Converter={StaticResource BoolToVisibility}}" />
+                    <Button Content="Configurar otro cliente" Style="{StaticResource PrimaryButton}" MinHeight="48"
+                            FontSize="15" Command="{Binding RestartCommand}"
+                            Visibility="{Binding Finished, Converter={StaticResource BoolToVisibility}}"
+                            controls:Motion.Entrance="True" controls:Motion.OffsetY="8" />
                 </StackPanel>
             </Grid>
         </Border>

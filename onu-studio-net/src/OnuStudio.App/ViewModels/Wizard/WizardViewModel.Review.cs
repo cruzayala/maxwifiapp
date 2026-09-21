@@ -149,6 +149,7 @@ public sealed partial class WizardViewModel
             return;
         }
 
+        MarkProvisionStarted(true);
         IsBusy = true;
         Finished = false;
         Failed = false;
@@ -260,11 +261,14 @@ public sealed partial class WizardViewModel
         RemoteAccess.Source = request.RemoteAccess.Source;
         Tr069Enabled = request.Tr069.Enabled;
         ServiceMode = request.ServiceMode;
+        SelectedServiceMode = ServiceModes.FirstOrDefault(item => item.Key == request.ServiceMode);
         _cloudJobId = request.CloudJobId;
+        MarkProvisionStarted(false);
 
         var operation = Operations.FirstOrDefault(item => item.Key == request.ServiceOperation);
-        if (operation is not null) Operation = operation;
+        if (operation is not null) SelectedOperation = operation;
 
+        SubStep = 1;
         Step = 1;
         DeviceReady = false;
         Finished = false;
@@ -280,6 +284,8 @@ public sealed partial class WizardViewModel
 
     private void ResetForNextClient()
     {
+        SlideFrom = -56;
+        SubStep = 1;
         Step = 1;
         Finished = false;
         Failed = false;
@@ -292,6 +298,12 @@ public sealed partial class WizardViewModel
         ClientResults.Clear();
         _cloudJobId = null;
         CloudNote = string.Empty;
+        SelectedOperation = null;
+        Operation = new OperationOption("new_client", "Cliente nuevo", string.Empty);
+        SelectedServiceMode = null;
+        SelectedZone = null;
+        SelectedPlan = null;
+        MarkProvisionStarted(false);
         Wifi.Ssid = string.Empty;
         Wifi.Password = string.Empty;
         DeviceReady = false;

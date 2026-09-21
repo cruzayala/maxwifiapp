@@ -93,6 +93,23 @@ public sealed partial class WizardViewModel
         }
     }
 
+    private OperationOption? _selectedOperation;
+    /// <summary>La opcion marcada en pantalla; vacia hasta que el tecnico elige.</summary>
+    public OperationOption? SelectedOperation
+    {
+        get => _selectedOperation;
+        set
+        {
+            if (!SetProperty(ref _selectedOperation, value)) return;
+            if (value is not null)
+            {
+                Operation = value;
+                AdvanceSoon(2, 1);
+            }
+            NotifyFlow();
+        }
+    }
+
     public bool IsNewClient => Operation.Key == "new_client";
     public bool NeedsPon => Operation.Key == "migrate_pon";
 
@@ -235,6 +252,7 @@ public sealed partial class WizardViewModel
 
     private void SelectClient(CloudClientSummary client)
     {
+        AdvanceSoon(2, 3);
         SelectedClient = client;
         ClientName = client.Nombre;
         if (client.ZonaId is { } zoneId) SelectedZone = Zones.FirstOrDefault(zone => zone.Id == zoneId) ?? SelectedZone;
@@ -353,6 +371,7 @@ public sealed partial class WizardViewModel
             }).ConfigureAwait(true);
 
             _cloudJobId = job["id"]?.ToString();
+            NotifyFlow();
             CloudNote = $"Expediente {_cloudJobId} abierto en ISP Max.";
 
             if (IsNewClient && _cloudJobId is not null && SelectedZone is not null && SelectedPlan is not null && ip is not null)

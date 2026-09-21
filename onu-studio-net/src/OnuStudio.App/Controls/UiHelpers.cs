@@ -46,6 +46,24 @@ public sealed class TextToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>Visible solo cuando el valor es igual al parametro (la tarjeta actual del paso).</summary>
+public sealed class ShowWhenConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        string.Equals(value?.ToString(), parameter?.ToString(), StringComparison.Ordinal) ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>Invierte un bool, para enlazar "la ultima seccion" y cosas parecidas.</summary>
+public sealed class NotConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) => value is not true;
+}
+
 public sealed class InverseBoolToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>

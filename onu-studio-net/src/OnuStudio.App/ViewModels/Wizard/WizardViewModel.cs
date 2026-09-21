@@ -82,10 +82,11 @@ public sealed partial class WizardViewModel : ObservableObject
         });
         GenerateWifiCommand = new RelayCommand(GenerateWifi);
         NextCommand = new RelayCommand(GoNext, () => CanGoNext);
-        BackCommand = new RelayCommand(GoBack, () => Step > 1 && !IsBusy);
+        BackCommand = new RelayCommand(GoBack, () => CanGoBack);
         ProvisionCommand = new AsyncCommand(RunProvisionAsync, () => CanProvision);
         RestartCommand = new RelayCommand(ResetForNextClient);
         RefreshIpsCommand = new AsyncCommand(LoadIpCatalogAsync);
+        InitFlow();
     }
 
     // ─────────────────────────── Comandos ───────────────────────────
@@ -154,7 +155,7 @@ public sealed partial class WizardViewModel : ObservableObject
         _ => "Revisa el resumen. Nada se cambia en la ONU hasta que pulses Aprovisionar.",
     };
 
-    public string NextLabel => Step switch
+    public string NextLabel => SubStep < SubStepCount ? "Continuar" : Step switch
     {
         1 => "Continuar con el cliente",
         2 => "Continuar con internet",
@@ -166,12 +167,20 @@ public sealed partial class WizardViewModel : ObservableObject
     private void GoNext()
     {
         if (!CanGoNext) return;
+        SlideFrom = 56;
+        if (SubStep < SubStepCount)
+        {
+            SubStep++;
+            return;
+        }
+        SubStep = 1;
         if (Step == 4)
         {
             BuildReview();
             // La revision arranca limpia: el avance de la lectura del paso 1 no es el de la configuracion.
             if (!Finished)
             {
+                MarkProvisionStarted(false);
                 Timeline.Clear();
                 Progress = 0;
                 ProgressLabel = "Listo para comenzar";
@@ -184,9 +193,22 @@ public sealed partial class WizardViewModel : ObservableObject
         if (Step == 2 && CloudConnected && Zones.Count == 0) _ = LoadCatalogsAsync();
     }
 
-    private void GoBack() => Step = Math.Max(1, Step - 1);
+    private void GoBack()
+    {
+        SlideFrom = -56;
+        if (SubStep > 1)
+        {
+            SubStep--;
+            return;
+        }
+        Step = Math.Max(1, Step - 1);
+        // Al volver se cae en la ultima parte del paso anterior, donde se quedo.
+        SubStep = SubStepCount;
+    }
 
-    public bool CanGoNext => Step switch
+    public bool CanGoBack => (Step > 1 || SubStep > 1) && !IsBusy;
+
+    public bool CanGoNext => SubStep < SubStepCount ? SubStepDone && !IsBusy : Step switch
     {
         1 => DeviceReady && !IsBusy,
         2 => !string.IsNullOrWhiteSpace(_cloudJobId) && !IsBusy,

@@ -14,6 +14,8 @@
             <controls:TextToVisibilityConverter x:Key="TextToVisibility" />
             <controls:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibility" />
             <controls:EqualsToBoolConverter x:Key="EqualsToBool" />
+            <controls:NotConverter x:Key="Not" />
+            <controls:ShowWhenConverter x:Key="ShowWhen" />
             <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         </ResourceDictionary>
     </Application.Resources>
