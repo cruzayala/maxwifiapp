@@ -27,8 +27,6 @@ public sealed class AgentHost : IAsyncDisposable
 
         Store = new JobStore(AppPaths.DatabasePath);
         InterruptedJobs = Store.InterruptIncomplete();
-        if (AgentRuntime.IsDemo && Store.NetworkRanges().Count == 0)
-            Store.ReplaceNetworkRanges(new[] { Demo.DemoData.Range() });
 
         Jobs = new JobManager(Store);
         Session = new CloudSessionManager(new SecureJsonStore(AppPaths.CloudSessionPath));

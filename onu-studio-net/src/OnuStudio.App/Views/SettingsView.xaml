@@ -175,6 +175,8 @@
                                                 <ColumnDefinition Width="12" />
                                                 <ColumnDefinition Width="2*" />
                                                 <ColumnDefinition Width="12" />
+                                                <ColumnDefinition Width="2*" />
+                                                <ColumnDefinition Width="12" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
                                             <StackPanel Grid.Column="0">
@@ -182,14 +184,18 @@
                                                 <TextBox Text="{Binding PrimaryDns, UpdateSourceTrigger=PropertyChanged}" />
                                             </StackPanel>
                                             <StackPanel Grid.Column="2">
+                                                <TextBlock Text="DNS secundario" Style="{StaticResource FieldLabel}" />
+                                                <TextBox Text="{Binding SecondaryDns, UpdateSourceTrigger=PropertyChanged}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="4">
                                                 <TextBlock Text="Desde" Style="{StaticResource FieldLabel}" />
                                                 <TextBox Text="{Binding AllocationStart, UpdateSourceTrigger=PropertyChanged}" />
                                             </StackPanel>
-                                            <StackPanel Grid.Column="4">
+                                            <StackPanel Grid.Column="6">
                                                 <TextBlock Text="Hasta" Style="{StaticResource FieldLabel}" />
                                                 <TextBox Text="{Binding AllocationEnd, UpdateSourceTrigger=PropertyChanged}" />
                                             </StackPanel>
-                                            <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
+                                            <StackPanel Grid.Column="8" VerticalAlignment="Bottom">
                                                 <CheckBox Content="Activo" IsChecked="{Binding Active}" />
                                                 <Button Content="Quitar" Style="{StaticResource LinkButton}"
                                                         Command="{Binding DataContext.RemoveRangeCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"

@@ -64,10 +64,9 @@ public class DemoTests
     }
 
     [Fact]
-    public void ElRangoDePruebaContieneLasIpDelCatalogo()
+    public void LasIpDePruebaCaenEnElRangoQueTraeLaBaseNueva()
     {
-        var range = DemoData.Range();
         foreach (var row in DemoData.IpCatalog().Rows)
-            Assert.True(OnuStudio.Core.Ipv4.CidrContains(range.Cidr, OnuStudio.Core.Ipv4.Parse(row.Ip)));
+            Assert.True(OnuStudio.Core.Ipv4.CidrContains("192.168.16.0/24", OnuStudio.Core.Ipv4.Parse(row.Ip)));
     }
 }

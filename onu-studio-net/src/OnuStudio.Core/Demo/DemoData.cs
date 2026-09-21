@@ -141,21 +141,6 @@ public static class DemoData
         },
     };
 
-    /// <summary>Rango de clientes que se siembra en la base de prueba la primera vez.</summary>
-    public static NetworkRange Range() => new()
-    {
-        Id = "demo-fibra",
-        Name = "Clientes fibra",
-        Cidr = "192.168.16.0/24",
-        Vlan = 101,
-        Gateway = "192.168.16.1",
-        PrimaryDns = "8.8.8.8",
-        SecondaryDns = "1.1.1.1",
-        Priority = 10,
-        AllocationStart = "192.168.16.10",
-        AllocationEnd = "192.168.16.250",
-    };
-
     public static CloudUser User() => new() { UserId = 1, Username = "tecnico.demo", Role = "super_admin" };
 
     /// <summary>Identificador con el mismo formato que los expedientes reales.</summary>

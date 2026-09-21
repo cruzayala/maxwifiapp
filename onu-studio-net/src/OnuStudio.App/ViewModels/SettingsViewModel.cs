@@ -42,6 +42,12 @@ public sealed class RangeRow : ObservableObject
         set { _range.PrimaryDns = value; OnPropertyChanged(); }
     }
 
+    public string SecondaryDns
+    {
+        get => _range.SecondaryDns;
+        set { _range.SecondaryDns = value?.Trim() ?? string.Empty; OnPropertyChanged(); }
+    }
+
     public string AllocationStart
     {
         get => _range.AllocationStart ?? string.Empty;
