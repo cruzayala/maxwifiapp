@@ -51,6 +51,11 @@ public sealed class ProvisioningService
         {
             resolved.Tr069.Password = FirstNonEmpty(resolved.Tr069.Password, settings.Tr069Password);
             resolved.Tr069.ConnectionRequestPassword = FirstNonEmpty(resolved.Tr069.ConnectionRequestPassword, settings.ConnectionRequestPassword);
+            if (AgentRuntime.IsDemo)
+            {
+                if (string.IsNullOrEmpty(resolved.Tr069.Password)) resolved.Tr069.Password = "modo-de-prueba";
+                if (string.IsNullOrEmpty(resolved.Tr069.ConnectionRequestPassword)) resolved.Tr069.ConnectionRequestPassword = "modo-de-prueba";
+            }
             if (string.IsNullOrEmpty(resolved.Tr069.Password) || string.IsNullOrEmpty(resolved.Tr069.ConnectionRequestPassword))
                 throw new OnuProvisioningException("Configura las credenciales TR-069 protegidas en Ajustes del agente");
         }
@@ -59,6 +64,11 @@ public sealed class ProvisioningService
 
     private static void RequireDeviceCredentials(DeviceSettings device)
     {
+        if (AgentRuntime.IsDemo)
+        {
+            if (string.IsNullOrEmpty(device.Password)) device.Password = "modo-de-prueba";
+            return;
+        }
         if (string.IsNullOrWhiteSpace(device.Username))
             throw new OnuProvisioningException("Ingresa el usuario tecnico de la ONU", "ONU_USERNAME_REQUIRED", retryable: false);
         if (string.IsNullOrEmpty(device.Password))
@@ -76,6 +86,19 @@ public sealed class ProvisioningService
     public JsonObject PrepareNetwork(string jobId, DeviceSettings device, LocalNetworkSettings local, ProgressCallback? emit = null)
     {
         var report = emit ?? ((step, status, message) => _jobs.Event(jobId, step, status, message));
+
+        if (AgentRuntime.IsDemo)
+        {
+            report("network", "running", "Preparando la tarjeta Ethernet");
+            AgentRuntime.SimulateDelayAsync(500).GetAwaiter().GetResult();
+            report("network", "success", $"IP {local.Address}/{local.PrefixLength} ya configurada en Ethernet (modo de prueba)");
+            report("reachability", "success", $"ONU accesible en {device.Host} (3 ms)");
+            return new JsonObject
+            {
+                ["adapter"] = new JsonObject { ["changed"] = false, ["name"] = "Ethernet (modo de prueba)", ["address"] = local.Address },
+                ["probe"] = new JsonObject { ["reachable"] = true, ["latency_ms"] = 3, ["port"] = 80 },
+            };
+        }
 
         report("network", "running", "Preparando la tarjeta Ethernet");
         var change = NetworkTools.EnsureIpv4Address(local.AdapterIndex, local.Address, local.PrefixLength);
@@ -198,6 +221,13 @@ public sealed class ProvisioningService
 
     private async Task SyncCloudCompletionAsync(string jobId, ProvisionRequest request, JsonObject result, CancellationToken cancellationToken)
     {
+        if (AgentRuntime.IsDemo)
+        {
+            await AgentRuntime.SimulateDelayAsync(500, cancellationToken).ConfigureAwait(false);
+            _jobs.Event(jobId, "cloud", "success", "Expediente actualizado en ISP Max (modo de prueba)");
+            _jobs.Event(jobId, "cloud_inventory", "success", "Inventario final sincronizado (modo de prueba)");
+            return;
+        }
         var restoredService = request.ServiceOperation == "restore_same_onu";
         try
         {
@@ -252,7 +282,7 @@ public sealed class ProvisioningService
         ProvisionRequest request, string stage, string localStatus, string? lastCompletedStep,
         string message, string status = "in_progress", string? errorCode = null, bool? retryable = null)
     {
-        if (string.IsNullOrWhiteSpace(request.CloudJobId) || !_session.Current.Connected) return null;
+        if (string.IsNullOrWhiteSpace(request.CloudJobId) || !_session.Current.Connected || AgentRuntime.IsDemo) return null;
 
         var stepKey = stage.StartsWith("local_", StringComparison.Ordinal) ? stage["local_".Length..] : stage;
         var bounds = JobManager.Stages.GetValueOrDefault(stepKey, (0, 0));

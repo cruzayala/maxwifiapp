@@ -140,6 +140,8 @@ public sealed class DiscoveryService : IDisposable
 
     private static DiscoveryState ScanOnce()
     {
+        if (AgentRuntime.IsDemo) return Demo.DemoData.Discovery();
+
         var adapters = NetworkTools.ListAdapters();
         var wiredUp = adapters.Where(item => item.Supported && item.IsUp).ToList();
         var candidates = new List<DiscoveredDevice>();

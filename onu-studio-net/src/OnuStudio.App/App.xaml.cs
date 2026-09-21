@@ -10,6 +10,8 @@ namespace OnuStudio.App;
 
 public partial class App : Application
 {
+    public const string DemoArgument = "--demo";
+
     private static Mutex? _singleInstance;
 
     private AgentHost? _host;
@@ -20,12 +22,19 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Una sola instancia: si ya hay una abierta, se le cede el paso.
-        _singleInstance = new Mutex(true, "ISPMax.OnuStudio.SingleInstance", out var isNew);
+        // El modo de prueba se decide antes de leer cualquier carpeta: usa datos aparte.
+        if (e.Args.Any(argument => argument.Equals(DemoArgument, StringComparison.OrdinalIgnoreCase)))
+            AgentRuntime.EnableDemo();
+
+        // Una sola instancia (y otra aparte para el modo de prueba, que puede convivir).
+        var mutexName = AgentRuntime.IsDemo ? "ISPMax.OnuStudio.Demo" : "ISPMax.OnuStudio.SingleInstance";
+        _singleInstance = new Mutex(true, mutexName, out var isNew);
         if (!isNew)
         {
             MessageBox.Show(
-                "ONU Studio ya esta abierto. Busca su icono junto al reloj de Windows.",
+                AgentRuntime.IsDemo
+                    ? "El modo de prueba ya esta abierto."
+                    : "ONU Studio ya esta abierto. Busca su icono junto al reloj de Windows.",
                 "ONU Studio", MessageBoxButton.OK, MessageBoxImage.Information);
             Shutdown();
             return;
@@ -40,6 +49,15 @@ public partial class App : Application
 
         var viewModel = new MainViewModel(_host);
         _window = new MainWindow { DataContext = viewModel };
+        if (AgentRuntime.IsDemo)
+        {
+            // La prueba no queda en segundo plano: cerrar la ventana la termina.
+            _window.Title = "ONU Studio | Modo de prueba";
+            _window.CloseRequested += QuitAsync;
+            _window.Show();
+            _ = _host.StartAsync();
+            return;
+        }
         _window.CloseRequested += HideToTray;
 
         SetupTray(viewModel);

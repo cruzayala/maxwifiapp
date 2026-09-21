@@ -23,6 +23,15 @@ a mano.
 Al cerrar la ventana el agente sigue vivo junto al reloj de Windows, disponible para las
 tareas que ISP Max le mande (detectar, comprobar, aprovisionar y tareas TR-069).
 
+## Modo de prueba
+
+Para practicar o enseñar el programa sin una ONU conectada: pulsa **Probar sin ONU (modo de
+prueba)** abajo a la izquierda, o abre el programa con `--demo`. Se abre otra ventana con
+una franja amarilla que lo avisa. Ahí la ONU, los clientes, los planes y las IP son
+simulados y el recorrido completo funciona igual que con un equipo real, pero no se toca
+ninguna tarjeta de red ni ONU y nada llega a ISP Max. Su historial se guarda aparte, en
+`Modo de prueba` dentro de la carpeta de datos, y el agente real sigue funcionando.
+
 ## Qué hace por dentro
 
 - **Sin instalar nada más**: usa el Microsoft Edge que ya trae Windows para operar el
@@ -64,7 +73,21 @@ Necesita el SDK de .NET 8 o superior. El resultado queda en `release\`.
 ## Estructura del código
 
 ```
-src/OnuStudio.Core     motor: modelos, red, detección, nube, ONU, ACS, trabajos
-src/OnuStudio.App      interfaz WPF (asistente, equipo, historial, ajustes)
-tests/OnuStudio.Tests  pruebas del motor y de las reglas de la interfaz
+src/OnuStudio.Core
+  AgentHost.cs         arranca todo el agente
+  Runtime/             rutas, versión, ajustes cifrados, modo de prueba, inicio con Windows
+  Common/              utilidades: IPv4, serial GPON, JSON, almacén cifrado
+  Models/  Storage/    modelos de trabajo y base SQLite
+  Net/                 tarjeta de red y detección de la ONU
+  Cloud/               sesión con ISP Max, catálogo y los dos trabajadores de la nube
+  Jobs/                trabajos y motor de aprovisionamiento
+  Onu/                 Huawei EG8141A5 y ZTE F670L (Playwright sobre Edge)
+  Acs/                 GenieACS
+  Demo/                ONU y datos simulados del modo de prueba
+src/OnuStudio.App
+  Theme.xaml           colores, botones y animaciones de los controles
+  Controls/            conversores, Motion (entradas, latido, barra suave) y Spinner
+  ViewModels/          pantallas; el asistente va en ViewModels/Wizard, un archivo por paso
+  Views/               pantallas; los pasos del asistente en Views/Wizard
+tests/OnuStudio.Tests  pruebas del motor, del asistente y del modo de prueba
 ```

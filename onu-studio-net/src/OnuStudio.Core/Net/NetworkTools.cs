@@ -65,6 +65,7 @@ public static class NetworkTools
     public static List<NetworkAdapter> ListAdapters()
     {
         var adapters = new List<NetworkAdapter>();
+        if (AgentRuntime.IsDemo) adapters.Add(Demo.DemoData.Adapter());
         foreach (var candidate in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (candidate.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;

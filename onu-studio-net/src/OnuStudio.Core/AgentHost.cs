@@ -27,6 +27,8 @@ public sealed class AgentHost : IAsyncDisposable
 
         Store = new JobStore(AppPaths.DatabasePath);
         InterruptedJobs = Store.InterruptIncomplete();
+        if (AgentRuntime.IsDemo && Store.NetworkRanges().Count == 0)
+            Store.ReplaceNetworkRanges(new[] { Demo.DemoData.Range() });
 
         Jobs = new JobManager(Store);
         Session = new CloudSessionManager(new SecureJsonStore(AppPaths.CloudSessionPath));
@@ -70,6 +72,8 @@ public sealed class AgentHost : IAsyncDisposable
     {
         Discovery.Start();
         await Session.RestoreAsync(cancellationToken).ConfigureAwait(false);
+        // En modo de prueba no se atienden tareas reales de la nube.
+        if (AgentRuntime.IsDemo) return;
         Tr069.Start();
         CloudWorker.Start();
     }

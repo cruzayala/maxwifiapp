@@ -1,0 +1,95 @@
+<UserControl x:Class="OnuStudio.App.Views.Wizard.ReviewStepView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:OnuStudio.App.Controls">
+
+    <!-- Paso 5: resumen, aprovisionamiento y avance en vivo. El DataContext es el WizardViewModel. -->
+    <StackPanel>
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="Resumen" Style="{StaticResource SectionTitle}" />
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Cliente" Style="{StaticResource Eyebrow}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ReviewClient}" Style="{StaticResource Body}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Equipo" Style="{StaticResource Eyebrow}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ReviewOnu}" Style="{StaticResource Body}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Internet" Style="{StaticResource Eyebrow}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ReviewInternet}" Style="{StaticResource Body}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="WiFi" Style="{StaticResource Eyebrow}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ReviewWifi}" Style="{StaticResource Body}" Margin="0,0,0,10" />
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="ISP Max" Style="{StaticResource Eyebrow}" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding ReviewCloud}" Style="{StaticResource Body}" />
+                </Grid>
+
+                <WrapPanel Margin="0,16,0,0">
+                    <CheckBox Content="Guardar respaldo antes y despues" IsChecked="{Binding CreateBackups}" Margin="0,0,20,0" />
+                    <CheckBox Content="Guardar en la memoria de la ONU" IsChecked="{Binding SaveConfiguration}" Margin="0,0,20,0" />
+                    <CheckBox Content="Reemplazar una WAN en conflicto" IsChecked="{Binding ReplaceConflictingWan}" />
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <Border x:Name="ProgressCard" Style="{StaticResource Card}" Margin="0,14,0,0">
+            <StackPanel>
+                <Grid>
+                    <TextBlock Text="{Binding ProgressLabel}" Style="{StaticResource SectionTitle}" FontSize="14" />
+                    <TextBlock Text="{Binding Progress, StringFormat={}{0}%}" HorizontalAlignment="Right"
+                               Style="{StaticResource Body}" />
+                </Grid>
+                <ProgressBar controls:Motion.SmoothValue="{Binding Progress, Mode=OneWay}" Maximum="100" Margin="0,10,0,0" />
+
+                <ItemsControl ItemsSource="{Binding Timeline}" Margin="0,14,0,0" MaxHeight="240">
+                    <ItemsControl.Template>
+                        <ControlTemplate TargetType="ItemsControl">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsPresenter />
+                            </ScrollViewer>
+                        </ControlTemplate>
+                    </ItemsControl.Template>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,8" controls:Motion.Entrance="True"
+                                  controls:Motion.OffsetY="0" controls:Motion.OffsetX="-12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="12" />
+                                    <ColumnDefinition Width="64" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                                         Fill="{Binding Status, Converter={StaticResource Tone}}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Time}" FontSize="11.5"
+                                           Foreground="{StaticResource InkSoft}" VerticalAlignment="Center"
+                                           Margin="6,0,0,0" />
+                                <TextBlock Grid.Column="2" Text="{Binding Message}" FontSize="12.5"
+                                           Foreground="{StaticResource Ink}" TextWrapping="Wrap" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Background="{StaticResource SuccessSoft}" CornerRadius="8" Padding="14,12" Margin="0,10,0,0"
+                        controls:Motion.Entrance="True"
+                        Visibility="{Binding Finished, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel>
+                        <TextBlock Text="ONU configurada y verificada" FontWeight="SemiBold" FontSize="13.5"
+                                   Foreground="{StaticResource Success}" />
+                        <Button Content="Configurar otro cliente" Style="{StaticResource LinkButton}"
+                                HorizontalAlignment="Left" Margin="0,6,0,0"
+                                Command="{Binding RestartCommand}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

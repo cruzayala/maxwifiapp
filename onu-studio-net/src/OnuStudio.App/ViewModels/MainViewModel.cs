@@ -49,6 +49,8 @@ public sealed class MainViewModel : ObservableObject
         if (!string.IsNullOrWhiteSpace(startPage) && Enum.TryParse<AppPage>(startPage, true, out var initial))
             Page = initial;
 
+        OpenDemoCommand = new RelayCommand(_ => OpenDemo());
+
         GoToCommand = new RelayCommand(parameter =>
         {
             if (parameter is AppPage target) Page = target;
@@ -63,6 +65,28 @@ public sealed class MainViewModel : ObservableObject
     public SettingsViewModel Settings { get; }
 
     public RelayCommand GoToCommand { get; }
+    public RelayCommand OpenDemoCommand { get; }
+
+    /// <summary>ONU, clientes e IP simulados: sirve para practicar o mostrar el programa.</summary>
+    public bool IsDemo => AgentRuntime.IsDemo;
+
+    /// <summary>Abre una segunda ventana en modo de prueba, sin cerrar el agente real.</summary>
+    private void OpenDemo()
+    {
+        try
+        {
+            var exe = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(exe)) throw new InvalidOperationException("No se encontro el ejecutable");
+            var info = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false };
+            info.ArgumentList.Add(App.DemoArgument);
+            System.Diagnostics.Process.Start(info);
+            ShowToast("Abriendo el modo de prueba en otra ventana…", "info");
+        }
+        catch (Exception exception)
+        {
+            ShowToast($"No se pudo abrir el modo de prueba: {exception.Message}", "error");
+        }
+    }
 
     public AppPage Page
     {
@@ -101,6 +125,7 @@ public sealed class MainViewModel : ObservableObject
 
     public string CloudState => Host.Session.Current.SessionState switch
     {
+        "connected" when IsDemo => "Conectado (simulado)",
         "connected" => "Conectado a ISP Max",
         "connecting" => "Conectando con ISP Max…",
         "offline" => "Sin internet hacia ISP Max",
@@ -123,6 +148,7 @@ public sealed class MainViewModel : ObservableObject
     {
         get
         {
+            if (IsDemo) return "Nada de esta ventana llega a la ONU ni a ISP Max";
             var worker = Host.CloudWorker.Status;
             if (!Host.Session.Current.AgentPaired) return "Agente sin emparejar";
             if (worker.CurrentTaskId is not null) return "Ejecutando una tarea de ISP Max";

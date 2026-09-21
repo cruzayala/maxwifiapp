@@ -1,0 +1,51 @@
+<UserControl x:Class="OnuStudio.App.Views.Wizard.WifiStepView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Paso 4: nombre y clave de la red WiFi. El DataContext es el WizardViewModel. -->
+    <StackPanel>
+        <Border Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="Red WiFi del cliente" Style="{StaticResource SectionTitle}" />
+                <Grid Margin="0,14,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Nombre de la red" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding WifiSsid, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Clave" Style="{StaticResource FieldLabel}" />
+                        <TextBox Text="{Binding WifiPassword, UpdateSourceTrigger=PropertyChanged}"
+                                 FontFamily="{StaticResource MonoFont}" />
+                    </StackPanel>
+                    <Button Grid.Column="4" Content="Generar clave" Style="{StaticResource GhostButton}"
+                            VerticalAlignment="Bottom" Command="{Binding GenerateWifiCommand}" />
+                </Grid>
+
+                <WrapPanel Margin="0,16,0,0">
+                    <CheckBox Content="WiFi encendido" IsChecked="{Binding WifiEnabled}" Margin="0,0,20,0" />
+                    <CheckBox Content="Mostrar el nombre de la red" IsChecked="{Binding WifiBroadcast}" Margin="0,0,20,0" />
+                    <CheckBox Content="Prioridad de video y voz (WMM)" IsChecked="{Binding WifiWmm}" Margin="0,0,20,0" />
+                    <CheckBox Content="Permitir WPS" IsChecked="{Binding WifiWps}" />
+                </WrapPanel>
+
+                <StackPanel Margin="0,16,0,0" Width="220" HorizontalAlignment="Left">
+                    <TextBlock Text="Maximo de equipos" Style="{StaticResource FieldLabel}" />
+                    <TextBox Text="{Binding WifiMaxClients, UpdateSourceTrigger=PropertyChanged}" />
+                </StackPanel>
+
+                <Border Background="{StaticResource DangerSoft}" CornerRadius="8" Padding="12,10" Margin="0,16,0,0"
+                        Visibility="{Binding HasWifiError, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock Text="{Binding WifiError}" Foreground="{StaticResource Danger}"
+                               FontSize="12.5" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

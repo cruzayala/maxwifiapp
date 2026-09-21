@@ -75,6 +75,16 @@ public sealed class CloudCatalog
     public async Task<List<CloudClientSummary>> SearchClientsAsync(string query, CancellationToken cancellationToken = default)
     {
         if (query.Trim().Length < 2) return new List<CloudClientSummary>();
+        if (AgentRuntime.IsDemo)
+        {
+            await AgentRuntime.SimulateDelayAsync(350, cancellationToken).ConfigureAwait(false);
+            var term = query.Trim();
+            return Demo.DemoData.Clients().Where(client =>
+                client.Nombre.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || (client.Usuario?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (client.Ip?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (client.Telefono?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+        }
         var node = await _session.Client.SendAsync(
             $"/provisioning/clients?q={Uri.EscapeDataString(query.Trim())}", cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -112,7 +122,9 @@ public sealed class CloudCatalog
                 System.Globalization.CultureInfo.InvariantCulture, out var value) ? value : null;
 
     public Task<JsonObject> CommercialCatalogAsync(CancellationToken cancellationToken = default) =>
-        _session.Client.SendObjectAsync("/provisioning/commercial-catalog", cancellationToken: cancellationToken);
+        AgentRuntime.IsDemo
+            ? Task.FromResult(Demo.DemoData.CommercialCatalog())
+            : _session.Client.SendObjectAsync("/provisioning/commercial-catalog", cancellationToken: cancellationToken);
 
     /// <summary>
     /// IP libres de los rangos configurados en esta PC. Se filtran por los limites
@@ -120,6 +132,12 @@ public sealed class CloudCatalog
     /// </summary>
     public async Task<CloudCatalogResult> IpCatalogAsync(string? cidr = null, CancellationToken cancellationToken = default)
     {
+        if (AgentRuntime.IsDemo)
+        {
+            await AgentRuntime.SimulateDelayAsync(300, cancellationToken).ConfigureAwait(false);
+            return Demo.DemoData.IpCatalog();
+        }
+
         var configured = _store.NetworkRanges().Where(range => range.Active).ToList();
         if (!string.IsNullOrWhiteSpace(cidr)) configured = configured.Where(range => range.Cidr == cidr).ToList();
         if (configured.Count == 0) return new CloudCatalogResult();
@@ -186,6 +204,9 @@ public sealed class CloudCatalog
 
     public Task<JsonObject> ReserveIpAsync(string ip, string? clientName, string? serial, CancellationToken cancellationToken = default)
     {
+        if (AgentRuntime.IsDemo)
+            return Task.FromResult(new JsonObject { ["token"] = $"demo-{Guid.NewGuid():N}", ["ip"] = ip, ["demo"] = true });
+
         var cidrs = _store.NetworkRanges().Where(range => range.Active).Select(range => range.Cidr).ToArray();
         return _session.Client.SendObjectAsync("/provisioning/reservations", HttpMethod.Post,
             new { ip, clientName, serial, cidrs }, cancellationToken: cancellationToken);
@@ -219,6 +240,12 @@ public sealed class CloudCatalog
     {
         if (request.Mode == "new_client" && request.ServiceMode == "router" && string.IsNullOrWhiteSpace(request.ReservationToken))
             throw new CloudException(400, "El cliente nuevo requiere una reserva de IP");
+
+        if (AgentRuntime.IsDemo)
+        {
+            await AgentRuntime.SimulateDelayAsync(500, cancellationToken).ConfigureAwait(false);
+            return new JsonObject { ["id"] = Demo.DemoData.NewJobId(), ["status"] = "pending", ["demo"] = true };
+        }
 
         var operationKey = request.ReservationToken
             ?? (request.ClientId?.ToString() ?? $"{request.ServiceMode}-pending");
@@ -274,11 +301,15 @@ public sealed class CloudCatalog
     public Task<JsonObject> ProvisionClientAsync(
         string jobId, string ip, string serviceName, int zoneId, int planId,
         double uploadMbps, double downloadMbps, CancellationToken cancellationToken = default) =>
-        _session.Client.SendObjectAsync("/client-provisioning", HttpMethod.Post, new
+        AgentRuntime.IsDemo
+            ? Task.FromResult(new JsonObject { ["ok"] = true, ["jobId"] = jobId, ["serviceName"] = serviceName, ["demo"] = true })
+            : _session.Client.SendObjectAsync("/client-provisioning", HttpMethod.Post, new
         {
             jobId, ip, serviceName, zoneId, planId, uploadMbps, downloadMbps,
         }, cancellationToken: cancellationToken);
 
     public Task<JsonObject> JobAsync(string jobId, CancellationToken cancellationToken = default) =>
-        _session.Client.SendObjectAsync($"/provisioning/jobs/{jobId}", cancellationToken: cancellationToken);
+        AgentRuntime.IsDemo
+            ? Task.FromResult(new JsonObject { ["id"] = jobId, ["status"] = "completed", ["demo"] = true })
+            : _session.Client.SendObjectAsync($"/provisioning/jobs/{jobId}", cancellationToken: cancellationToken);
 }

@@ -17,9 +17,15 @@ public static class AppPaths
     private static string ResolveDataDir()
     {
         var configured = Environment.GetEnvironmentVariable("ONU_DATA_DIR");
-        if (!string.IsNullOrWhiteSpace(configured)) return Path.GetFullPath(configured.Trim());
+        if (!string.IsNullOrWhiteSpace(configured))
+        {
+            var custom = Path.GetFullPath(configured.Trim());
+            return AgentRuntime.IsDemo ? Path.Combine(custom, "Modo de prueba") : custom;
+        }
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "ISP Max", "ONU Studio");
+        var root = Path.Combine(localAppData, "ISP Max", "ONU Studio");
+        // El modo de prueba guarda aparte para no mezclarse con el historial real.
+        return AgentRuntime.IsDemo ? Path.Combine(root, "Modo de prueba") : root;
     }
 
     public static void EnsureRuntimeDirectories()

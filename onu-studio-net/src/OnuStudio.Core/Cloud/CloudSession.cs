@@ -60,7 +60,7 @@ public sealed class CloudSessionManager
     {
         _store = store;
         Client = new CloudClient(() => Current);
-        Load();
+        if (!AgentRuntime.IsDemo) Load();
     }
 
     public CloudClient Client { get; }
@@ -84,8 +84,21 @@ public sealed class CloudSessionManager
         Changed?.Invoke(snapshot);
     }
 
+    private void ConnectDemo(CloudUser user) =>
+        Mutate(state =>
+        {
+            state.Token = "modo-de-prueba";
+            state.AgentToken = "modo-de-prueba-agente-00000000000000";
+            state.DeviceToken = "modo-de-prueba";
+            state.User = user;
+            state.SessionState = "connected";
+            state.LastVerifiedAt = Clock.UtcNow();
+            state.RevokedReason = null;
+        }, persist: false);
+
     private void Persist(CloudSessionState state)
     {
+        if (AgentRuntime.IsDemo) return;
         try
         {
             _store.Save(state);
@@ -125,6 +138,14 @@ public sealed class CloudSessionManager
     /// <summary>Renueva la sesion guardada al abrir el programa.</summary>
     public async Task<bool> RestoreAsync(CancellationToken cancellationToken = default)
     {
+        if (AgentRuntime.IsDemo)
+        {
+            // El modo de prueba entra conectado para poder recorrer todo el flujo.
+            await AgentRuntime.SimulateDelayAsync(400, cancellationToken).ConfigureAwait(false);
+            ConnectDemo(Demo.DemoData.User());
+            return true;
+        }
+
         var deviceToken = Current.DeviceToken;
         if (string.IsNullOrWhiteSpace(deviceToken))
         {
@@ -171,6 +192,15 @@ public sealed class CloudSessionManager
             throw new CloudException(400, "La direccion de ISP Max no es valida");
 
         Mutate(state => { state.BaseUrl = url; state.SessionState = "connecting"; }, persist: false);
+
+        if (AgentRuntime.IsDemo)
+        {
+            await AgentRuntime.SimulateDelayAsync(700, cancellationToken).ConfigureAwait(false);
+            var demoUser = Demo.DemoData.User();
+            if (!string.IsNullOrWhiteSpace(username)) demoUser.Username = username.Trim();
+            ConnectDemo(demoUser);
+            return;
+        }
 
         var login = await Client.SendObjectAsync(
             "/auth/login", HttpMethod.Post,
@@ -225,6 +255,18 @@ public sealed class CloudSessionManager
     public async Task LogoutAsync(CancellationToken cancellationToken = default)
     {
         var state = Current;
+        if (AgentRuntime.IsDemo)
+        {
+            Mutate(current =>
+            {
+                current.Token = null;
+                current.AgentToken = null;
+                current.DeviceToken = null;
+                current.User = null;
+                current.SessionState = "disconnected";
+            }, persist: false);
+            return;
+        }
         if (!string.IsNullOrWhiteSpace(state.DeviceToken))
         {
             try
