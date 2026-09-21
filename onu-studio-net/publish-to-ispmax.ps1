@@ -10,13 +10,17 @@
 [CmdletBinding()]
 param(
     [string]$Executable,
-    [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    [string]$RepoRoot
 )
 
 $ErrorActionPreference = 'Stop'
 
+# En Windows PowerShell 5.1, $PSScriptRoot no existe todavia en los valores por defecto.
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $RepoRoot) { $RepoRoot = (Resolve-Path (Join-Path $scriptDir '..')).Path }
+
 if (-not $Executable) {
-    $Executable = Get-ChildItem (Join-Path $PSScriptRoot 'release') -Filter 'ONU-Studio-ISP-Max-v*.exe' |
+    $Executable = Get-ChildItem (Join-Path $scriptDir 'release') -Filter 'ONU-Studio-ISP-Max-v*.exe' |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
 }
 if (-not $Executable -or -not (Test-Path $Executable)) {
@@ -39,15 +43,15 @@ $manifest = [ordered]@{
     fileName       = $fileName
     sha256         = $hash
     size           = $size
-    browserRuntime = 'Incluido: se instala solo la primera vez'
+    browserRuntime = 'Microsoft Edge de Windows (ya viene instalado)'
     releasedAt     = (Get-Date).ToUniversalTime().ToString('o')
 }
 $manifestPath = Join-Path $downloads 'manifest.json'
-$manifest | ConvertTo-Json | Set-Content -Path $manifestPath -Encoding utf8
+[IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json), (New-Object System.Text.UTF8Encoding $false))
 
 Write-Host ''
 Write-Host "Publicado: $target" -ForegroundColor Green
-Write-Host "Version $version · $([math]::Round($size / 1MB, 1)) MB"
+Write-Host "Version $version - $([math]::Round($size / 1MB, 1)) MB"
 Write-Host "Manifiesto actualizado: $manifestPath"
 Write-Host ''
 Write-Host 'Falta subir el proyecto a Railway para que los tecnicos lo vean.' -ForegroundColor Yellow
