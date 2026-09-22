@@ -29,16 +29,16 @@ const H = 150;
             <div class="y"><span>{{ traffic().max | number:'1.0-0' }}</span><span>{{ traffic().max / 2 | number:'1.0-0' }}</span><span>0</span></div>
             <div class="chart">
               <svg [attr.viewBox]="'0 0 ' + w + ' ' + h" preserveAspectRatio="none" role="img" [attr.aria-label]="'Tráfico: bajada máxima ' + (traffic().peakRx | number:'1.0-1') + ' Mbps'">
-                <path [attr.d]="traffic().rxArea" fill="#1267dd" fill-opacity=".15" />
-                <path [attr.d]="traffic().rxLine" fill="none" stroke="#1267dd" stroke-width="1.8" vector-effect="non-scaling-stroke" />
-                <path [attr.d]="traffic().txLine" fill="none" stroke="#13875a" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+                <path [attr.d]="traffic().rxArea" fill="#0b6b52" fill-opacity=".15" />
+                <path [attr.d]="traffic().rxLine" fill="none" stroke="#0b6b52" stroke-width="1.8" vector-effect="non-scaling-stroke" />
+                <path [attr.d]="traffic().txLine" fill="none" stroke="#0f7a53" stroke-width="1.5" vector-effect="non-scaling-stroke" />
               </svg>
             </div>
           </div>
           <div class="axis"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
           <p class="legend">
-            <span><i style="background:#1267dd"></i>Bajada (Mbps)</span>
-            <span><i style="background:#13875a"></i>Subida (Mbps)</span>
+            <span><i style="background:#0b6b52"></i>Bajada (Mbps)</span>
+            <span><i style="background:#0f7a53"></i>Subida (Mbps)</span>
             @if (traffic().capacity) { <span>Capacidad del enlace: {{ traffic().capacity | number:'1.0-0' }} Mbps · pico al {{ traffic().peakUtil | number:'1.0-0' }} %</span> }
           </p>
           <h4>Estado del enlace</h4>
@@ -47,7 +47,7 @@ const H = 150;
               <rect [attr.x]="$index" y="0" width="1.02" height="10" [attr.fill]="color(b.state)"><title>{{ b.label }}</title></rect>
             }
           </svg>
-          <p class="legend"><span><i style="background:#13875a"></i>Estable</span><span><i style="background:#b36b12"></i>Degradado</span><span><i style="background:#b42318"></i>Caído</span></p>
+          <p class="legend"><span><i style="background:#0f7a53"></i>Estable</span><span><i style="background:#b36b12"></i>Degradado</span><span><i style="background:#b42318"></i>Caído</span></p>
         </section>
 
         <section class="card">
@@ -110,37 +110,37 @@ const H = 150;
   styles: [`
     :host { display: block; }
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-    .card { min-width: 0; padding: 14px 16px; background: #fff; border: 1px solid #dce2e8; border-radius: 8px; }
+    .card { min-width: 0; padding: 14px 16px; background: #fff; border: 1px solid #dce2e8; border-radius: 12px; }
     .wide { grid-column: 1 / -1; }
     header { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
-    h3 { margin: 0; font-size: 14px; color: #172535; }
-    header p { margin: 2px 0 0; font-size: 12px; color: #667582; }
-    h4 { margin: 14px 0 6px; font-size: 13px; color: #172535; }
-    .btn-out { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border: 1px solid #b9cdea; border-radius: 6px; background: #f2f7ff; color: #1267dd; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
-    .btn-out:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
+    h3 { margin: 0; font-size: 14px; color: #15211c; }
+    header p { margin: 2px 0 0; font-size: 12px; color: #56665e; }
+    h4 { margin: 14px 0 6px; font-size: 13px; color: #15211c; }
+    .btn-out { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 11px; border: 1px solid #b9cdea; border-radius: 9px; background: #eef6f1; color: #0b6b52; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+    .btn-out:focus-visible { outline: 2px solid #0b6b52; outline-offset: 2px; }
     .chart-row { display: grid; grid-template-columns: 34px 1fr; gap: 6px; }
-    .y { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #8792a0; height: 150px; }
-    .chart { height: 150px; border-bottom: 1px solid #dfe5ea; background: linear-gradient(#f1f3f5 1px, transparent 1px) 0 0 / 100% 50%; }
+    .y { display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; font-size: 11px; color: #86938c; height: 150px; }
+    .chart { height: 150px; border-bottom: 1px solid #e0e6e1; background: linear-gradient(#f1f3f5 1px, transparent 1px) 0 0 / 100% 50%; }
     .chart.small { height: 120px; }
     .chart svg { display: block; width: 100%; height: 100%; }
-    .axis { display: flex; justify-content: space-between; margin: 3px 0 0 40px; font-size: 11px; color: #8792a0; }
-    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; font-size: 11px; color: #667582; }
+    .axis { display: flex; justify-content: space-between; margin: 3px 0 0 40px; font-size: 11px; color: #86938c; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; font-size: 11px; color: #56665e; }
     .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .legend i { width: 10px; height: 10px; border-radius: 2px; }
-    .strip { display: block; width: 100%; height: 18px; border-radius: 4px; overflow: hidden; background: #edf0f3; }
+    .strip { display: block; width: 100%; height: 18px; border-radius: 4px; overflow: hidden; background: #ecf0ec; }
     .hours { display: flex; align-items: flex-end; gap: 3px; height: 120px; }
     .hcol { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; height: 100%; min-width: 0; }
     .hcol i { display: block; border-radius: 2px 2px 0 0; background: #9dbfee; min-height: 2px; }
-    .hcol i.peak { background: #1267dd; }
-    .hcol span { height: 14px; font-size: 11px; color: #8792a0; text-align: center; }
-    .note { margin: 8px 0 0; font-size: 12px; color: #667582; }
-    .note b { color: #172535; }
-    .empty { margin: 0; padding: 20px 0; text-align: center; font-size: 13px; color: #667582; }
-    .empty.ok { color: #13875a; font-weight: 600; }
+    .hcol i.peak { background: #0b6b52; }
+    .hcol span { height: 14px; font-size: 11px; color: #86938c; text-align: center; }
+    .note { margin: 8px 0 0; font-size: 12px; color: #56665e; }
+    .note b { color: #15211c; }
+    .empty { margin: 0; padding: 20px 0; text-align: center; font-size: 13px; color: #56665e; }
+    .empty.ok { color: #0f7a53; font-weight: 600; }
     .table-wrap { overflow-x: auto; }
     table { width: 100%; min-width: 720px; border-collapse: collapse; }
-    th { padding: 8px 10px; text-align: left; background: #f7f8fa; border-bottom: 1px solid #dfe5ea; color: #627084; font-size: 11px; text-transform: uppercase; }
-    td { padding: 8px 10px; border-bottom: 1px solid #edf0f3; font-size: 12px; color: #3a475a; }
+    th { padding: 8px 10px; text-align: left; background: #f7f8fa; border-bottom: 1px solid #e0e6e1; color: #627084; font-size: 11px; text-transform: uppercase; }
+    td { padding: 8px 10px; border-bottom: 1px solid #ecf0ec; font-size: 12px; color: #3a475a; }
     td.detail { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .state { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; }
     .state i { width: 7px; height: 7px; border-radius: 50%; }

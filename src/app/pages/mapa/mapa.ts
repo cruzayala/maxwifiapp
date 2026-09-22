@@ -268,93 +268,93 @@ type Panel = 'none' | 'nogps' | 'near';
     </div>
   `,
   styles: [`
-    :host { display: block; background: #f8fafc; }
-    .page { padding: 16px 24px 24px; display: flex; flex-direction: column; height: calc(100vh - 80px); box-sizing: border-box; color: #334250; }
+    :host { display: block; background: #f4f6f2; }
+    .page { padding: 16px 24px 24px; display: flex; flex-direction: column; height: calc(100vh - 80px); box-sizing: border-box; color: #2d3b34; }
     .toolbar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; }
     .kpis { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-    .kpi { background: white; border: 1px solid #dfe5ea; border-radius: 999px; padding: 6px 12px; font-size: 12px; color: #334250; display: inline-flex; align-items: center; gap: 6px; }
-    .kpi strong { color: #172535; }
-    .kpi-blue { border-color: #cfe0f8; background: #edf4ff; color: #1267dd; }
+    .kpi { background: white; border: 1px solid #e0e6e1; border-radius: 999px; padding: 6px 12px; font-size: 12px; color: #2d3b34; display: inline-flex; align-items: center; gap: 6px; }
+    .kpi strong { color: #15211c; }
+    .kpi-blue { border-color: #cfe0f8; background: #e6f2ec; color: #0b6b52; }
     .kpi-warn { border-color: #efd3a8; background: #fff6e8; color: #7a4a0c; }
     .kpi-blue strong, .kpi-warn strong { color: inherit; }
     .kpi-btn { font: inherit; font-size: 12px; cursor: pointer; }
     .kpi-btn:hover, .kpi-btn.on { border-color: #b36b12; }
-    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #13875a; animation: pulse 1.5s infinite; }
+    .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: #0f7a53; animation: pulse 1.5s infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; box-shadow: 0 0 0 0 rgba(19,135,90,0.45); } 50% { opacity: 0.6; box-shadow: 0 0 0 7px rgba(19,135,90,0); } }
     .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-    .input { height: 36px; box-sizing: border-box; padding: 0 12px; border: 1px solid #ccd6de; border-radius: 6px; font-size: 13px; color: #334250; background: white; outline: none; }
-    .input:focus, .search-input:focus-within { border-color: #1267dd; box-shadow: 0 0 0 2px #edf4ff; }
+    .input { height: 36px; box-sizing: border-box; padding: 0 12px; border: 1px solid #cfd8d2; border-radius: 9px; font-size: 13px; color: #2d3b34; background: white; outline: none; }
+    .input:focus, .search-input:focus-within { border-color: #0b6b52; box-shadow: 0 0 0 2px #e6f2ec; }
     .search-box { position: relative; }
-    .search-input { display: inline-flex; align-items: center; gap: 6px; color: #667582; }
-    .search-input input { width: 220px; border: 0; outline: 0; font-size: 13px; color: #172535; background: transparent; }
-    .suggest { position: absolute; top: 40px; left: 0; z-index: 30; width: max(100%, 300px); max-height: 340px; overflow: auto; margin: 0; padding: 4px; list-style: none; background: #fff; border: 1px solid #dfe5ea; border-radius: 8px; box-shadow: 0 10px 30px rgba(15,23,42,.18); }
-    .suggest button, .suggest a { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; background: none; color: #8792a0; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
-    .suggest button:hover, .suggest a:hover, .suggest button:focus-visible, .suggest a:focus-visible { background: #f2f7ff; outline: none; }
+    .search-input { display: inline-flex; align-items: center; gap: 6px; color: #56665e; }
+    .search-input input { width: 220px; border: 0; outline: 0; font-size: 13px; color: #15211c; background: transparent; }
+    .suggest { position: absolute; top: 40px; left: 0; z-index: 30; width: max(100%, 300px); max-height: 340px; overflow: auto; margin: 0; padding: 4px; list-style: none; background: #fff; border: 1px solid #e0e6e1; border-radius: 12px; box-shadow: 0 10px 30px rgba(14, 29, 23,.18); }
+    .suggest button, .suggest a { display: flex; align-items: center; gap: 9px; width: 100%; padding: 7px 8px; border: 0; border-radius: 9px; background: none; color: #86938c; font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+    .suggest button:hover, .suggest a:hover, .suggest button:focus-visible, .suggest a:focus-visible { background: #eef6f1; outline: none; }
     .suggest i { flex-shrink: 0; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
     .suggest span, .side-panel .who { display: grid; min-width: 0; }
-    .suggest strong, .side-panel .who strong { font-size: 13px; color: #172535; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .suggest small, .side-panel .who small { font-size: 11px; color: #8792a0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .btn-icon { display: inline-flex; align-items: center; gap: 6px; height: 36px; background: white; border: 1px solid #ccd6de; color: #334250; border-radius: 6px; padding: 0 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .btn-icon:hover:not(:disabled) { border-color: #b9cdea; background: #f2f7ff; color: #1267dd; }
+    .suggest strong, .side-panel .who strong { font-size: 13px; color: #15211c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .suggest small, .side-panel .who small { font-size: 11px; color: #86938c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .btn-icon { display: inline-flex; align-items: center; gap: 6px; height: 36px; background: white; border: 1px solid #cfd8d2; color: #2d3b34; border-radius: 9px; padding: 0 12px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-icon:hover:not(:disabled) { border-color: #b9cdea; background: #eef6f1; color: #0b6b52; }
     .btn-icon:disabled { opacity: .6; cursor: wait; }
-    .btn-icon:focus-visible, .input:focus-visible, .chip:focus-visible, .seg button:focus-visible, .kpi-btn:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
+    .btn-icon:focus-visible, .input:focus-visible, .chip:focus-visible, .seg button:focus-visible, .kpi-btn:focus-visible { outline: 2px solid #0b6b52; outline-offset: 2px; }
     .spinning { animation: spin .8s linear infinite; }
     .subbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 12px; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .chip { height: 32px; padding: 0 12px; border: 1px solid #ccd6de; border-radius: 999px; background: #fff; color: #334250; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .chip b { margin-left: 3px; color: #667582; }
-    .chip.on { background: #edf4ff; border-color: #1267dd; color: #1267dd; }
-    .chip.online.on { background: #e9f8f1; border-color: #13875a; color: #13875a; }
+    .chip { height: 32px; padding: 0 12px; border: 1px solid #cfd8d2; border-radius: 999px; background: #fff; color: #2d3b34; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .chip b { margin-left: 3px; color: #56665e; }
+    .chip.on { background: #e6f2ec; border-color: #0b6b52; color: #0b6b52; }
+    .chip.online.on { background: #e9f8f1; border-color: #0f7a53; color: #0f7a53; }
     .chip.offline.on, .chip.moroso.on { background: #fff0ef; border-color: #b42318; color: #b42318; }
     .chip.on b { color: inherit; }
-    .seg { display: inline-flex; align-items: center; gap: 0; font-size: 12px; color: #667582; }
+    .seg { display: inline-flex; align-items: center; gap: 0; font-size: 12px; color: #56665e; }
     .seg span { margin-right: 6px; }
-    .seg button { height: 32px; padding: 0 11px; border: 1px solid #ccd6de; background: #fff; color: #334250; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .seg button:first-of-type { border-radius: 6px 0 0 6px; }
+    .seg button { height: 32px; padding: 0 11px; border: 1px solid #cfd8d2; background: #fff; color: #2d3b34; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .seg button:first-of-type { border-radius: 9px 0 0 6px; }
     .seg button:last-of-type { border-radius: 0 6px 6px 0; border-left: 0; }
-    .seg button.on { background: #1267dd; border-color: #1267dd; color: #fff; }
+    .seg button.on { background: #0b6b52; border-color: #0b6b52; color: #fff; }
     .locate { height: 32px; margin-left: auto; }
-    .map-wrapper { flex: 1; min-height: 500px; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid #dfe5ea; background: #0a0e27; }
+    .map-wrapper { flex: 1; min-height: 500px; position: relative; border-radius: 12px; overflow: hidden; border: 1px solid #e0e6e1; background: #0a0e27; }
     .map-container { position: absolute; inset: 0; width: 100%; height: 100%; }
-    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.85); color: white; padding: 40px 20px; text-align: center; z-index: 5; }
+    .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(14, 29, 23, 0.85); color: white; padding: 40px 20px; text-align: center; z-index: 5; }
     .overlay h3 { margin: 0 0 8px; }
-    .overlay p { color: #cbd5e1; margin: 0 0 14px; }
+    .overlay p { color: #cdd6d0; margin: 0 0 14px; }
     .overlay-error { background: rgba(122, 27, 20, 0.92); }
     .overlay-detail { display: block; margin: -6px 0 14px; color: #f5c6c1; font-size: 11px; max-width: 460px; overflow-wrap: anywhere; }
     .loader { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,.15); border-top-color: white; border-radius: 50%; margin-bottom: 14px; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .overlay-corner { position: absolute; top: 12px; left: 12px; max-width: min(360px, calc(100% - 70px)); padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.5; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
+    .overlay-corner { position: absolute; top: 12px; left: 12px; max-width: min(360px, calc(100% - 70px)); padding: 10px 14px; border-radius: 12px; font-size: 12px; line-height: 1.5; z-index: 5; box-shadow: 0 4px 12px rgba(0,0,0,.2); }
     .overlay-warn { background: #fff0ef; color: #b42318; border: 1px solid #f6cfcb; }
     .overlay-info { background: #fff6e8; color: #7a4a0c; border: 1px solid #efc98f; }
-    .overlay-debug { background: #ffffff; color: #172535; border: 1px solid #dfe5ea; max-width: min(520px, calc(100% - 70px)) !important; }
+    .overlay-debug { background: #ffffff; color: #15211c; border: 1px solid #e0e6e1; max-width: min(520px, calc(100% - 70px)) !important; }
     .overlay-corner em { font-style: normal; font-weight: 700; }
-    .link-btn { padding: 0; border: 0; background: none; color: #1267dd; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
-    .txt-green { color: #13875a; font-weight: 700; }
+    .link-btn { padding: 0; border: 0; background: none; color: #0b6b52; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+    .txt-green { color: #0f7a53; font-weight: 700; }
     .txt-red { color: #b42318; font-weight: 700; }
-    .map-legend { position: absolute; left: 12px; bottom: 34px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; max-width: calc(100% - 24px); padding: 7px 10px; border: 1px solid #dfe5ea; border-radius: 8px; background: rgba(255,255,255,.95); box-shadow: 0 2px 8px rgba(15,23,42,.15); font-size: 11px; color: #334250; box-sizing: border-box; }
+    .map-legend { position: absolute; left: 12px; bottom: 34px; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; max-width: calc(100% - 24px); padding: 7px 10px; border: 1px solid #e0e6e1; border-radius: 12px; background: rgba(255,255,255,.95); box-shadow: 0 2px 8px rgba(14, 29, 23,.15); font-size: 11px; color: #2d3b34; box-sizing: border-box; }
     .map-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
-    .map-legend b { color: #667582; }
+    .map-legend b { color: #56665e; }
     .map-legend i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
-    .map-legend small { flex-basis: 100%; display: inline-flex; align-items: center; gap: 5px; color: #667582; font-size: 11px; }
+    .map-legend small { flex-basis: 100%; display: inline-flex; align-items: center; gap: 5px; color: #56665e; font-size: 11px; }
     .map-legend .down-dot { width: 8px; height: 8px; background: #b42318; }
-    .side-panel { position: absolute; top: 12px; right: 52px; z-index: 6; display: flex; flex-direction: column; width: 330px; max-height: calc(100% - 70px); background: #fff; border: 1px solid #dfe5ea; border-radius: 8px; box-shadow: 0 10px 30px rgba(15,23,42,.22); }
-    .side-panel header { display: flex; gap: 8px; align-items: flex-start; padding: 12px 12px 8px; border-bottom: 1px solid #edf0f3; }
-    .side-panel h3 { margin: 0; font-size: 14px; color: #172535; }
-    .side-panel header p { margin: 3px 0 0; font-size: 12px; line-height: 1.4; color: #667582; }
-    .close { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; margin-left: auto; border: 1px solid #dfe5ea; border-radius: 6px; background: #fff; color: #667582; cursor: pointer; }
-    .panel-search { display: flex; align-items: center; gap: 6px; margin: 8px 12px 4px; padding: 0 9px; height: 32px; border: 1px solid #ccd6de; border-radius: 6px; color: #667582; }
-    .panel-search input { flex: 1; min-width: 0; border: 0; outline: 0; font: inherit; font-size: 12px; color: #172535; background: transparent; }
+    .side-panel { position: absolute; top: 12px; right: 52px; z-index: 6; display: flex; flex-direction: column; width: 330px; max-height: calc(100% - 70px); background: #fff; border: 1px solid #e0e6e1; border-radius: 12px; box-shadow: 0 10px 30px rgba(14, 29, 23,.22); }
+    .side-panel header { display: flex; gap: 8px; align-items: flex-start; padding: 12px 12px 8px; border-bottom: 1px solid #ecf0ec; }
+    .side-panel h3 { margin: 0; font-size: 14px; color: #15211c; }
+    .side-panel header p { margin: 3px 0 0; font-size: 12px; line-height: 1.4; color: #56665e; }
+    .close { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; margin-left: auto; border: 1px solid #e0e6e1; border-radius: 9px; background: #fff; color: #56665e; cursor: pointer; }
+    .panel-search { display: flex; align-items: center; gap: 6px; margin: 8px 12px 4px; padding: 0 9px; height: 32px; border: 1px solid #cfd8d2; border-radius: 9px; color: #56665e; }
+    .panel-search input { flex: 1; min-width: 0; border: 0; outline: 0; font: inherit; font-size: 12px; color: #15211c; background: transparent; }
     .side-panel ul { list-style: none; margin: 0; padding: 4px 0; overflow: auto; }
     .side-panel li { display: flex; align-items: center; gap: 8px; padding: 7px 12px; }
     .side-panel li + li { border-top: 1px solid #f1f3f5; }
     .side-panel .who { flex: 1; padding: 0; border: 0; background: none; font: inherit; text-align: left; cursor: pointer; }
-    button.who:hover strong { color: #1267dd; text-decoration: underline; }
+    button.who:hover strong { color: #0b6b52; text-decoration: underline; }
     .side-panel .dot { flex-shrink: 0; width: 10px; height: 10px; border-radius: 50%; }
-    .dist { font-size: 12px; color: #172535; white-space: nowrap; }
-    .tag { flex-shrink: 0; padding: 2px 7px; border-radius: 999px; background: #eef1f4; color: #52606d; font-size: 11px; font-style: normal; font-weight: 700; }
-    .go { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; color: #1267dd; }
-    .go:hover { background: #edf4ff; }
-    .panel-empty { margin: 0; padding: 14px 12px; font-size: 12px; color: #667582; text-align: center; }
+    .dist { font-size: 12px; color: #15211c; white-space: nowrap; }
+    .tag { flex-shrink: 0; padding: 2px 7px; border-radius: 999px; background: #edf1ed; color: #52606d; font-size: 11px; font-style: normal; font-weight: 700; }
+    .go { flex-shrink: 0; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: #0b6b52; }
+    .go:hover { background: #e6f2ec; }
+    .panel-empty { margin: 0; padding: 14px 12px; font-size: 12px; color: #56665e; text-align: center; }
     @media (max-width: 640px) {
       .page { padding: 10px 12px 16px; height: calc(100vh - 64px); }
       .filters { width: 100%; min-width: 0; box-sizing: border-box; }
@@ -384,7 +384,7 @@ type Panel = 'none' | 'nogps' | 'near';
     :host ::ng-deep .maplibregl-ctrl-bottom-left { left: 10px; bottom: 10px; }
     :host ::ng-deep .maplibregl-popup { max-width: 280px !important; }
     :host ::ng-deep .maplibregl-popup-content { border-radius: 12px !important; padding: 14px !important; box-shadow: 0 8px 30px rgba(0,0,0,.25) !important; }
-    :host ::ng-deep .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1267dd; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(18,103,221,.25), 0 2px 6px rgba(0,0,0,.35); }
+    :host ::ng-deep .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #0b6b52; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(11, 107, 82,.25), 0 2px 6px rgba(0,0,0,.35); }
   `]
 })
 export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
@@ -472,17 +472,17 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     const count = (color: string) => clients.filter(c => this.markerColor(c) === color).length;
     if (this.colorMode() === 'network') {
       return [
-        { label: 'En línea', color: '#13875a', count: count('#13875a'), hint: 'Con servicio y sin problemas' },
+        { label: 'En línea', color: '#0f7a53', count: count('#0f7a53'), hint: 'Con servicio y sin problemas' },
         { label: 'Con problemas', color: '#b36b12', count: count('#b36b12'), hint: 'Con servicio pero con señal débil u otro aviso' },
         { label: 'Caído', color: '#b42318', count: count('#b42318'), hint: 'Sin servicio en la última lectura' },
-        { label: 'Sin lectura', color: '#8792a0', count: count('#8792a0'), hint: 'La auditoría no tiene datos de hoy de este cliente' },
+        { label: 'Sin lectura', color: '#86938c', count: count('#86938c'), hint: 'La auditoría no tiene datos de hoy de este cliente' },
       ];
     }
     return [
-      { label: 'Activo', color: '#13875a', count: count('#13875a'), hint: 'Cuenta activa y al día' },
+      { label: 'Activo', color: '#0f7a53', count: count('#0f7a53'), hint: 'Cuenta activa y al día' },
       { label: 'Suspendido o con pago pendiente', color: '#b42318', count: count('#b42318'), hint: 'Moroso' },
-      { label: 'Cortado', color: '#8792a0', count: count('#8792a0'), hint: 'Servicio cortado' },
-      { label: 'Otro estado', color: '#1267dd', count: count('#1267dd'), hint: 'Gratis, retirado u otro' },
+      { label: 'Cortado', color: '#86938c', count: count('#86938c'), hint: 'Servicio cortado' },
+      { label: 'Otro estado', color: '#0b6b52', count: count('#0b6b52'), hint: 'Gratis, retirado u otro' },
     ];
   });
 
@@ -955,26 +955,26 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     for (const c of renderClients) {
       const color = this.markerColor(c);
       const net = this.netState().get(c.id);
-      const label = (text: string) => '<strong style="color:#172535">' + text + ':</strong> ';
+      const label = (text: string) => '<strong style="color:#15211c">' + text + ':</strong> ';
       const netLine = net && net.state !== 'unknown'
         ? label('Conexión') + '<span style="color:' + this.netColor(net.state) + ';font-weight:700">' + this.escape(this.netStateLabel(net.state)) + '</span>'
-          + (net.at ? ' <small style="color:#8792a0">(' + this.escape(this.relative(net.at)) + ')</small>' : '') + '<br>'
+          + (net.at ? ' <small style="color:#86938c">(' + this.escape(this.relative(net.at)) + ')</small>' : '') + '<br>'
         : '';
       const popupHtml = `
-        <div style="font-weight:700;color:#172535;font-size:14px;margin-bottom:6px">
+        <div style="font-weight:700;color:#15211c;font-size:14px;margin-bottom:6px">
           ${this.escape(c.nombre || '—')} ${this.badgeFor(c)}
         </div>
-        <div style="font-size:12px;color:#667582;line-height:1.6">
+        <div style="font-size:12px;color:#56665e;line-height:1.6">
           ${netLine}
           ${c.plan ? label('Plan') + this.escape(formatPlanName(c.plan)) + '<br>' : ''}
           ${c.estado ? label('Estado') + this.escape(c.estado) + '<br>' : ''}
           ${c.estadoFacturas ? label('Facturas') + this.escape(c.estadoFacturas) + '<br>' : ''}
-          ${c.ip ? label('IP') + '<span style="font-family:ui-monospace,\'Cascadia Mono\',Consolas,monospace">' + this.escape(c.ip) + '</span><br>' : ''}
+          ${c.ip ? label('IP') + '<span style="font-family:\'IBM Plex Mono\',ui-monospace,monospace">' + this.escape(c.ip) + '</span><br>' : ''}
           ${c.telefono ? label('Teléfono') + this.escape(c.telefono) + '<br>' : ''}
           ${c.zona ? label('Zona') + this.escape(c.zona) + '<br>' : ''}
           ${c.direccion ? '<em>' + this.escape(c.direccion) + '</em><br>' : ''}
           ${c.overlapCount > 1 ? '<strong style="color:#b36b12">Nota:</strong> hay ' + c.overlapCount + ' clientes en este mismo punto; los marcadores se separaron un poco para poder verlos.<br>' : ''}
-          <small style="color:#8792a0">Ubicación: ${c.source === 'wisphub' ? 'WispHub' : 'GPS del técnico'}${c.accuracy ? ' · precisión ±' + Math.round(c.accuracy) + ' m' : ''}</small>
+          <small style="color:#86938c">Ubicación: ${c.source === 'wisphub' ? 'WispHub' : 'GPS del técnico'}${c.accuracy ? ' · precisión ±' + Math.round(c.accuracy) + ' m' : ''}</small>
         </div>
       `;
       const content = document.createElement('div');
@@ -984,7 +984,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       const link = document.createElement('a');
       link.href = `/clients/${c.id}`;
       link.textContent = 'Ver ficha del cliente';
-      link.setAttribute('style', 'display:inline-block;background:#1267dd;color:white;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none');
+      link.setAttribute('style', 'display:inline-block;background:#0b6b52;color:white;padding:6px 12px;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none');
       // Navegación interna (sin recargar toda la aplicación)
       link.addEventListener('click', (event) => {
         if (event.ctrlKey || event.metaKey || event.shiftKey || event.button !== 0) return;
@@ -996,7 +996,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       route.target = '_blank';
       route.rel = 'noopener';
       route.textContent = 'Cómo llegar';
-      route.setAttribute('style', 'display:inline-block;border:1px solid #b9cdea;background:#f2f7ff;color:#1267dd;padding:5px 11px;border-radius:6px;font-size:12px;font-weight:600;text-decoration:none');
+      route.setAttribute('style', 'display:inline-block;border:1px solid #b9cdea;background:#eef6f1;color:#0b6b52;padding:5px 11px;border-radius:9px;font-size:12px;font-weight:600;text-decoration:none');
       actions.appendChild(link);
       actions.appendChild(route);
       content.appendChild(actions);
@@ -1107,14 +1107,14 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       const state = this.netState().get(c.id)?.state;
       if (state === 'offline') return '#b42318';
       if (state === 'degraded') return '#b36b12';
-      if (state === 'stable') return '#13875a';
-      return '#8792a0';
+      if (state === 'stable') return '#0f7a53';
+      return '#86938c';
     }
     return this.colorFor(c);
   }
 
   private netColor(state: NetworkHealthState): string {
-    return state === 'offline' ? '#b42318' : state === 'degraded' ? '#b36b12' : state === 'stable' ? '#13875a' : '#8792a0';
+    return state === 'offline' ? '#b42318' : state === 'degraded' ? '#b36b12' : state === 'stable' ? '#0f7a53' : '#86938c';
   }
 
   private netStateLabel(state: NetworkHealthState): string {
@@ -1185,7 +1185,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
     pin.style.background = color;
     pin.style.border = '2px solid #ffffff';
     pin.style.borderRadius = '50% 50% 50% 0';
-    pin.style.boxShadow = '0 3px 10px rgba(15, 23, 42, 0.45)';
+    pin.style.boxShadow = '0 3px 10px rgba(14, 29, 23, 0.45)';
     pin.style.transform = 'rotate(-45deg)';
     pin.style.transformOrigin = 'center';
 
@@ -1217,9 +1217,9 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   // Color HEX para el pin del cliente
   private colorFor(c: MapClient): string {
     if (c.estado === 'Suspendido' || c.estadoFacturas?.includes('endiente')) return '#b42318'; // rojo
-    if (c.estado === 'Activo') return '#13875a'; // verde
-    if (c.estado === 'Cortado') return '#8792a0'; // gris
-    return '#1267dd'; // azul (otros: Gratis, Retirado, etc.)
+    if (c.estado === 'Activo') return '#0f7a53'; // verde
+    if (c.estado === 'Cortado') return '#86938c'; // gris
+    return '#0b6b52'; // azul (otros: Gratis, Retirado, etc.)
   }
 
   fitAll() {
@@ -1241,10 +1241,10 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
   private badgeFor(c: MapClient): string {
     const badge = (bg: string, fg: string, text: string) =>
       `<span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-left:4px;background:${bg};color:${fg}">${text}</span>`;
-    if (c.estado === 'Activo' && !c.estadoFacturas?.includes('endiente')) return badge('#e9f8f1', '#13875a', 'Activo');
+    if (c.estado === 'Activo' && !c.estadoFacturas?.includes('endiente')) return badge('#e9f8f1', '#0f7a53', 'Activo');
     if (c.estado === 'Suspendido') return badge('#fff0ef', '#b42318', 'Suspendido');
     if (c.estadoFacturas?.includes('endiente')) return badge('#fff0ef', '#b42318', 'Pago pendiente');
-    return badge('#eef1f4', '#52606d', this.escape(c.estado || 'Sin estado'));
+    return badge('#edf1ed', '#52606d', this.escape(c.estado || 'Sin estado'));
   }
   private escape(s: any): string {
     return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

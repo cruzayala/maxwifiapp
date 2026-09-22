@@ -1,6 +1,7 @@
 import { Component, OnInit, effect, inject, signal } from '@angular/core';
 import { RouterOutlet, NavigationEnd, Router } from '@angular/router';
 import { SidebarComponent } from './components/layout/sidebar';
+import { MobileTabbarComponent } from './components/layout/mobile-tabbar';
 import { ToastComponent } from './components/toast/toast';
 import { ReceiptPreviewComponent } from './components/receipt-preview/receipt-preview';
 import { SyncService } from './services/sync.service';
@@ -13,7 +14,7 @@ import { filter } from 'rxjs/operators';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, SidebarComponent, ToastComponent, ReceiptPreviewComponent],
+  imports: [RouterOutlet, SidebarComponent, MobileTabbarComponent, ToastComponent, ReceiptPreviewComponent],
   template: `
     <div class="app-layout" [class.no-sidebar]="!showLayout()">
       @if (showLayout()) {
@@ -26,6 +27,7 @@ import { filter } from 'rxjs/operators';
         <router-outlet />
       </main>
     </div>
+    @if (showLayout()) { <app-mobile-tabbar /> }
     <app-toast />
     <app-receipt-preview />
 
@@ -36,23 +38,23 @@ import { filter } from 'rxjs/operators';
   `,
   styles: [`
     .app-layout { display: flex; min-height: 100vh; }
-    .main-content { flex: 1; margin-left: 260px; background: #f8fafc; min-height: 100vh; min-width: 0; }
+    .main-content { flex: 1; margin-left: 260px; background: var(--isp-canvas); min-height: 100vh; min-width: 0; }
     .main-content.full-width { margin-left: 0; }
 
     .sidebar-overlay {
       position: fixed; inset: 0;
-      background: rgba(0, 0, 0, 0.4);
+      background: rgba(8, 18, 14, 0.45);
       z-index: 99;
-      backdrop-filter: blur(2px);
+      backdrop-filter: blur(3px);
       animation: fadeIn 0.2s ease;
     }
     @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
     .global-sync-bar {
       position: fixed; top: 74px; right: 18px;
-      min-height: 38px; background: #172331; color: white;
+      min-height: 40px; background: #12241c; color: white;
       display: flex; align-items: center; justify-content: center;
-      gap: 9px; padding: 0 13px; border-radius: 6px; font-size: 12px;
+      gap: 9px; padding: 0 13px; border-radius: 9px; font-size: 12px;
       box-shadow: 0 8px 20px rgba(16, 24, 40, .18); z-index: 200;
       opacity: 0; visibility: hidden; transform: translateY(-6px); transition: .2s ease;
     }
@@ -65,7 +67,9 @@ import { filter } from 'rxjs/operators';
     @keyframes spin { to { transform: rotate(360deg); } }
 
     @media (max-width: 1024px) {
-      .main-content { margin-left: 0; }
+      /* Espacio para la barra inferior del celular. */
+      .main-content { margin-left: 0; padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
+      .main-content.full-width { padding-bottom: 0; }
       .global-sync-bar { top: 66px; right: 10px; max-width: calc(100vw - 20px); }
     }
   `]

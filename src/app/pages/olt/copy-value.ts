@@ -19,9 +19,9 @@ import { ToastService } from '../../services/toast.service';
     :host { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0; vertical-align: middle; }
     .value { min-width: 0; overflow-wrap: anywhere; }
     .value.empty { color: #8a969f; }
-    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
-    .copy { width: 24px; height: 24px; flex: 0 0 auto; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #7a8893; cursor: pointer; }
-    .copy:hover, .copy:focus-visible { border-color: #cfd8df; background: #edf4ff; color: #1267dd; outline: 0; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .copy { width: 24px; height: 24px; flex: 0 0 auto; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: #7a8893; cursor: pointer; }
+    .copy:hover, .copy:focus-visible { border-color: #cfd8df; background: #e6f2ec; color: #0b6b52; outline: 0; }
   `],
 })
 export class CopyValueComponent {

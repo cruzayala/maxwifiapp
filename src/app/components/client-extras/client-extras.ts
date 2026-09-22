@@ -147,62 +147,62 @@ interface WebActivityResp {
     </div>
   `,
   styles: [`
-    .card { background: white; border: 1px solid #dfe5ea; border-radius: 8px; padding: 20px; margin-bottom: 16px; color: #334250; }
+    .card { background: white; border: 1px solid #e0e6e1; border-radius: 12px; padding: 20px; margin-bottom: 16px; color: #2d3b34; }
     .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 12px; flex-wrap: wrap; }
-    .card-head h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 700; color: #172535; }
-    .card-head h3 svg { color: #1267dd; flex: 0 0 auto; }
-    .card-head select { min-height: 34px; padding: 6px 10px; border: 1px solid #ccd6de; border-radius: 6px; font-size: 13px; background: white; color: #334250; cursor: pointer; }
-    .hint { color: #667582; font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
+    .card-head h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 700; color: #15211c; }
+    .card-head h3 svg { color: #0b6b52; flex: 0 0 auto; }
+    .card-head select { min-height: 34px; padding: 6px 10px; border: 1px solid #cfd8d2; border-radius: 9px; font-size: 13px; background: white; color: #2d3b34; cursor: pointer; }
+    .hint { color: #56665e; font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
     .hint.loading { display: flex; align-items: center; gap: 8px; }
-    .spinner { width: 16px; height: 16px; border: 2px solid #dfe5ea; border-top-color: #1267dd; border-radius: 50%; animation: spin .8s linear infinite; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #e0e6e1; border-top-color: #0b6b52; border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
-    .btn-edit { background: #fff; color: #1267dd; border: 1px solid #ccd6de; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; }
-    .btn-edit:hover { background: #f2f7ff; border-color: #1267dd; }
+    .btn-edit { background: #fff; color: #0b6b52; border: 1px solid #cfd8d2; padding: 6px 12px; border-radius: 9px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .btn-edit:hover { background: #eef6f1; border-color: #0b6b52; }
 
     .form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form label { display: flex; flex-direction: column; gap: 4px; }
     .form label.full { grid-column: 1 / -1; }
-    .form span { font-size: 12px; color: #334250; font-weight: 600; }
-    .form input, .form textarea { padding: 10px 12px; border: 1px solid #ccd6de; border-radius: 6px; font-size: 14px; outline: none; resize: vertical; font-family: inherit; color: #172535; }
-    .form input:focus, .form textarea:focus { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221, 0.1); }
+    .form span { font-size: 12px; color: #2d3b34; font-weight: 600; }
+    .form input, .form textarea { padding: 10px 12px; border: 1px solid #cfd8d2; border-radius: 9px; font-size: 14px; outline: none; resize: vertical; font-family: inherit; color: #15211c; }
+    .form input:focus, .form textarea:focus { border-color: #0b6b52; box-shadow: 0 0 0 3px rgba(11, 107, 82, 0.1); }
     .actions { grid-column: 1 / -1; display: flex; gap: 10px; margin-top: 4px; }
-    .btn { padding: 10px 18px; border-radius: 6px; border: 1px solid transparent; font-weight: 600; cursor: pointer; font-size: 14px; }
+    .btn { padding: 10px 18px; border-radius: 9px; border: 1px solid transparent; font-weight: 600; cursor: pointer; font-size: 14px; }
     .btn.small { padding: 6px 12px; font-size: 12px; }
     .btn:disabled { opacity: .6; cursor: not-allowed; }
-    .btn-primary { background: #1267dd; color: white; }
-    .btn-primary:hover:not(:disabled) { background: #0d58c0; }
-    .btn-outline { background: white; border-color: #ccd6de; color: #334250; }
-    .btn-outline:hover:not(:disabled) { background: #f8fafc; }
+    .btn-primary { background: #0b6b52; color: white; }
+    .btn-primary:hover:not(:disabled) { background: #08523f; }
+    .btn-outline { background: white; border-color: #cfd8d2; color: #2d3b34; }
+    .btn-outline:hover:not(:disabled) { background: #f4f6f2; }
 
     .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
     .info-item { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
     .info-item.full { grid-column: 1 / -1; }
-    .lbl { font-size: 11px; color: #667582; text-transform: uppercase; font-weight: 700; }
-    .val { font-size: 14px; color: #172535; font-weight: 500; overflow-wrap: anywhere; }
+    .lbl { font-size: 11px; color: #56665e; text-transform: uppercase; font-weight: 700; }
+    .val { font-size: 14px; color: #15211c; font-weight: 500; overflow-wrap: anywhere; }
     .val.empty { color: #8a98a5; font-style: italic; font-weight: 400; font-size: 13px; }
-    .val.notes { white-space: pre-wrap; background: #fff6e8; padding: 8px 12px; border-radius: 6px; font-size: 13px; border: 1px solid #f3d19e; }
+    .val.notes { white-space: pre-wrap; background: #fff6e8; padding: 8px 12px; border-radius: 9px; font-size: 13px; border: 1px solid #f3d19e; }
 
-    .empty-web { background: #f8fafc; border: 1px solid #dfe5ea; border-radius: 8px; padding: 16px; }
+    .empty-web { background: #f4f6f2; border: 1px solid #e0e6e1; border-radius: 12px; padding: 16px; }
     .empty-web.error { display: flex; gap: 10px; align-items: flex-start; background: #fff0ef; border-color: #f0b4ae; }
     .empty-web.error > svg { color: #b42318; flex: 0 0 auto; margin-top: 2px; }
     .empty-web p { margin: 0 0 6px; }
-    .empty-web details summary { cursor: pointer; color: #1267dd; font-size: 12px; font-weight: 600; }
+    .empty-web details summary { cursor: pointer; color: #0b6b52; font-size: 12px; font-weight: 600; }
     .empty-web details .hint { margin: 8px 0 0; font-size: 12px; }
-    .empty-web code { background: #172535; color: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; overflow-wrap: anywhere; }
+    .empty-web code { background: #15211c; color: #eef2ee; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; overflow-wrap: anywhere; }
 
     .kpi-row { display: flex; gap: 12px; margin-bottom: 14px; }
-    .kpi { background: #f8fafc; border: 1px solid #edf0f2; border-radius: 8px; padding: 12px 16px; flex: 1; display: flex; flex-direction: column; }
-    .kpi .n { font-size: 20px; font-weight: 700; color: #172535; }
-    .kpi .l { font-size: 11px; color: #667582; text-transform: uppercase; font-weight: 700; }
-    h4 { margin: 0 0 8px; color: #172535; font-size: 14px; }
+    .kpi { background: #f4f6f2; border: 1px solid #ecf0ec; border-radius: 12px; padding: 12px 16px; flex: 1; display: flex; flex-direction: column; }
+    .kpi .n { font-size: 20px; font-weight: 700; color: #15211c; }
+    .kpi .l { font-size: 11px; color: #56665e; text-transform: uppercase; font-weight: 700; }
+    h4 { margin: 0 0 8px; color: #15211c; font-size: 14px; }
 
     .table-scroll { overflow-x: auto; }
     .data-table-compact { width: 100%; border-collapse: collapse; }
-    .data-table-compact th { text-align: left; font-size: 11px; color: #667582; text-transform: uppercase; padding: 8px; background: #f8fafc; border-bottom: 1px solid #dfe5ea; }
-    .data-table-compact td { padding: 8px; font-size: 13px; border-bottom: 1px solid #edf0f2; }
-    .data-table-compact td.dom { color: #1267dd; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; word-break: break-all; }
+    .data-table-compact th { text-align: left; font-size: 11px; color: #56665e; text-transform: uppercase; padding: 8px; background: #f4f6f2; border-bottom: 1px solid #e0e6e1; }
+    .data-table-compact td { padding: 8px; font-size: 13px; border-bottom: 1px solid #ecf0ec; }
+    .data-table-compact td.dom { color: #0b6b52; font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; word-break: break-all; }
     .data-table-compact .num { text-align: right; }
 
     @media (max-width: 768px) {

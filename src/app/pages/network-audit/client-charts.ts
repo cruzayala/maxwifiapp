@@ -33,20 +33,20 @@ const H = 120;
           }
         </svg>
         <div class="axis"><span>{{ firstLabel() }}</span><span>{{ lastLabel() }}</span></div>
-        <p class="legend"><span><i style="background:#13875a"></i>Estable</span><span><i style="background:#b36b12"></i>Degradado</span><span><i style="background:#b42318"></i>Sin servicio</span></p>
+        <p class="legend"><span><i style="background:#0f7a53"></i>Estable</span><span><i style="background:#b36b12"></i>Degradado</span><span><i style="background:#b42318"></i>Sin servicio</span></p>
 
         <h4>Consumo de bajada <span>máx. {{ traffic().max | number:'1.0-1' }} Mbps</span></h4>
         <div class="chart">
           <svg [attr.viewBox]="'0 0 ' + w + ' ' + h" preserveAspectRatio="none" role="img" [attr.aria-label]="'Consumo de bajada: promedio ' + (traffic().avg | number:'1.1-1') + ' Mbps'">
-            <path [attr.d]="traffic().area" fill="#1267dd" fill-opacity=".14" />
-            <path [attr.d]="traffic().line" fill="none" stroke="#1267dd" stroke-width="1.6" vector-effect="non-scaling-stroke" />
+            <path [attr.d]="traffic().area" fill="#0b6b52" fill-opacity=".14" />
+            <path [attr.d]="traffic().line" fill="none" stroke="#0b6b52" stroke-width="1.6" vector-effect="non-scaling-stroke" />
             @if (traffic().limitY != null) {
               <line x1="0" [attr.x2]="w" [attr.y1]="traffic().limitY" [attr.y2]="traffic().limitY" stroke="#b36b12" stroke-width="1.2" stroke-dasharray="5 4" vector-effect="non-scaling-stroke" />
             }
           </svg>
         </div>
         <p class="legend">
-          <span><i style="background:#1267dd"></i>Bajada usada (promedio {{ traffic().avg | number:'1.1-1' }} Mbps)</span>
+          <span><i style="background:#0b6b52"></i>Bajada usada (promedio {{ traffic().avg | number:'1.1-1' }} Mbps)</span>
           @if (traffic().limit) { <span><i class="dash"></i>Límite del plan {{ traffic().limit | number:'1.0-1' }} Mbps</span> }
         </p>
         @if (traffic().saturatedPct >= 10) {
@@ -86,34 +86,34 @@ const H = 120;
   `,
   styles: [`
     :host { display: block; }
-    .block { margin: 0 16px 14px; padding: 14px; background: #fff; border: 1px solid #dce2e8; border-radius: 8px; }
-    h4 { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0 6px; font-size: 13px; color: #172535; }
+    .block { margin: 0 16px 14px; padding: 14px; background: #fff; border: 1px solid #dce2e8; border-radius: 12px; }
+    h4 { display: flex; justify-content: space-between; gap: 8px; margin: 14px 0 6px; font-size: 13px; color: #15211c; }
     h4:first-child, .outage-kpis + h4 { margin-top: 12px; }
-    h4 span { font-size: 11px; font-weight: 500; color: #8792a0; }
+    h4 span { font-size: 11px; font-weight: 500; color: #86938c; }
     .outage-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
-    .outage-kpis div { display: grid; gap: 2px; padding: 8px 10px; border-radius: 6px; background: #f8fafc; min-width: 0; }
-    .outage-kpis small { font-size: 11px; color: #667582; }
-    .outage-kpis strong { font-size: 15px; color: #172535; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .outage-kpis div { display: grid; gap: 2px; padding: 8px 10px; border-radius: 9px; background: #f4f6f2; min-width: 0; }
+    .outage-kpis small { font-size: 11px; color: #56665e; }
+    .outage-kpis strong { font-size: 15px; color: #15211c; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .outage-kpis .bad { background: #fff0ef; } .outage-kpis .bad strong { color: #b42318; }
-    .strip { display: block; width: 100%; height: 22px; border-radius: 4px; overflow: hidden; background: #edf0f3; }
-    .axis { display: flex; justify-content: space-between; font-size: 11px; color: #8792a0; margin-top: 3px; }
-    .chart { height: 110px; border-bottom: 1px solid #dfe5ea; background: linear-gradient(#f1f3f5 1px, transparent 1px) 0 0 / 100% 25%; }
+    .strip { display: block; width: 100%; height: 22px; border-radius: 4px; overflow: hidden; background: #ecf0ec; }
+    .axis { display: flex; justify-content: space-between; font-size: 11px; color: #86938c; margin-top: 3px; }
+    .chart { height: 110px; border-bottom: 1px solid #e0e6e1; background: linear-gradient(#f1f3f5 1px, transparent 1px) 0 0 / 100% 25%; }
     .chart svg { display: block; width: 100%; height: 100%; }
-    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; font-size: 11px; color: #667582; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; font-size: 11px; color: #56665e; }
     .legend span { display: inline-flex; align-items: center; gap: 5px; }
     .legend i { width: 10px; height: 10px; border-radius: 2px; }
     .legend i.dash { height: 0; border-top: 2px dashed #b36b12; border-radius: 0; }
-    .tip { margin: 8px 0 0; padding: 8px 10px; border-radius: 6px; background: #fff6e8; color: #7a4a0c; font-size: 12px; line-height: 1.5; }
+    .tip { margin: 8px 0 0; padding: 8px 10px; border-radius: 9px; background: #fff6e8; color: #7a4a0c; font-size: 12px; line-height: 1.5; }
     .episodes { list-style: none; margin: 0; padding: 0; }
-    .episodes li { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f1f3f5; font-size: 12px; color: #334250; }
+    .episodes li { display: grid; grid-template-columns: 10px 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #f1f3f5; font-size: 12px; color: #2d3b34; }
     .episodes li:last-child { border-bottom: 0; }
     .dot { width: 8px; height: 8px; border-radius: 50%; }
-    .days { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding-top: 4px; border-bottom: 1px solid #dfe5ea; }
+    .days { display: flex; align-items: flex-end; gap: 2px; height: 70px; padding-top: 4px; border-bottom: 1px solid #e0e6e1; }
     .days i { flex: 1; min-width: 3px; border-radius: 2px 2px 0 0; }
-    i.excellent { background: #13875a; } i.good { background: #6cc49c; } i.fair { background: #e0a043; } i.poor { background: #b42318; }
-    .compare { margin: 8px 0 0; font-size: 12px; color: #667582; }
-    .compare b { color: #172535; }
-    .compare .up { color: #13875a; font-weight: 700; } .compare .down { color: #b42318; font-weight: 700; }
+    i.excellent { background: #0f7a53; } i.good { background: #6cc49c; } i.fair { background: #e0a043; } i.poor { background: #b42318; }
+    .compare { margin: 8px 0 0; font-size: 12px; color: #56665e; }
+    .compare b { color: #15211c; }
+    .compare .up { color: #0f7a53; font-weight: 700; } .compare .down { color: #b42318; font-weight: 700; }
     @media (max-width: 650px) { .block { margin: 0 12px 12px; } .outage-kpis { grid-template-columns: 1fr 1fr; } }
   `],
 })

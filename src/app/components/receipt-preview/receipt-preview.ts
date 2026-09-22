@@ -69,7 +69,7 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       position: fixed;
       inset: 0;
       z-index: 1000;
-      background: rgba(17, 26, 36, 0.5);
+      background: rgba(14, 29, 23, 0.5);
       backdrop-filter: blur(2px);
     }
 
@@ -85,9 +85,9 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       max-height: 92vh;
       overflow: hidden;
       background: #fff;
-      border: 1px solid #dfe5ea;
-      border-radius: 8px;
-      box-shadow: 0 24px 60px rgba(17, 26, 36, 0.28);
+      border: 1px solid #e0e6e1;
+      border-radius: 12px;
+      box-shadow: 0 24px 60px rgba(14, 29, 23, 0.28);
       transform: translate(-50%, -50%);
       animation: slideUp 0.2s ease;
     }
@@ -104,11 +104,11 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       justify-content: space-between;
       gap: 12px;
       padding: 14px 18px;
-      border-bottom: 1px solid #dfe5ea;
+      border-bottom: 1px solid #e0e6e1;
     }
     .preview-header > div { min-width: 0; }
-    .preview-header h3 { margin: 0; color: #172535; font-size: 16px; font-weight: 700; }
-    .preview-header p { margin: 2px 0 0; overflow: hidden; color: #667582; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+    .preview-header h3 { margin: 0; color: #15211c; font-size: 16px; font-weight: 700; }
+    .preview-header p { margin: 2px 0 0; overflow: hidden; color: #56665e; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
     .close-btn {
       display: grid;
       place-items: center;
@@ -117,13 +117,13 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       height: 34px;
       padding: 0;
       border: 1px solid transparent;
-      border-radius: 6px;
+      border-radius: 9px;
       background: none;
-      color: #667582;
+      color: #56665e;
       cursor: pointer;
       transition: background 0.15s, color 0.15s;
     }
-    .close-btn:hover { background: #f1f4f6; color: #172535; }
+    .close-btn:hover { background: #f1f4f6; color: #15211c; }
 
     .preview-controls {
       display: flex;
@@ -132,40 +132,40 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       flex-wrap: wrap;
       gap: 12px;
       padding: 10px 18px;
-      border-bottom: 1px solid #dfe5ea;
-      background: #f8fafc;
+      border-bottom: 1px solid #e0e6e1;
+      background: #f4f6f2;
     }
     .control-group { display: flex; align-items: center; gap: 10px; }
-    .control-label { color: #667582; font-size: 12px; font-weight: 600; }
+    .control-label { color: #56665e; font-size: 12px; font-weight: 600; }
 
     .paper-toggle {
       display: flex;
       overflow: hidden;
-      border: 1px solid #ccd6de;
-      border-radius: 6px;
+      border: 1px solid #cfd8d2;
+      border-radius: 9px;
       background: #fff;
     }
     .paper-toggle button {
       padding: 6px 14px;
       border: none;
       background: none;
-      color: #334250;
+      color: #2d3b34;
       font: inherit;
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       transition: background 0.15s, color 0.15s;
     }
-    .paper-toggle button + button { border-left: 1px solid #ccd6de; }
-    .paper-toggle button:hover:not(.active) { background: #f2f7ff; }
-    .paper-toggle button.active { background: #1267dd; color: #fff; }
+    .paper-toggle button + button { border-left: 1px solid #cfd8d2; }
+    .paper-toggle button:hover:not(.active) { background: #eef6f1; }
+    .paper-toggle button.active { background: #0b6b52; color: #fff; }
     .format-pill {
       display: inline-flex;
       align-items: center;
       padding: 5px 12px;
-      border-radius: 6px;
-      background: #edf4ff;
-      color: #1267dd;
+      border-radius: 9px;
+      background: #e6f2ec;
+      color: #0b6b52;
       font-size: 13px;
       font-weight: 700;
     }
@@ -179,7 +179,7 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       min-height: 36px;
       padding: 0 16px;
       border: 1px solid transparent;
-      border-radius: 6px;
+      border-radius: 9px;
       font: inherit;
       font-size: 13px;
       font-weight: 600;
@@ -187,10 +187,10 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       transition: background 0.15s, border-color 0.15s, color 0.15s;
     }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-    .btn-primary { background: #1267dd; color: #fff; }
-    .btn-primary:hover:not(:disabled) { background: #0d58c0; }
-    .btn-outline { background: #fff; border-color: #ccd6de; color: #334250; }
-    .btn-outline:hover { border-color: #667582; color: #172535; }
+    .btn-primary { background: #0b6b52; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #08523f; }
+    .btn-outline { background: #fff; border-color: #cfd8d2; color: #2d3b34; }
+    .btn-outline:hover { border-color: #56665e; color: #15211c; }
 
     .preview-body {
       display: flex;
@@ -206,7 +206,7 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
       padding: 4px;
       border-radius: 2px;
       background: #fff;
-      box-shadow: 0 4px 18px rgba(17, 26, 36, 0.14);
+      box-shadow: 0 4px 18px rgba(14, 29, 23, 0.14);
     }
     .preview-frame {
       display: block;
@@ -228,9 +228,9 @@ import { LucidePrinter, LucideX } from '@lucide/angular';
 
     .preview-footer {
       padding: 9px 18px;
-      border-top: 1px solid #dfe5ea;
+      border-top: 1px solid #e0e6e1;
     }
-    .paper-info { color: #667582; font-size: 11px; }
+    .paper-info { color: #56665e; font-size: 11px; }
 
     @media (max-width: 860px) {
       .paper-invoice { transform: scale(0.72); margin-bottom: -300px; }

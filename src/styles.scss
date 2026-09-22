@@ -1,4 +1,30 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+
+/* ═══════════════════════════════════════════════════════════════
+   Rediseño ISP Max: una sola marca para la web, Android y ONU Studio.
+   Verde es sano y es la acción principal; ámbar pide atención; rojo es
+   deuda o falla. Títulos en Bricolage, texto en Plex, datos en Plex Mono.
+   ═══════════════════════════════════════════════════════════════ */
+:root {
+  --isp-primary: #0b6b52;
+  --isp-primary-dark: #08523f;
+  --isp-primary-soft: #e6f2ec;
+  --isp-ink: #15211c;
+  --isp-text: #2d3b34;
+  --isp-muted: #56665e;
+  --isp-line: #e0e6e1;
+  --isp-canvas: #f4f6f2;
+  --isp-surface: #ffffff;
+  --isp-rail: #0e1d17;
+  --isp-amber: #8f5400;
+  --isp-red: #b42318;
+  --isp-radius: 14px;
+  --isp-shadow: 0 1px 2px rgba(14, 29, 23, 0.04), 0 8px 24px rgba(14, 29, 23, 0.05);
+  --isp-shadow-lift: 0 2px 4px rgba(14, 29, 23, 0.05), 0 16px 36px rgba(14, 29, 23, 0.09);
+  --isp-display: 'Bricolage Grotesque', 'IBM Plex Sans', system-ui, sans-serif;
+  --isp-body: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --isp-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -7,12 +33,56 @@
 html, body {
   margin: 0;
   padding: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: #f8fafc;
-  color: #334155;
+  font-family: var(--isp-body);
+  background: var(--isp-canvas);
+  color: var(--isp-text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Títulos con carácter; el cuerpo queda sobrio. */
+h1, h2, h3, .page-title {
+  font-family: var(--isp-display);
+  letter-spacing: -0.2px;
+  color: var(--isp-ink);
+}
+h1 { font-weight: 600; }
+h2, h3 { font-weight: 600; }
+
+/* Datos que se leen carácter por carácter: IP, seriales, montos. */
+code, kbd, .mono, .ip, .serial, .money, .amount { font-family: var(--isp-mono); }
+
+/* Foco visible y amable para teclado. */
+:focus-visible {
+  outline: 2px solid var(--isp-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Botones y campos: transiciones suaves, sin saltos. */
+button, a, input, select, textarea { transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, color .16s ease, transform .12s ease; }
+button:not(:disabled):active { transform: translateY(1px); }
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+select:focus, textarea:focus {
+  border-color: var(--isp-primary) !important;
+  box-shadow: 0 0 0 3px rgba(11, 107, 82, 0.14) !important;
+  outline: none;
+}
+input[type="checkbox"], input[type="radio"], input[type="range"] { accent-color: var(--isp-primary); }
+
+/* Tarjetas y paneles de todas las páginas: borde fino y sombra suave. */
+.card, .stat-card, .info-card, .kpi-card, .panel, .data-panel, .table-container, .section-card, .metric-card, .summary-card {
+  box-shadow: var(--isp-shadow);
+}
+
+/* Entrada suave de cada página. */
+main, .page { animation: isp-page-in .28s ease both; }
+@keyframes isp-page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  main, .page { animation: none; }
+  * { transition: none !important; }
 }
 
 ::-webkit-scrollbar {
@@ -25,17 +95,17 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #cdd6d0;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #8d9a93;
 }
 
 ::selection {
-  background: #cfe0fb;
-  color: #0b3f8a;
+  background: #cfe6da;
+  color: #063f30;
 }
 
 a { color: inherit; }
@@ -73,7 +143,7 @@ button, a, .nav-item, input, select, textarea {
 
   .data-table tr {
     background: white;
-    border: 1px solid #e2e8f0;
+    border: 1px solid #e0e6e1;
     border-radius: 12px;
     margin-bottom: 10px;
     padding: 12px;
@@ -85,7 +155,7 @@ button, a, .nav-item, input, select, textarea {
     justify-content: space-between;
     align-items: center;
     padding: 6px 0 !important;
-    border-bottom: 1px solid #f1f5f9 !important;
+    border-bottom: 1px solid #eef2ee !important;
     text-align: right;
     font-size: 13px;
   }
@@ -97,7 +167,7 @@ button, a, .nav-item, input, select, textarea {
   .data-table td:before {
     content: attr(data-label);
     font-weight: 600;
-    color: #64748b;
+    color: #5d6d65;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -240,7 +310,6 @@ button, a, .nav-item, input, select, textarea {
 /* NAVBAR sticky compacto */
 @media (max-width: 768px) {
   .navbar { padding: 10px 14px !important; }
-  .search-box { display: none !important; } /* search en navbar oculto, usar página específica */
   .menu-btn { display: flex !important; }
 }
 
@@ -263,10 +332,10 @@ button, a, .nav-item, input, select, textarea {
   right: 20px;
   width: 56px; height: 56px;
   border-radius: 50%;
-  background: #1267dd;
+  background: #0b6b52;
   color: white;
   border: none;
-  box-shadow: 0 6px 16px rgba(18,103,221,0.35);
+  box-shadow: 0 6px 16px rgba(11, 107, 82,0.35);
   display: none;
   align-items: center;
   justify-content: center;
@@ -280,7 +349,7 @@ button, a, .nav-item, input, select, textarea {
 
 /* Safe area para iOS notch */
 @media (max-width: 768px) {
-  .navbar, .page, .main-content {
+  .page {
     padding-left: max(env(safe-area-inset-left), 12px);
     padding-right: max(env(safe-area-inset-right), 12px);
   }
@@ -292,14 +361,10 @@ button, a, .nav-item, input, select, textarea {
   .sync-bar { left: 0 !important; }
 }
 
-/* Login: ya tiene max-width responsive, pero ajustar margin */
-@media (max-width: 480px) {
-  .login-card { padding: 28px 20px !important; }
-  .brand h1 { font-size: 22px !important; }
-}
+
 // MikroTik queue editor is rendered as a page-level dialog.
 .modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 20px; background: rgba(17, 24, 39, .48); }
-.queue-modal { width: min(520px, 100%); border: 1px solid #cad2dd; border-radius: 8px; background: #fff; box-shadow: 0 20px 55px rgba(15, 23, 42, .2); overflow: hidden; }
+.queue-modal { width: min(520px, 100%); border: 1px solid #cad2dd; border-radius: 8px; background: #fff; box-shadow: 0 20px 55px rgba(14, 29, 23, .2); overflow: hidden; }
 .queue-modal > header { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 15px 17px; border-bottom: 1px solid #e5e9ef; }
 .queue-modal header > div { display: flex; align-items: center; gap: 10px; }
 .queue-modal h2 { margin: 0; color: #172033; font-size: 14px; font-weight: 720; }
@@ -319,12 +384,12 @@ button, a, .nav-item, input, select, textarea {
 .unit-input { position: relative; }
 .unit-input input { padding-right: 48px !important; }
 .unit-input em { position: absolute; right: 10px; top: 11px; color: #7a8798; font-size: 12px; font-style: normal; }
-.switch-row { grid-template-columns: auto 1fr !important; align-items: center; padding: 10px; border: 1px solid #e0e5ec; border-radius: 6px; background: #f8fafb; }
+.switch-row { grid-template-columns: auto 1fr !important; align-items: center; padding: 10px; border: 1px solid #e0e5ec; border-radius: 6px; background: #f5f7f4; }
 .switch-row input { width: 16px; height: 16px; accent-color: #2d6172; }
 .switch-row > span { display: flex; flex-direction: column; }
 .switch-row strong { color: #344158; font-size: 11px; }
 .switch-row small { margin-top: 1px; color: #7e899a; font-size: 11px; }
-.queue-modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 17px; border-top: 1px solid #e5e9ef; background: #f8fafb; }
+.queue-modal > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 17px; border-top: 1px solid #e5e9ef; background: #f5f7f4; }
 .queue-modal .save-button { color: #fff; border-color: #1f5e68; background: #1f6b72; }
 .queue-modal .save-button:hover { background: #195b61; }
 .queue-modal .save-button:disabled { opacity: .55; cursor: not-allowed; }
@@ -451,7 +516,7 @@ button, a, .nav-item, input, select, textarea {
 }
 
 /* OLT commercial plan reconciliation is shared here to keep the page bundle lean. */
-.plan-sync-loading { min-height: 72px; margin-bottom: 14px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid #dfe4e8; background: #f8fafb; color: #687781; font-size: 11px; }
+.plan-sync-loading { min-height: 72px; margin-bottom: 14px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 1px solid #e0e5e1; background: #f5f7f4; color: #687781; font-size: 11px; }
 .plan-sync-panel { margin-bottom: 16px; border: 1px solid #cbd9df; background: #fff; }
 .plan-sync-panel > header { min-height: 68px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; background: #f3f7f8; border-bottom: 1px solid #dce4e8; }
 .plan-sync-panel > header > div:first-child { display: grid; gap: 3px; }
@@ -465,7 +530,7 @@ button, a, .nav-item, input, select, textarea {
 .plan-sync-summary .warning { border-color: #eccb8e; background: #fff8e9; }
 .plan-sync-summary .warning b { color: #955508; }
 .plan-sync-panel .table-wrap { border: 0; border-radius: 0; }
-.plan-sync-confirm { padding: 12px 14px; display: flex; align-items: end; justify-content: flex-end; gap: 10px; border-top: 1px solid #dfe4e8; background: #fafbfc; }
+.plan-sync-confirm { padding: 12px 14px; display: flex; align-items: end; justify-content: flex-end; gap: 10px; border-top: 1px solid #e0e5e1; background: #fafbfc; }
 .plan-sync-confirm label { width: min(310px, 100%); display: grid; gap: 5px; }
 .plan-sync-confirm label span { color: #64737d; font-size: 11px; font-weight: 750; text-transform: uppercase; }
 .plan-sync-confirm input { height: 38px; border: 1px solid #cfd7dd; border-radius: 6px; padding: 0 10px; }

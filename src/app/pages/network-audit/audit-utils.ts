@@ -128,5 +128,5 @@ export function fmtDateTime(ms: number): string {
 }
 
 export function stateColor(state: HealthLike): string {
-  return ({ stable: '#13875a', degraded: '#b36b12', offline: '#b42318' } as Record<string, string>)[state] || '#ccd6de';
+  return ({ stable: '#0f7a53', degraded: '#b36b12', offline: '#b42318' } as Record<string, string>)[state] || '#cfd8d2';
 }

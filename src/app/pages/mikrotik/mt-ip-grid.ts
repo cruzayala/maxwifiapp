@@ -98,47 +98,47 @@ const MAX_BLOCKS_PER_NETWORK = 64;
   `,
   styles: [`
     :host { display: block; margin-bottom: 10px; }
-    .toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid #d7dee7; border-radius: 6px; background: #fff; color: #334250; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
+    .toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid #d7dee7; border-radius: 9px; background: #fff; color: #2d3b34; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; }
     .toggle:hover { border-color: #8291a5; }
-    .empty { padding: 20px 16px; color: #667582; font-size: 12px; }
-    .notice { margin: 10px 14px 0; padding: 8px 10px; border-radius: 6px; background: #fff6e8; color: #8a520e; font-size: 12px; }
+    .empty { padding: 20px 16px; color: #56665e; font-size: 12px; }
+    .notice { margin: 10px 14px 0; padding: 8px 10px; border-radius: 9px; background: #fff6e8; color: #8a520e; font-size: 12px; }
     .blocks { display: flex; gap: 6px; padding: 12px 14px 0; overflow-x: auto; }
-    .blocks button { flex: 0 0 150px; padding: 8px 10px; border: 1px solid #dfe5ea; border-radius: 6px; background: #fff; color: #334250; text-align: left; font: inherit; cursor: pointer; }
+    .blocks button { flex: 0 0 150px; padding: 8px 10px; border: 1px solid #e0e6e1; border-radius: 9px; background: #fff; color: #2d3b34; text-align: left; font: inherit; cursor: pointer; }
     .blocks button:hover { border-color: #9eabba; }
-    .blocks button.active { border-color: #1267dd; box-shadow: inset 0 0 0 1px #1267dd; background: #f2f7ff; }
-    .blocks strong { display: block; font: 700 12px ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .blocks button.active { border-color: #0b6b52; box-shadow: inset 0 0 0 1px #0b6b52; background: #eef6f1; }
+    .blocks strong { display: block; font: 700 12px 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
     .blocks i { display: block; height: 4px; margin: 6px 0 4px; border-radius: 3px; background: #e8edf2; overflow: hidden; }
-    .blocks i b { display: block; height: 100%; background: #1267dd; }
+    .blocks i b { display: block; height: 100%; background: #0b6b52; }
     .blocks i b.full { background: #b42318; }
-    .blocks small { color: #667582; font-size: 11px; }
+    .blocks small { color: #56665e; font-size: 11px; }
     .body { display: grid; grid-template-columns: minmax(0, 560px) minmax(220px, 1fr); gap: 18px; padding: 12px 14px 14px; }
     .cells { display: grid; grid-template-columns: 30px repeat(16, minmax(0, 1fr)); gap: 3px; align-items: center; }
-    .row-label { color: #8a95a6; font: 11px ui-monospace, 'Cascadia Mono', Consolas, monospace; text-align: right; padding-right: 3px; }
-    .cell { aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 3px; background: #eef1f4; cursor: pointer; }
-    .cell:hover:not(:disabled) { outline: 2px solid #172535; outline-offset: 1px; }
+    .row-label { color: #8a95a6; font: 11px 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; text-align: right; padding-right: 3px; }
+    .cell { aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid transparent; border-radius: 3px; background: #edf1ed; cursor: pointer; }
+    .cell:hover:not(:disabled) { outline: 2px solid #15211c; outline-offset: 1px; }
     .cell:disabled { cursor: default; opacity: .25; }
-    .recommended { background: #13875a; }
+    .recommended { background: #0f7a53; }
     .free { background: #c7ecd9; border-color: #8fd3b1; }
     .client { background: #5b9bea; }
     .occupied { background: #e5a33c; }
     .pool { background: #c3ccd6; }
-    .router { background: #334250; }
+    .router { background: #2d3b34; }
     .conflict { background: #b42318; }
-    .edge { background: repeating-linear-gradient(45deg, #dfe5ea 0 3px, #f8fafc 3px 6px); }
-    .nodata { background: #fff; border: 1px dashed #ccd6de; }
-    .outside { background: transparent; border-color: #eef1f4; }
-    .detail { min-height: 18px; margin: 8px 0 0; color: #334250; font-size: 12px; overflow-wrap: anywhere; }
+    .edge { background: repeating-linear-gradient(45deg, #e0e6e1 0 3px, #f4f6f2 3px 6px); }
+    .nodata { background: #fff; border: 1px dashed #cfd8d2; }
+    .outside { background: transparent; border-color: #edf1ed; }
+    .detail { min-height: 18px; margin: 8px 0 0; color: #2d3b34; font-size: 12px; overflow-wrap: anywhere; }
     .side { min-width: 0; }
-    .copy-first { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 12px; border: 1px solid #1267dd; border-radius: 6px; background: #1267dd; color: #fff; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; text-align: left; }
-    .copy-first:hover:not(:disabled) { background: #0d58c0; }
-    .copy-first:disabled { border-color: #dfe5ea; background: #f8fafc; color: #667582; cursor: not-allowed; }
-    .copy-first b { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .copy-first { width: 100%; display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 0 12px; border: 1px solid #0b6b52; border-radius: 9px; background: #0b6b52; color: #fff; font: inherit; font-size: 12px; font-weight: 650; cursor: pointer; text-align: left; }
+    .copy-first:hover:not(:disabled) { background: #08523f; }
+    .copy-first:disabled { border-color: #e0e6e1; background: #f4f6f2; color: #56665e; cursor: not-allowed; }
+    .copy-first b { font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
     .legend { margin: 12px 0 0; padding: 0; list-style: none; }
-    .legend li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 4px 0; color: #334250; font-size: 12px; }
+    .legend li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 4px 0; color: #2d3b34; font-size: 12px; }
     .legend li.zero { color: #8a95a6; }
     .legend b { font-weight: 750; }
     .swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid transparent; }
-    .usage { margin: 10px 0 0; color: #667582; font-size: 11px; }
+    .usage { margin: 10px 0 0; color: #56665e; font-size: 11px; }
     @media (max-width: 820px) { .body { grid-template-columns: 1fr; } .cells { gap: 2px; grid-template-columns: 26px repeat(16, minmax(0, 1fr)); } }
   `],
 })

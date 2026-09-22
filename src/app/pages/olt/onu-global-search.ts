@@ -43,24 +43,24 @@ import { formatDbm, matchesOnu, normalizeSearch, onuDisplayName, onuHealthState,
   `,
   styles: [`
     :host { position: relative; display: block; width: clamp(240px, 30vw, 400px); }
-    .search-box { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 11px; border: 1px solid #ccd6de; border-radius: 6px; background: #fff; color: #667582; }
-    .search-box:focus-within { border-color: #1267dd; box-shadow: 0 0 0 3px #edf4ff; }
-    input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #172535; font: inherit; font-size: 13px; }
-    kbd { min-width: 20px; height: 20px; display: inline-grid; place-items: center; border: 1px solid #dfe5ea; border-radius: 4px; background: #f8fafc; color: #667582; font: 600 11px ui-monospace, 'Cascadia Mono', Consolas, monospace; }
-    .panel { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: max(100%, 420px); max-width: calc(100vw - 20px); overflow: hidden; border: 1px solid #ccd6de; border-radius: 8px; background: #fff; box-shadow: 0 16px 40px rgba(23, 37, 53, .18); }
-    .result { width: 100%; min-height: 54px; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border: 0; border-bottom: 1px solid #eef2f5; background: #fff; color: #334250; font: inherit; text-align: left; cursor: pointer; }
-    .result.active { background: #f2f7ff; }
+    .search-box { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 11px; border: 1px solid #cfd8d2; border-radius: 9px; background: #fff; color: #56665e; }
+    .search-box:focus-within { border-color: #0b6b52; box-shadow: 0 0 0 3px #e6f2ec; }
+    input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: #15211c; font: inherit; font-size: 13px; }
+    kbd { min-width: 20px; height: 20px; display: inline-grid; place-items: center; border: 1px solid #e0e6e1; border-radius: 4px; background: #f4f6f2; color: #56665e; font: 600 11px 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .panel { position: absolute; z-index: 60; top: calc(100% + 6px); right: 0; width: max(100%, 420px); max-width: calc(100vw - 20px); overflow: hidden; border: 1px solid #cfd8d2; border-radius: 12px; background: #fff; box-shadow: 0 16px 40px rgba(23, 37, 53, .18); }
+    .result { width: 100%; min-height: 54px; display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border: 0; border-bottom: 1px solid #eef2f5; background: #fff; color: #2d3b34; font: inherit; text-align: left; cursor: pointer; }
+    .result.active { background: #eef6f1; }
     .copy { min-width: 0; display: grid; gap: 2px; }
-    .copy strong { overflow: hidden; color: #172535; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
-    .copy small { overflow: hidden; color: #667582; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #13875a; }
+    .copy strong { overflow: hidden; color: #15211c; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+    .copy small { overflow: hidden; color: #56665e; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #0f7a53; }
     .dot.warning { background: #b36b12; } .dot.critical, .dot.offline { background: #b42318; }
-    .side { font-size: 11px; font-weight: 700; color: #13875a; white-space: nowrap; }
+    .side { font-size: 11px; font-weight: 700; color: #0f7a53; white-space: nowrap; }
     .side.warning { color: #b36b12; } .side.critical, .side.offline { color: #b42318; }
-    .empty { margin: 0; padding: 18px 14px; color: #667582; font-size: 12px; text-align: center; }
-    footer { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px; background: #f8fafc; color: #667582; font-size: 11px; }
-    footer button { border: 0; background: transparent; color: #1267dd; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .empty { margin: 0; padding: 18px 14px; color: #56665e; font-size: 12px; text-align: center; }
+    footer { min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px; background: #f4f6f2; color: #56665e; font-size: 11px; }
+    footer button { border: 0; background: transparent; color: #0b6b52; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
     @media (max-width: 840px) { :host { flex: 1; width: auto; } }
     @media (max-width: 560px) { :host { width: 100%; } kbd { display: none; } .panel { width: 100%; } }
   `],

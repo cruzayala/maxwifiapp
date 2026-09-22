@@ -105,13 +105,13 @@ interface OnuGroup {
   `,
   styles: [`
     :host { display: block; }
-    .views-empty { padding: 26px 16px; text-align: center; color: #667582; font-size: 13px; }
-    .views-note { margin: 10px 0 0; color: #667582; font-size: 12px; }
-    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .views-empty { padding: 26px 16px; text-align: center; color: #56665e; font-size: 13px; }
+    .views-note { margin: 10px 0 0; color: #56665e; font-size: 12px; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
 
     /* Tarjetas */
     .onu-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 10px; }
-    .onu-card { min-width: 0; display: grid; gap: 9px; padding: 12px 13px; border: 1px solid #dce4e8; border-left: 4px solid #1f8a5f; border-radius: 8px; background: #fff; }
+    .onu-card { min-width: 0; display: grid; gap: 9px; padding: 12px 13px; border: 1px solid #dce4e8; border-left: 4px solid #1f8a5f; border-radius: 12px; background: #fff; }
     .onu-card.warning { border-left-color: #d08a1a; }
     .onu-card.critical { border-left-color: #b42318; }
     .onu-card.offline { border-left-color: #8b97a3; background: #fbfcfc; }
@@ -119,8 +119,8 @@ interface OnuGroup {
     .card-state { width: 9px; height: 9px; margin-top: 5px; border-radius: 50%; background: #1f8a5f; }
     .card-state.warning { background: #d08a1a; } .card-state.critical { background: #b42318; } .card-state.offline { background: #8b97a3; }
     .card-title { min-width: 0; display: grid; }
-    .card-title a, .card-title strong { color: #172535; font-size: 14px; font-weight: 700; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .card-title a:hover { color: #1267dd; text-decoration: underline; }
+    .card-title a, .card-title strong { color: #15211c; font-size: 14px; font-weight: 700; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-title a:hover { color: #0b6b52; text-decoration: underline; }
     .card-title small { color: #66787f; font-size: 11px; }
     .card-status { color: #66787f; font-size: 11px; white-space: nowrap; }
     .card-signal { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
@@ -133,28 +133,28 @@ interface OnuGroup {
     .card-facts dt { color: #7d8c95; font-size: 10px; font-weight: 700; text-transform: uppercase; }
     .card-facts dd { margin: 1px 0 0; color: #223240; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .onu-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 8px; border-top: 1px solid #eef2f4; }
-    .card-link { display: inline-flex; align-items: center; gap: 5px; color: #1267dd; font-size: 12px; font-weight: 700; text-decoration: none; }
+    .card-link { display: inline-flex; align-items: center; gap: 5px; color: #0b6b52; font-size: 12px; font-weight: 700; text-decoration: none; }
     .card-link:hover { text-decoration: underline; }
     .card-warn { color: #9a5b0f; font-size: 12px; }
 
     /* Mosaico compacto */
     .onu-mosaic { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 6px; }
-    .mosaic-tile { min-width: 0; display: grid; gap: 2px; padding: 7px 8px; border: 1px solid #cfe3d8; border-radius: 6px; background: #f2faf6; color: #166246; text-align: left; cursor: pointer; }
-    .mosaic-tile:hover { outline: 2px solid #1267dd; outline-offset: 1px; }
+    .mosaic-tile { min-width: 0; display: grid; gap: 2px; padding: 7px 8px; border: 1px solid #cfe3d8; border-radius: 9px; background: #f2faf6; color: #166246; text-align: left; cursor: pointer; }
+    .mosaic-tile:hover { outline: 2px solid #0b6b52; outline-offset: 1px; }
     .mosaic-tile.warning { border-color: #ecd6a7; background: #fff8ec; color: #8a5a10; }
     .mosaic-tile.critical { border-color: #f0bdb7; background: #fff3f2; color: #a3241a; }
     .mosaic-tile.offline { border-color: #d7dde2; background: #f4f6f8; color: #5d6a75; }
     .tile-name { font-size: 12px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .mosaic-tile small { font-size: 10px; opacity: .85; font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; }
+    .mosaic-tile small { font-size: 10px; opacity: .85; font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; }
 
     /* Agrupado */
     .onu-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; align-items: start; }
-    .onu-group { border: 1px solid #dce4e8; border-top: 3px solid #1f8a5f; border-radius: 8px; background: #fff; overflow: hidden; }
+    .onu-group { border: 1px solid #dce4e8; border-top: 3px solid #1f8a5f; border-radius: 12px; background: #fff; overflow: hidden; }
     .onu-group.warn { border-top-color: #d08a1a; } .onu-group.danger { border-top-color: #b42318; } .onu-group.muted { border-top-color: #9aa6b0; }
     .onu-group > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 9px 12px; border-bottom: 1px solid #eef2f4; background: #f7fafb; }
     .onu-group > header > div { display: flex; align-items: center; gap: 7px; min-width: 0; }
-    .group-icon { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; background: #e7f3ee; color: #1f6b72; }
-    .onu-group strong { color: #172535; font-size: 13px; }
+    .group-icon { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px; background: #e7f3ee; color: #1f6b72; }
+    .onu-group strong { color: #15211c; font-size: 13px; }
     .onu-group small { color: #66787f; font-size: 11px; }
     .onu-group > header b { color: #223240; font-size: 15px; }
     .group-rows { max-height: 320px; overflow-y: auto; }

@@ -97,23 +97,23 @@ import { formatPlanName } from '../../pipes/plan-label.pipe';
     header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #e3eaf0; }
     header h3 { margin: 0; color: #172c41; font-size: 16px; }
     header p { margin: 3px 0 0; color: #7b8b9b; font-size: 12px; }
-    .icon { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #dce5eb; border-radius: 6px; background: #fff; color: #61768a; cursor: pointer; }
+    .icon { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid #dde5e0; border-radius: 9px; background: #fff; color: #61768a; cursor: pointer; }
     .icon:hover { background: #f4f8fb; }
     .body { display: grid; gap: 12px; overflow-y: auto; padding: 16px 18px; }
     .body.center { justify-items: center; gap: 10px; padding: 40px; color: #67788a; }
     .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    label { display: grid; gap: 6px; color: #334250; font-size: 13px; font-weight: 600; }
-    input, select, textarea { box-sizing: border-box; width: 100%; min-height: 42px; padding: 10px; border: 1px solid #ccd6de; border-radius: 6px; background: #fff; color: #172535; font: inherit; }
+    label { display: grid; gap: 6px; color: #2d3b34; font-size: 13px; font-weight: 600; }
+    input, select, textarea { box-sizing: border-box; width: 100%; min-height: 42px; padding: 10px; border: 1px solid #cfd8d2; border-radius: 9px; background: #fff; color: #15211c; font: inherit; }
     textarea { min-height: 88px; resize: vertical; }
     label small { color: #8493a1; font-size: 11px; font-weight: 500; }
     label small.warn { color: #9a5b0f; }
-    .alert { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid #f0b4ae; border-radius: 7px; background: #fff3f2; color: #a72f25; font-size: 12px; font-weight: 600; }
+    .alert { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 10px 12px; border: 1px solid #f0b4ae; border-radius: 10px; background: #fff3f2; color: #a72f25; font-size: 12px; font-weight: 600; }
     footer { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 18px; border-top: 1px solid #e3eaf0; background: #fafcfd; }
-    footer button { min-height: 42px; padding: 0 16px; border: 1px solid #ccd6de; border-radius: 6px; background: #fff; color: #172535; font: inherit; font-weight: 600; cursor: pointer; }
-    footer .primary { border-color: #1267dd; background: #1267dd; color: #fff; }
-    footer .primary:hover:not(:disabled) { background: #0d58c0; }
+    footer button { min-height: 42px; padding: 0 16px; border: 1px solid #cfd8d2; border-radius: 9px; background: #fff; color: #15211c; font: inherit; font-weight: 600; cursor: pointer; }
+    footer .primary { border-color: #0b6b52; background: #0b6b52; color: #fff; }
+    footer .primary:hover:not(:disabled) { background: #08523f; }
     footer button:disabled { opacity: .6; cursor: not-allowed; }
-    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid #0b6b52; outline-offset: 2px; }
     .loader { width: 26px; height: 26px; border: 3px solid #dce6ed; border-top-color: #2d6da8; border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (prefers-reduced-motion: reduce) { .loader { animation: none; } }

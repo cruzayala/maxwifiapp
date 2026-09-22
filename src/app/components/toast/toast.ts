@@ -52,52 +52,56 @@ import { ToastService } from '../../services/toast.service';
       align-items: flex-start;
       gap: 10px;
       padding: 12px 10px 12px 14px;
-      border-radius: 8px;
-      border: 1px solid #dfe5ea;
+      border-radius: 12px;
+      border: 1px solid #e0e6e1;
       border-left-width: 4px;
       background: #fff;
-      color: #334250;
+      color: #2d3b34;
       font-size: 13px;
       line-height: 1.4;
       cursor: pointer;
-      box-shadow: 0 10px 28px rgba(17, 26, 36, 0.14);
+      box-shadow: 0 10px 28px rgba(14, 29, 23, 0.14);
       animation: slideIn 0.25s ease;
       pointer-events: auto;
     }
 
-    .toast-success { border-left-color: #13875a; }
-    .toast-success .toast-icon { color: #13875a; background: #e9f8f1; }
+    .toast-success { border-left-color: #0f7a53; }
+    .toast-success .toast-icon { color: #0f7a53; background: #e9f8f1; }
     .toast-error { border-left-color: #b42318; }
     .toast-error .toast-icon { color: #b42318; background: #fff0ef; }
-    .toast-info { border-left-color: #1267dd; }
-    .toast-info .toast-icon { color: #1267dd; background: #edf4ff; }
+    .toast-info { border-left-color: #0b6b52; }
+    .toast-info .toast-icon { color: #0b6b52; background: #e6f2ec; }
 
     .toast-icon {
       flex-shrink: 0;
       width: 28px; height: 28px;
       display: grid; place-items: center;
-      border-radius: 6px;
+      border-radius: 9px;
     }
 
     .toast-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
-    .toast-body strong { font-size: 13px; font-weight: 700; color: #172535; }
+    .toast-body strong { font-size: 13px; font-weight: 700; color: #15211c; }
     .toast-body span { word-break: break-word; }
 
     .toast-close {
       flex-shrink: 0;
       background: none; border: none; cursor: pointer;
-      color: #667582; padding: 4px; border-radius: 6px;
+      color: #56665e; padding: 4px; border-radius: 9px;
       display: grid; place-items: center;
     }
-    .toast-close:hover { background: #f2f7ff; color: #172535; }
+    .toast-close:hover { background: #eef6f1; color: #15211c; }
 
     @keyframes slideIn {
       from { transform: translateY(12px); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
 
+    /* En celular y tableta los avisos quedan sobre la barra inferior, sin taparla. */
+    @media (max-width: 1024px) {
+      .toast-container { bottom: calc(82px + env(safe-area-inset-bottom)); }
+    }
     @media (max-width: 480px) {
-      .toast-container { right: 16px; left: 16px; bottom: 16px; width: auto; }
+      .toast-container { right: 12px; left: 12px; bottom: calc(82px + env(safe-area-inset-bottom)); width: auto; }
     }
   `]
 })

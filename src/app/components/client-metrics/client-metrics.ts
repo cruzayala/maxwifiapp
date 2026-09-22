@@ -16,8 +16,8 @@ interface Metrics {
 }
 
 const TIER_INFO: Record<string, { label: string; color: string; bg: string }> = {
-  EXCELENTE: { label: 'Excelente', color: '#13875a', bg: '#e9f8f1' },
-  BUENO:     { label: 'Bueno',     color: '#1267dd', bg: '#edf4ff' },
+  EXCELENTE: { label: 'Excelente', color: '#0f7a53', bg: '#e9f8f1' },
+  BUENO:     { label: 'Bueno',     color: '#0b6b52', bg: '#e6f2ec' },
   REGULAR:   { label: 'Regular',   color: '#b36b12', bg: '#fff6e8' },
   RIESGO:    { label: 'Riesgo',    color: '#b4540f', bg: '#ffeedd' },
   CRITICO:   { label: 'Crítico',   color: '#b42318', bg: '#fff0ef' },
@@ -25,9 +25,9 @@ const TIER_INFO: Record<string, { label: string; color: string; bg: string }> = 
 
 const CONS_INFO: Record<string, { label: string; color: string; bg: string }> = {
   INTENSIVO: { label: 'Intensivo', color: '#b36b12', bg: '#fff6e8' },
-  NORMAL:    { label: 'Normal',    color: '#1267dd', bg: '#edf4ff' },
+  NORMAL:    { label: 'Normal',    color: '#0b6b52', bg: '#e6f2ec' },
   BAJO:      { label: 'Bajo',      color: '#526b80', bg: '#eef3f7' },
-  INACTIVO:  { label: 'Inactivo',  color: '#667582', bg: '#eef1f4' },
+  INACTIVO:  { label: 'Inactivo',  color: '#56665e', bg: '#edf1ed' },
 };
 
 @Component({
@@ -51,11 +51,11 @@ const CONS_INFO: Record<string, { label: string; color: string; bg: string }> = 
           <div class="metric-block">
             <div class="metric-label">Puntuación de pago</div>
             <div class="score-row">
-              <div class="score-circle" [style.background]="creditTierInfo()?.bg || '#eef1f4'" [style.color]="creditTierInfo()?.color || '#667582'" [attr.aria-label]="'Puntuación ' + (metrics()!.creditScore ?? 'sin datos') + ' de 100'">
+              <div class="score-circle" [style.background]="creditTierInfo()?.bg || '#edf1ed'" [style.color]="creditTierInfo()?.color || '#56665e'" [attr.aria-label]="'Puntuación ' + (metrics()!.creditScore ?? 'sin datos') + ' de 100'">
                 {{ metrics()!.creditScore ?? '—' }}
               </div>
               <div class="tier-info">
-                <span class="tier-badge" [style.background]="creditTierInfo()?.bg || '#eef1f4'" [style.color]="creditTierInfo()?.color || '#667582'">
+                <span class="tier-badge" [style.background]="creditTierInfo()?.bg || '#edf1ed'" [style.color]="creditTierInfo()?.color || '#56665e'">
                   {{ creditTierInfo()?.label || 'Sin datos' }}
                 </span>
                 <div class="tier-desc">{{ tierDescription() || 'Aún no hay suficiente historial de pagos.' }}</div>
@@ -80,7 +80,7 @@ const CONS_INFO: Record<string, { label: string; color: string; bg: string }> = 
           <div class="metric-block">
             <div class="metric-label">Consumo de internet</div>
             <div class="cons-info">
-              <span class="tier-badge" [style.background]="consTierInfo()?.bg || '#eef1f4'" [style.color]="consTierInfo()?.color || '#667582'">
+              <span class="tier-badge" [style.background]="consTierInfo()?.bg || '#edf1ed'" [style.color]="consTierInfo()?.color || '#56665e'">
                 {{ consTierInfo()?.label || 'Sin datos' }}
               </span>
               @if (metrics()!.consumptionMb30d !== null) {
@@ -92,7 +92,7 @@ const CONS_INFO: Record<string, { label: string; color: string; bg: string }> = 
                 </div>
                 @if (metrics()!.consumptionPct !== null) {
                   <div class="bar" role="img" [attr.aria-label]="'Uso del plan: ' + (metrics()!.consumptionPct | number:'1.0-0') + '%'">
-                    <div class="bar-fill" [style.width.%]="barWidth()" [style.background]="consTierInfo()?.color || '#1267dd'"></div>
+                    <div class="bar-fill" [style.width.%]="barWidth()" [style.background]="consTierInfo()?.color || '#0b6b52'"></div>
                   </div>
                 }
               } @else {
@@ -112,42 +112,42 @@ const CONS_INFO: Record<string, { label: string; color: string; bg: string }> = 
     }
   `,
   styles: [`
-    .metrics-card { background: white; border: 1px solid #dfe5ea; border-radius: 8px; padding: 18px; margin-bottom: 16px; color: #334250; }
+    .metrics-card { background: white; border: 1px solid #e0e6e1; border-radius: 12px; padding: 18px; margin-bottom: 16px; color: #2d3b34; }
     .metrics-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-    .metrics-head h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 700; color: #172535; }
-    .metrics-head h3 svg { color: #1267dd; }
-    .updated { font-size: 12px; color: #667582; }
+    .metrics-head h3 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 15px; font-weight: 700; color: #15211c; }
+    .metrics-head h3 svg { color: #0b6b52; }
+    .updated { font-size: 12px; color: #56665e; }
 
     .state { display: flex; align-items: flex-start; gap: 12px; }
-    .state strong { color: #172535; font-size: 14px; }
-    .state p { margin: 3px 0 0; color: #667582; font-size: 13px; }
+    .state strong { color: #15211c; font-size: 14px; }
+    .state p { margin: 3px 0 0; color: #56665e; font-size: 13px; }
     .state.error { background: #fff0ef; border-color: #f0b4ae; }
     .state.error > svg { color: #b42318; flex: 0 0 auto; margin-top: 1px; }
-    .spinner { width: 20px; height: 20px; flex: 0 0 auto; border: 2px solid #dfe5ea; border-top-color: #1267dd; border-radius: 50%; animation: spin .8s linear infinite; }
+    .spinner { width: 20px; height: 20px; flex: 0 0 auto; border: 2px solid #e0e6e1; border-top-color: #0b6b52; border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    .metric-block { background: #f8fafc; border: 1px solid #edf0f2; border-radius: 8px; padding: 14px; min-width: 0; }
-    .metric-label { font-size: 11px; color: #667582; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
+    .metric-block { background: #f4f6f2; border: 1px solid #ecf0ec; border-radius: 12px; padding: 14px; min-width: 0; }
+    .metric-label { font-size: 11px; color: #56665e; text-transform: uppercase; font-weight: 700; margin-bottom: 10px; }
 
     .score-row { display: flex; align-items: center; gap: 14px; }
     .score-circle { width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; flex-shrink: 0; }
     .tier-info { flex: 1; min-width: 0; }
     .tier-badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-    .tier-desc { font-size: 13px; color: #334250; margin-top: 5px; }
+    .tier-desc { font-size: 13px; color: #2d3b34; margin-top: 5px; }
 
     .cons-info { min-width: 0; }
-    .cons-detail { font-size: 13px; color: #334250; margin-top: 8px; line-height: 1.45; }
-    .cons-detail strong { color: #172535; }
+    .cons-detail { font-size: 13px; color: #2d3b34; margin-top: 8px; line-height: 1.45; }
+    .cons-detail strong { color: #15211c; }
     .bar { height: 8px; background: #e3e9ee; border-radius: 4px; overflow: hidden; margin-top: 8px; }
     .bar-fill { height: 100%; transition: width 0.4s ease; }
 
     .factors { margin-top: 12px; font-size: 13px; }
-    .factors summary { cursor: pointer; color: #1267dd; font-weight: 600; user-select: none; }
+    .factors summary { cursor: pointer; color: #0b6b52; font-weight: 600; user-select: none; }
     .factors ul { list-style: none; padding: 8px 0 0; margin: 0; }
     .factors li { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-bottom: 1px solid #e6ebef; }
     .factors li.neg strong { color: #b42318; }
-    .factors li.pos strong { color: #13875a; }
+    .factors li.pos strong { color: #0f7a53; }
 
     @media (max-width: 768px) {
       .grid { grid-template-columns: 1fr; }

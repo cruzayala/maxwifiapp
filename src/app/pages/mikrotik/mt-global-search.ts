@@ -65,28 +65,28 @@ const MAX_HITS = 12;
   `,
   styles: [`
     :host { display: block; margin-bottom: 14px; overflow: visible; }
-    .box { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; color: #667582; }
-    .box:focus-within { box-shadow: inset 0 0 0 2px #1267dd; border-radius: 8px; }
-    .box input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: #172535; font: inherit; font-size: 14px; }
-    .clear { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 6px; background: #eef1f4; color: #334250; cursor: pointer; }
-    kbd { min-width: 22px; padding: 2px 6px; border: 1px solid #ccd6de; border-bottom-width: 2px; border-radius: 4px; color: #667582; font: 11px ui-monospace, 'Cascadia Mono', Consolas, monospace; text-align: center; }
+    .box { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; color: #56665e; }
+    .box:focus-within { box-shadow: inset 0 0 0 2px #0b6b52; border-radius: 12px; }
+    .box input { flex: 1; min-width: 0; height: 44px; border: 0; outline: 0; background: transparent; color: #15211c; font: inherit; font-size: 14px; }
+    .clear { width: 28px; height: 28px; display: grid; place-items: center; border: 0; border-radius: 9px; background: #edf1ed; color: #2d3b34; cursor: pointer; }
+    kbd { min-width: 22px; padding: 2px 6px; border: 1px solid #cfd8d2; border-bottom-width: 2px; border-radius: 4px; color: #56665e; font: 11px 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; text-align: center; }
     .results { border-top: 1px solid #e8ecf1; }
     .hit { display: grid; grid-template-columns: 118px minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 8px 14px; border-bottom: 1px solid #edf0f4; }
-    .badge { justify-self: start; display: inline-flex; align-items: center; min-height: 21px; padding: 0 7px; border-radius: 10px; font-size: 11px; font-weight: 750; white-space: nowrap; color: #334250; background: #eef1f4; }
-    .badge.client { color: #0d58c0; background: #edf4ff; }
+    .badge { justify-self: start; display: inline-flex; align-items: center; min-height: 21px; padding: 0 7px; border-radius: 10px; font-size: 11px; font-weight: 750; white-space: nowrap; color: #2d3b34; background: #edf1ed; }
+    .badge.client { color: #08523f; background: #e6f2ec; }
     .badge.no-client, .badge.no-queue { color: #b36b12; background: #fff6e8; }
     .badge.unknown { color: #b42318; background: #fff0ef; }
-    .badge.free { color: #13875a; background: #e9f8f1; }
+    .badge.free { color: #0f7a53; background: #e9f8f1; }
     .who { min-width: 0; display: flex; flex-direction: column; }
-    .who strong { color: #172535; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .who small { color: #667582; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .who strong { color: #15211c; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .who small { color: #56665e; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .rate { color: #2767a5; font-size: 12px; font-weight: 700; white-space: nowrap; }
     .actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-    .ip-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1px solid #dfe5ea; border-radius: 6px; background: #fff; color: #334250; font: 12px ui-monospace, 'Cascadia Mono', Consolas, monospace; cursor: pointer; }
-    .ip-chip:hover { border-color: #1267dd; color: #1267dd; }
-    .link { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: #1267dd; font: inherit; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer; white-space: nowrap; }
-    .link:hover { background: #edf4ff; }
-    .none, .more, .sources { margin: 0; padding: 10px 14px; color: #667582; font-size: 12px; }
+    .ip-chip { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 8px; border: 1px solid #e0e6e1; border-radius: 9px; background: #fff; color: #2d3b34; font: 12px 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; cursor: pointer; }
+    .ip-chip:hover { border-color: #0b6b52; color: #0b6b52; }
+    .link { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #0b6b52; font: inherit; font-size: 12px; font-weight: 650; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .link:hover { background: #e6f2ec; }
+    .none, .more, .sources { margin: 0; padding: 10px 14px; color: #56665e; font-size: 12px; }
     .sources { padding-top: 6px; font-size: 11px; color: #8a95a6; }
     @media (max-width: 820px) {
       .hit { grid-template-columns: minmax(0, 1fr) auto; }

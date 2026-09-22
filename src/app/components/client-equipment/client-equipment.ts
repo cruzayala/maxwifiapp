@@ -112,44 +112,44 @@ interface ExpenseLite {
     </div>
   `,
   styles: [`
-    .card { background: white; border: 1px solid #dfe5ea; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    .card { background: white; border: 1px solid #e0e6e1; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
     .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-    .card-head h3 { display: flex; align-items: center; gap: 7px; margin: 0; color: #172535; font-size: 15px; }
-    .card-head h3 svg { color: #1267dd; }
-    .link-mini { display: inline-flex; align-items: center; gap: 4px; color: #1267dd; text-decoration: none; font-size: 13px; font-weight: 600; }
+    .card-head h3 { display: flex; align-items: center; gap: 7px; margin: 0; color: #15211c; font-size: 15px; }
+    .card-head h3 svg { color: #0b6b52; }
+    .link-mini { display: inline-flex; align-items: center; gap: 4px; color: #0b6b52; text-decoration: none; font-size: 13px; font-weight: 600; }
     .link-mini:hover { text-decoration: underline; }
 
-    .ce-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 28px; color: #667582; font-size: 13px; }
-    .spinner { width: 18px; height: 18px; border: 2px solid #dfe5ea; border-top-color: #1267dd; border-radius: 50%; animation: spin .8s linear infinite; }
+    .ce-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 28px; color: #56665e; font-size: 13px; }
+    .spinner { width: 18px; height: 18px; border: 2px solid #e0e6e1; border-top-color: #0b6b52; border-radius: 50%; animation: spin .8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .ce-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 28px 16px; text-align: center; color: #334250; font-size: 13px; }
+    .ce-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 28px 16px; text-align: center; color: #2d3b34; font-size: 13px; }
     .ce-empty > svg { color: #8a9aa8; margin-bottom: 6px; }
     .ce-empty.error > svg { color: #b42318; }
     .ce-empty p { margin: 0; }
-    .btn-retry { margin-top: 10px; min-height: 34px; padding: 0 14px; border: 1px solid #1267dd; border-radius: 6px; background: #fff; color: #1267dd; font-size: 13px; font-weight: 600; cursor: pointer; }
-    .btn-retry:hover { background: #f2f7ff; }
-    .muted { color: #667582; font-size: 12px; }
+    .btn-retry { margin-top: 10px; min-height: 34px; padding: 0 14px; border: 1px solid #0b6b52; border-radius: 9px; background: #fff; color: #0b6b52; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-retry:hover { background: #eef6f1; }
+    .muted { color: #56665e; font-size: 12px; }
 
     .table-scroll { overflow-x: auto; }
     .ce-table { width: 100%; min-width: 520px; border-collapse: collapse; }
-    .ce-table th, .ce-table td { padding: 10px 12px; border-bottom: 1px solid #edf0f2; font-size: 13px; text-align: left; color: #334250; }
-    .ce-table th { background: #f8fafc; color: #667582; font-weight: 700; font-size: 11px; text-transform: uppercase; }
-    .ce-table tfoot td { background: #f8fafc; border-top: 2px solid #dfe5ea; }
+    .ce-table th, .ce-table td { padding: 10px 12px; border-bottom: 1px solid #ecf0ec; font-size: 13px; text-align: left; color: #2d3b34; }
+    .ce-table th { background: #f4f6f2; color: #56665e; font-weight: 700; font-size: 11px; text-transform: uppercase; }
+    .ce-table tfoot td { background: #f4f6f2; border-top: 2px solid #e0e6e1; }
     .ce-table .t-right { text-align: right; }
-    .total { color: #172535; font-weight: 700; }
-    .mono { font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; }
-    .pill { display: inline-block; background: #edf4ff; color: #1267dd; padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+    .total { color: #15211c; font-weight: 700; }
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace; font-size: 12px; }
+    .pill { display: inline-block; background: #e6f2ec; color: #0b6b52; padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 600; white-space: nowrap; }
 
-    .ce-divider { height: 1px; background: #dfe5ea; margin: 20px 0; }
-    .ce-sub h4 { margin: 0 0 12px; color: #334250; font-size: 14px; }
+    .ce-divider { height: 1px; background: #e0e6e1; margin: 20px 0; }
+    .ce-sub h4 { margin: 0 0 12px; color: #2d3b34; font-size: 14px; }
 
     .ce-grand-total {
       margin-top: 16px; padding: 14px 18px; gap: 12px;
-      background: #f2f7ff; border: 1px solid #cfe0f8; border-radius: 8px;
+      background: #eef6f1; border: 1px solid #cfe0f8; border-radius: 12px;
       display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
     }
-    .ce-grand-total span { color: #334250; font-size: 13px; font-weight: 600; }
-    .ce-grand-total strong { color: #172535; font-size: 20px; }
+    .ce-grand-total span { color: #2d3b34; font-size: 13px; font-weight: 600; }
+    .ce-grand-total strong { color: #15211c; font-size: 20px; }
     @media (max-width: 640px) { .card { padding: 16px; } }
   `]
 })

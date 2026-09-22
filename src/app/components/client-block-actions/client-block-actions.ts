@@ -48,7 +48,7 @@ import { AuthService } from '../../services/auth.service';
   styles: [`
     .actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
     .btn-ac {
-      min-height: 30px; padding: 5px 10px; border-radius: 6px; font-size: 12px;
+      min-height: 30px; padding: 5px 10px; border-radius: 9px; font-size: 12px;
       font-weight: 700; border: 1px solid transparent; cursor: pointer;
       transition: background 0.15s, border-color 0.15s;
     }
@@ -57,10 +57,10 @@ import { AuthService } from '../../services/auth.service';
     .btn-warn:not(:disabled):hover { background: #ffeccc; }
     .btn-danger { background: #fff0ef; border-color: #f0b4ae; color: #b42318; }
     .btn-danger:not(:disabled):hover { background: #ffe2df; }
-    .btn-ok { background: #13875a; color: white; }
+    .btn-ok { background: #0f7a53; color: white; }
     .btn-ok:not(:disabled):hover { background: #0f704b; }
-    .btn-ac:focus-visible { outline: 2px solid #1267dd; outline-offset: 2px; }
-    .no-permission { margin: 0; color: #667582; font-size: 12px; }
+    .btn-ac:focus-visible { outline: 2px solid #0b6b52; outline-offset: 2px; }
+    .no-permission { margin: 0; color: #56665e; font-size: 12px; }
   `],
 })
 export class ClientBlockActionsComponent {

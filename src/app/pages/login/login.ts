@@ -10,13 +10,24 @@ import { AuthService } from '../../services/auth.service';
   imports: [FormsModule, LucideCircleAlert, LucideEye, LucideEyeOff, LucideLogIn],
   template: `
     <div class="login-container">
+      <aside class="brand-panel" aria-hidden="true">
+        <div class="brand-row">
+          <div class="brand-mark"><span></span><span></span><span></span></div>
+          <strong>ISP Max</strong>
+        </div>
+        <div class="brand-pitch">
+          <h2>Toda tu red, tus clientes y tu cobranza en un solo lugar.</h2>
+          <p>WispHub, MikroTik, la OLT y WhatsApp conectados. Desde la oficina, el celular o la PC del taller.</p>
+        </div>
+        <div class="brand-foot">Web · Android · ONU Studio para Windows</div>
+      </aside>
       <div class="login-card">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <span></span><span></span><span></span>
           </div>
-          <h1>ISP <span>MAX</span></h1>
-          <p>Centro de control · Ingresa con tu cuenta</p>
+          <h1>Entrar</h1>
+          <p>Con tu usuario del personal de ISP Max.</p>
         </div>
 
         <form (submit)="login(); $event.preventDefault()" novalidate>
@@ -86,58 +97,83 @@ import { AuthService } from '../../services/auth.service';
   `,
   styles: [`
     .login-container {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle at 20% 10%, #1b2a38 0%, #111a24 55%, #0c131b 100%);
-      padding: 20px 16px;
-      box-sizing: border-box;
+      min-height: 100vh; min-height: 100dvh;
+      display: grid; grid-template-columns: minmax(420px, 44%) 1fr;
+      background: #ffffff;
     }
 
+    /* Panel de marca */
+    .brand-panel {
+      position: relative; overflow: hidden;
+      display: flex; flex-direction: column; justify-content: space-between; gap: 32px;
+      padding: 56px 60px; color: #fff;
+      background:
+        radial-gradient(90% 60% at 10% 0%, rgba(19, 147, 108, 0.45), transparent 60%),
+        radial-gradient(70% 50% at 100% 100%, rgba(11, 107, 82, 0.35), transparent 60%),
+        #0e1d17;
+    }
+    .brand-panel::after {
+      content: ''; position: absolute; inset: auto -120px -160px auto; width: 420px; height: 420px; border-radius: 50%;
+      border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: 0 0 0 60px rgba(255, 255, 255, 0.02), 0 0 0 120px rgba(255, 255, 255, 0.015);
+    }
+    .brand-row { display: flex; align-items: center; gap: 12px; }
+    .brand-row strong { font-family: var(--isp-display); font-size: 22px; font-weight: 700; }
+    .brand-pitch h2 { margin: 0; color: #fff; font-family: var(--isp-display); font-size: 44px; line-height: 1.12; font-weight: 600; letter-spacing: -1px; max-width: 520px; }
+    .brand-pitch p { margin: 18px 0 0; color: #a9bdb3; font-size: 16px; line-height: 1.55; max-width: 460px; }
+    .brand-foot { color: #6f877b; font-size: 13px; position: relative; z-index: 1; }
+
+    /* Formulario */
     .login-card {
-      background: white;
-      border-radius: 8px;
-      border-top: 4px solid #1e8a67;
-      padding: 36px 32px 32px;
-      width: 100%;
-      max-width: 400px;
-      box-sizing: border-box;
-      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-      animation: fadeIn 0.3s ease;
+      align-self: center; justify-self: center;
+      width: 100%; max-width: 400px; padding: 32px 24px;
+      box-sizing: border-box; animation: fadeIn 0.35s ease;
     }
     @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-    .brand { text-align: center; margin-bottom: 28px; }
+    .brand { margin-bottom: 26px; }
+    .brand .brand-mark { display: none; }
     .brand-mark {
-      width: 48px; height: 48px; margin: 0 auto 14px;
+      width: 44px; height: 44px; flex: 0 0 44px;
       display: flex; align-items: flex-end; justify-content: center; gap: 4px;
-      padding: 11px; box-sizing: border-box;
-      background: #1e8a67; border-radius: 8px;
-      box-shadow: 0 6px 16px rgba(30, 138, 103, 0.28);
+      padding: 10px; box-sizing: border-box; border-radius: 12px;
+      background: linear-gradient(160deg, #13936c, #0b6b52);
+      box-shadow: 0 8px 18px rgba(11, 107, 82, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     }
-    .brand-mark span { width: 5px; background: #fff; border-radius: 1px; }
-    .brand-mark span:nth-child(1) { height: 10px; opacity: 0.72; }
-    .brand-mark span:nth-child(2) { height: 17px; opacity: 0.86; }
-    .brand-mark span:nth-child(3) { height: 25px; }
-    .brand h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; color: #172535; letter-spacing: 0.2px; }
-    .brand h1 span { color: #1e8a67; }
-    .brand p { margin: 0; color: #667582; font-size: 13px; }
+    .brand-mark span { width: 5px; background: #fff; border-radius: 2px; }
+    .brand-mark span:nth-child(1) { height: 9px; opacity: 0.72; }
+    .brand-mark span:nth-child(2) { height: 15px; opacity: 0.86; }
+    .brand-mark span:nth-child(3) { height: 22px; }
+    .brand h1 { margin: 0 0 6px; font-family: var(--isp-display); font-size: 32px; font-weight: 600; color: #15211c; letter-spacing: -0.5px; }
+    .brand p { margin: 0; color: #56665e; font-size: 14px; }
+
+    @media (max-width: 900px) {
+      .login-container { grid-template-columns: 1fr; grid-template-rows: auto 1fr; background: #0e1d17; }
+      .brand-panel { padding: 34px 24px 70px; gap: 18px; }
+      .brand-pitch h2 { font-size: 27px; letter-spacing: -0.5px; }
+      .brand-pitch p { font-size: 14.5px; margin-top: 10px; }
+      .brand-foot { display: none; }
+      .login-card {
+        position: relative; z-index: 2; align-self: stretch; max-width: none; margin-top: -44px;
+        padding: 30px 22px calc(28px + env(safe-area-inset-bottom));
+        background: #fff; border-radius: 24px 24px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.18);
+      }
+      .brand h1 { font-size: 26px; }
+    }
 
     .field { display: block; margin-bottom: 14px; }
-    .field > span { display: block; font-size: 12px; color: #334250; margin-bottom: 6px; font-weight: 600; }
+    .field > span { display: block; font-size: 12px; color: #2d3b34; margin-bottom: 6px; font-weight: 600; }
     .text-input {
-      width: 100%; padding: 11px 12px;
-      border: 1px solid #ccd6de;
-      border-radius: 6px;
+      width: 100%; min-height: 48px; padding: 11px 14px;
+      border: 1px solid #cfd8d2;
+      border-radius: 12px;
       font-size: 15px;
       outline: none; box-sizing: border-box;
-      color: #172535;
+      color: #15211c;
       background: #fff;
       transition: border-color 0.15s, box-shadow 0.15s;
     }
     .text-input::placeholder { color: #8a97a3; }
-    .text-input:focus { border-color: #1267dd; box-shadow: 0 0 0 3px rgba(18, 103, 221, 0.14); }
+    .text-input:focus { border-color: #0b6b52; box-shadow: 0 0 0 3px rgba(11, 107, 82, 0.14); }
     .text-input.invalid { border-color: #b42318; }
 
     .password-wrap { position: relative; }
@@ -145,32 +181,32 @@ import { AuthService } from '../../services/auth.service';
     .toggle-pass {
       position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
       width: 36px; height: 36px; display: grid; place-items: center;
-      background: none; border: none; border-radius: 6px; cursor: pointer; color: #667582;
+      background: none; border: none; border-radius: 9px; cursor: pointer; color: #56665e;
     }
-    .toggle-pass:hover { background: #f2f7ff; color: #1267dd; }
+    .toggle-pass:hover { background: #eef6f1; color: #0b6b52; }
 
-    .hint { display: block; margin: 6px 0 0; font-size: 12px; color: #667582; }
+    .hint { display: block; margin: 6px 0 0; font-size: 12px; color: #56665e; }
     .hint.warn { color: #b36b12; }
     .hint.center { text-align: center; margin-top: 10px; }
 
     .error-msg {
       display: flex; align-items: flex-start; gap: 8px;
       background: #fff0ef; color: #b42318; border: 1px solid #f5c9c4;
-      padding: 10px 12px; border-radius: 6px;
+      padding: 10px 12px; border-radius: 9px;
       font-size: 13px; margin-bottom: 14px; font-weight: 500; line-height: 1.4;
     }
     .error-msg svg { flex-shrink: 0; margin-top: 1px; }
 
     .btn-login {
-      width: 100%; padding: 12px;
-      border: none; border-radius: 6px;
-      background: #1267dd; color: white;
+      width: 100%; min-height: 50px; padding: 12px;
+      border: none; border-radius: 12px;
+      background: linear-gradient(180deg, #11855f, #0b6b52); box-shadow: 0 8px 18px rgba(11, 107, 82, 0.28); color: white;
       font-size: 15px; font-weight: 600;
       cursor: pointer; transition: background 0.15s;
       display: flex; align-items: center; justify-content: center; gap: 8px;
       margin-top: 6px;
     }
-    .btn-login:hover:not(:disabled) { background: #0d58c0; }
+    .btn-login:hover:not(:disabled) { background: #08523f; }
     .btn-login:disabled { opacity: 0.55; cursor: not-allowed; }
 
     .spinner {
@@ -180,9 +216,6 @@ import { AuthService } from '../../services/auth.service';
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    @media (max-width: 420px) {
-      .login-card { padding: 28px 20px 24px; }
-    }
   `]
 })
 export class LoginComponent implements AfterViewInit {
