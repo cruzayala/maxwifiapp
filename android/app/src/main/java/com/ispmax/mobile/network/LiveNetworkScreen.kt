@@ -25,7 +25,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 
 @Composable
-fun LiveNetworkScreen(vm: MainViewModel, pages: Map<String, PageState>) {
+fun LiveNetworkScreen(vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit = {}) {
     var search by rememberSaveable { mutableStateOf("") }
     var committed by rememberSaveable { mutableStateOf("") }
     var stateFilter by rememberSaveable { mutableStateOf("all") }
@@ -67,7 +67,7 @@ fun LiveNetworkScreen(vm: MainViewModel, pages: Map<String, PageState>) {
         }
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (rows.isEmpty() && !state.loading && state.error == null) item { EmptyState("No hay clientes para estos filtros") }
-            items(rows, key = { "${it.optInt("idServicio")}-${it.text("ip", it.text("queueName"))}" }) { row -> LiveClientCard(row) }
+            items(rows, key = { "${it.optInt("idServicio")}-${it.text("ip", it.text("queueName"))}" }) { row -> LiveClientCard(row) { row.optInt("idServicio").takeIf { it > 0 }?.let(onClient) } }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { page-- }, enabled = page > 1) { Icon(Icons.Outlined.ChevronLeft, "Anterior") }
@@ -81,11 +81,11 @@ fun LiveNetworkScreen(vm: MainViewModel, pages: Map<String, PageState>) {
     OutlinedCard(modifier) { Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) { Text(value, color = color, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 1); Text(label, style = MaterialTheme.typography.labelSmall, maxLines = 1) } }
 }
 
-@Composable private fun LiveClientCard(row: JSONObject) {
+@Composable private fun LiveClientCard(row: JSONObject, open: () -> Unit = {}) {
     val activeColor = if (row.optBoolean("online")) IspGreen else IspRed
     val maxDown = row.optDouble("maxDownloadBps").coerceAtLeast(1.0)
     val usage = (row.optDouble("downloadBps") / maxDown).toFloat().coerceIn(0f, 1f)
-    OutlinedCard(Modifier.fillMaxWidth()) {
+    OutlinedCard(onClick = open, modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (row.optBoolean("online")) Icons.Outlined.Wifi else Icons.Outlined.WifiOff, null, tint = activeColor, modifier = Modifier.size(20.dp))

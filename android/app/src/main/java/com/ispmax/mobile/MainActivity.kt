@@ -89,6 +89,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
     var route by rememberSaveable { mutableStateOf("") }
     var clientId by rememberSaveable { mutableStateOf(0) }
     var screenOwner by rememberSaveable { mutableStateOf("") }
+    var tr069Serial by rememberSaveable { mutableStateOf("") }
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     LaunchedEffect(section, route, clientId) { focus.clearFocus(); keyboard?.hide() }
@@ -127,7 +128,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                         screenStates.SaveableStateProvider(target) {
                         when {
                             target.startsWith("client-") -> ClientDetail(target.removePrefix("client-").toInt(), role, vm, pages, app.capabilities?.optJSONObject("capabilities"))
-                            target == "home" -> Overview(vm, pages["/overview"] ?: PageState(), onClients = { section = "clients" }, onNetwork = { section = "network" }, role = role)
+                            target == "home" -> Overview(vm, pages["/overview"] ?: PageState(), onClients = { section = "clients" }, onNetwork = { section = "network" }, role = role, pages = pages, onIncidents = { section = "network"; route = "incidents" })
                             target == "clients" -> Collection("clients", vm, pages, onClient = { clientId = it })
                             target == "billing" -> MenuPage((if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("collectionsQueue") == true) listOf("collection-queue") else emptyList()) + listOf("invoices", "pending") + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("paymentsWrite") == true) listOf("payment-requests") else emptyList()) + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("promisesWrite") == true) listOf("promises") else emptyList()) + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("billingReport") == true) listOf("billing-report") else emptyList()), onOpen = { route = it })
                             target == "collection-queue" -> CollectionQueueScreen(vm, pages, role, app.capabilities?.optJSONObject("capabilities"), onClient = { clientId = it })
@@ -140,11 +141,12 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                             target == "network" -> NetworkHome(vm, pages, app.capabilities?.optJSONObject("capabilities"), open = { route = it })
                             target == "more" -> More(user, app.server, role, { route = it }, vm::logout)
                             target == "onu-local" -> OnuReadiness()
-                            target == "onus" -> OltScreen(vm, pages)
-                            target == "incidents" -> IncidentsScreen(vm, pages)
+                            target == "onus" -> OltScreen(vm, pages, onTr069 = { tr069Serial = it }, onClient = { clientId = it }, onOnuProvisioner = { _, _, _ -> route = "onu-provisioner" })
+                            target == "onu-provisioner" -> OnuProvisionerScreen(vm, pages, onLocalProbe = { route = "onu-local" })
+                            target == "incidents" -> IncidentsScreen(vm, pages, role)
                             target == "network-audit" -> NetworkAuditScreen(vm, pages)
-                            target == "live" -> LiveNetworkScreen(vm, pages)
-                            target == "mikrotik" -> MikrotikOverviewScreen(vm, pages, app.capabilities?.optJSONObject("capabilities"))
+                            target == "live" -> LiveNetworkScreen(vm, pages, onClient = { clientId = it })
+                            target == "mikrotik" -> MikrotikAdminScreen(vm, pages)
                             target == "wan-history" -> WanHistoryScreen(vm, pages)
                             target == "ipam" -> IpamScreen(vm, pages)
                             target == "ip-ranges" -> IpRangeSettingsScreen(vm)
@@ -157,6 +159,12 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                             target == "payroll" && app.capabilities?.optJSONObject("capabilities")?.optBoolean("payrollWrite") == true -> PayrollScreen(vm, pages)
                             target == "users" && app.capabilities?.optJSONObject("capabilities")?.optBoolean("usersManage") == true -> UsersScreen(vm, pages)
                             target == "sessions" -> MobileSessionsScreen(vm, pages)
+                            target == "web-settings" -> WebParitySettingsScreen(vm, pages, role)
+                            target == "web-whatsapp" -> WebParityWhatsappScreen(vm, pages, role)
+                            target == "web-surveys" -> WebParitySurveysScreen(vm, pages, role, onClient = { clientId = it })
+                            target == "web-bandwidth" -> WebParityBandwidthScreen(vm, pages, role)
+                            target == "web-reports" -> WebParityReportsScreen(vm, pages, role)
+                            target == "web-operations" -> WebParityOperationsScreen(vm, pages, role)
                             else -> Collection(target, vm, pages, onClient = { clientId = it })
                         }
                     }
@@ -166,6 +174,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
             }
         }
     }
+    if (tr069Serial.isNotBlank()) Tr069Console(tr069Serial, vm, pages, onClose = { tr069Serial = "" })
 }
 
 @Composable private fun Login(state: AppState, onLogin: (String, String, String) -> Unit) {
@@ -227,7 +236,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
     state.error?.let { Notice(it, true); TextButton(onClick = retry) { Icon(Icons.Outlined.Refresh, null); Text("Reintentar") } }
 }
 
-@Composable private fun Overview(vm: MainViewModel, state: PageState, onClients: () -> Unit, onNetwork: () -> Unit, role: String) {
+@Composable private fun Overview(vm: MainViewModel, state: PageState, onClients: () -> Unit, onNetwork: () -> Unit, role: String, pages: Map<String, PageState> = emptyMap(), onIncidents: () -> Unit = onNetwork) {
     LaunchedEffect(Unit) { vm.load("/overview", true) }
     val data = state.body
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
@@ -271,6 +280,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                 Value("Saldo registrado", money(billing.optDouble("balance", 0.0)))
             }
             if (can(role, "tecnico")) { HorizontalDivider(); MenuRow("OLT y ONU", "${data.text("onusOnline")} en linea de ${data.text("onus")}", Icons.Outlined.Hub, onNetwork) }
+            WebParityDashboardPanel(vm, pages, role, onIncidents = onIncidents)
         } else if (!state.loading && state.error == null) EmptyState("Sin datos disponibles")
     }
 }
@@ -285,8 +295,8 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
     }
 }
 
-private val labels = mapOf("collection-queue" to "Cola de cobranza", "surveys" to "Encuestas", "tickets" to "Tickets", "payment-requests" to "Solicitudes de pago", "billing-report" to "Reporte de facturacion", "promises" to "Promesas de pago", "invoices" to "Facturas", "pending" to "Saldos pendientes", "onus" to "OLT y ONU", "incidents" to "Incidencias", "network-audit" to "Estabilidad de clientes", "live" to "Monitoreo en vivo", "mikrotik" to "MikroTik", "wan-history" to "Historico WAN", "ipam" to "Direcciones IP", "ip-ranges" to "Rangos IP locales", "map" to "Mapa de clientes", "system" to "Estado del sistema", "whatsapp" to "WhatsApp", "plans" to "Planes", "inventory" to "Inventario", "expenses" to "Gastos", "payroll" to "Nomina", "users" to "Usuarios", "onu-local" to "Configurar ONU")
-private val moduleIcons = mapOf("collection-queue" to Icons.Outlined.PendingActions, "surveys" to Icons.Outlined.Poll, "tickets" to Icons.Outlined.ConfirmationNumber, "invoices" to Icons.Outlined.ReceiptLong, "pending" to Icons.Outlined.AccountBalanceWallet, "onus" to Icons.Outlined.Hub, "incidents" to Icons.Outlined.WarningAmber, "network-audit" to Icons.Outlined.QueryStats, "live" to Icons.Outlined.Podcasts, "mikrotik" to Icons.Outlined.Router, "wan-history" to Icons.Outlined.ShowChart, "ipam" to Icons.Outlined.Lan, "ip-ranges" to Icons.Outlined.AccountTree, "map" to Icons.Outlined.Map, "system" to Icons.Outlined.SettingsSuggest, "whatsapp" to Icons.Outlined.Chat, "plans" to Icons.Outlined.Speed, "inventory" to Icons.Outlined.Inventory2, "expenses" to Icons.Outlined.Payments, "payroll" to Icons.Outlined.Badge, "users" to Icons.Outlined.ManageAccounts, "onu-local" to Icons.Outlined.Router)
+private val labels = mapOf("onu-provisioner" to "Configurar ONU", "web-settings" to "Configuracion", "web-whatsapp" to "WhatsApp: conexion y envios", "web-surveys" to "Gestion de encuestas", "web-bandwidth" to "Prueba de velocidad", "web-reports" to "Reportes de cartera", "web-operations" to "Sincronizacion", "collection-queue" to "Cola de cobranza", "surveys" to "Encuestas", "tickets" to "Tickets", "payment-requests" to "Solicitudes de pago", "billing-report" to "Reporte de facturacion", "promises" to "Promesas de pago", "invoices" to "Facturas", "pending" to "Saldos pendientes", "onus" to "OLT y ONU", "incidents" to "Incidencias", "network-audit" to "Estabilidad de clientes", "live" to "Monitoreo en vivo", "mikrotik" to "MikroTik", "wan-history" to "Historico WAN", "ipam" to "Direcciones IP", "ip-ranges" to "Rangos IP locales", "map" to "Mapa de clientes", "system" to "Estado del sistema", "whatsapp" to "WhatsApp", "plans" to "Planes", "inventory" to "Inventario", "expenses" to "Gastos", "payroll" to "Nomina", "users" to "Usuarios", "onu-local" to "Prueba local de ONU")
+private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInputAntenna, "web-settings" to Icons.Outlined.Settings, "web-whatsapp" to Icons.Outlined.QrCode2, "web-surveys" to Icons.Outlined.FactCheck, "web-bandwidth" to Icons.Outlined.Speed, "web-reports" to Icons.Outlined.Assessment, "web-operations" to Icons.Outlined.CloudSync, "collection-queue" to Icons.Outlined.PendingActions, "surveys" to Icons.Outlined.Poll, "tickets" to Icons.Outlined.ConfirmationNumber, "invoices" to Icons.Outlined.ReceiptLong, "pending" to Icons.Outlined.AccountBalanceWallet, "onus" to Icons.Outlined.Hub, "incidents" to Icons.Outlined.WarningAmber, "network-audit" to Icons.Outlined.QueryStats, "live" to Icons.Outlined.Podcasts, "mikrotik" to Icons.Outlined.Router, "wan-history" to Icons.Outlined.ShowChart, "ipam" to Icons.Outlined.Lan, "ip-ranges" to Icons.Outlined.AccountTree, "map" to Icons.Outlined.Map, "system" to Icons.Outlined.SettingsSuggest, "whatsapp" to Icons.Outlined.Chat, "plans" to Icons.Outlined.Speed, "inventory" to Icons.Outlined.Inventory2, "expenses" to Icons.Outlined.Payments, "payroll" to Icons.Outlined.Badge, "users" to Icons.Outlined.ManageAccounts, "onu-local" to Icons.Outlined.Router)
 
 @Composable private fun MenuPage(keys: List<String>, onOpen: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -308,10 +318,13 @@ private val moduleIcons = mapOf("collection-queue" to Icons.Outlined.PendingActi
         val modules = listOf("plans", "system") +
             (if (can(role, "tecnico")) listOf("map") else emptyList()) +
             (if (can(role, "tecnico")) listOf("tickets") else emptyList()) +
-            (if (can(role, "cobranza")) listOf("whatsapp", "surveys") else emptyList())
+            (if (can(role, "cobranza")) listOf("whatsapp", "web-whatsapp", "surveys", "web-surveys") else emptyList()) +
+            listOf("web-reports") +
+            (if (can(role, "tecnico")) listOf("web-operations") else emptyList())
         (modules + if (can(role)) listOf("inventory", "expenses", "payroll", "users") else emptyList()).forEach { key -> MenuRow(labels.getValue(key), "", moduleIcons.getValue(key), { open(key) }) }
         if (can(role)) MenuRow(labels.getValue("ip-ranges"), "Segmentos usados al crear clientes", moduleIcons.getValue("ip-ranges"), { open("ip-ranges") })
         if (can(role)) MenuRow("Sesiones moviles", "Acceso desde celulares", Icons.Outlined.PhonelinkLock, { open("sessions") })
+        if (can(role)) MenuRow(labels.getValue("web-settings"), "Empresa, avisos, corte y sistema", moduleIcons.getValue("web-settings"), { open("web-settings") })
         HorizontalDivider()
         TextButton(onClick = logout) { Icon(Icons.AutoMirrored.Outlined.Logout, null); Spacer(Modifier.width(8.dp)); Text("Cerrar sesion") }
         Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
@@ -487,7 +500,7 @@ private val moduleIcons = mapOf("collection-queue" to Icons.Outlined.PendingActi
             }
             if (linkTest && client?.optString("ip").orEmpty().isNotBlank()) OutlinedButton(onClick = { linkTestOpen = true }) { Icon(Icons.Outlined.NetworkCheck, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Probar enlace") }
         }
-        PrimaryScrollableTabRow(tab.coerceAtMost(if (recordsWrite) 4 else 3), edgePadding = 0.dp) { (listOf("Datos", "Servicio", "Equipos", "Notas") + if (recordsWrite) listOf("Historial") else emptyList()).forEachIndexed { index, label -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label, maxLines = 1, fontSize = 13.sp) }) } }
+        PrimaryScrollableTabRow(tab.coerceAtMost(if (recordsWrite) 5 else 4), edgePadding = 0.dp) { (listOf("Datos", "Servicio", "Equipos", "Notas") + (if (recordsWrite) listOf("Historial") else emptyList()) + listOf("Más")).forEachIndexed { index, label -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label, maxLines = 1, fontSize = 13.sp) }) } }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             ReadStatus(state) { vm.load(path, true) }
             if (client != null) when (tab) {
@@ -514,7 +527,8 @@ private val moduleIcons = mapOf("collection-queue" to Icons.Outlined.PendingActi
                     if (notes.isEmpty()) EmptyState("Sin notas registradas")
                     notes.forEach { Value(it.text("createdAt"), it.text("note")); HorizontalDivider() }
                 }
-                4 -> if (recordsWrite) ClientRecordHistory(id, vm, pages)
+                4 -> if (recordsWrite) ClientRecordHistory(id, vm, pages) else WebParityClientActions(id, vm, pages, role)
+                5 -> WebParityClientActions(id, vm, pages, role)
             }
         }
     }

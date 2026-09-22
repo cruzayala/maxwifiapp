@@ -44,7 +44,7 @@ import java.io.File
         if (uri != null) runCatching { context.contentResolver.openOutputStream(uri)?.use { it.write(html.toByteArray()) } ?: throw java.io.IOException() }.onFailure { error = "No se pudo guardar el documento" }
     }
     LaunchedEffect(path) { ready = false; vm.load(path) }
-    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = close) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).systemBarsPadding()) {
             TopAppBar(title = { Text("Factura #$id") }, navigationIcon = { IconButton(onClick = close) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Cerrar documento") } }, windowInsets = WindowInsets(0, 0, 0, 0))
             Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -35,12 +35,16 @@ fun TicketsScreen(vm: MainViewModel, pages: Map<String, PageState>, canWrite: Bo
     val state = pages[path] ?: PageState(loading = true)
     val rows = state.body?.optJSONArray("items").objects()
     val summary = state.body?.optJSONObject("summary")
+    // Sincronizar con WispHub, igual que en la web (tecnicos y administradores: mismo permiso que editar).
+    val syncActions = rememberWebActions()
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text("${state.body?.optInt("total") ?: 0} tickets", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("Espejo WispHub · ${state.body?.text("syncedAt", "Sin sincronizar")}", style = MaterialTheme.typography.bodySmall) }
+            if (canWrite) IconButton(onClick = { syncActions.run { syncWispHubTickets(vm).also { vm.load(path, true) } } }, enabled = !syncActions.busy) { Icon(Icons.Outlined.CloudSync, "Sincronizar tickets con WispHub") }
             if (canWrite) FilledTonalIconButton(onClick = { editor = 0 }) { Icon(Icons.Outlined.Add, "Crear ticket") }
             IconButton(onClick = { vm.load(path, true) }, enabled = !state.loading) { Icon(Icons.Outlined.Refresh, "Actualizar tickets") }
         }
+        WebActionFeedback(syncActions)
         OutlinedTextField(search, { search = it }, label = { Text("Buscar ticket") }, placeholder = { Text("Asunto, cliente o tecnico") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             val statuses = linkedSetOf("").apply { summary?.optJSONObject("byStatus")?.keys()?.forEachRemaining { add(it) } }

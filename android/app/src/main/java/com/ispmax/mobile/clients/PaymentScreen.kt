@@ -78,7 +78,7 @@ import java.util.UUID
         } finally { busy = false } }
     }
     LaunchedEffect(invoiceId) { try { recover() } catch (e: Exception) { if (e is CancellationException) throw e; error = e.message } finally { busy = false } }
-    Dialog(onDismissRequest = { if (!busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = { if (!busy) close() }) {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {

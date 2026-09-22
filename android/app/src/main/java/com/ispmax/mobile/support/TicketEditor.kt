@@ -83,7 +83,7 @@ internal fun TicketEditor(id: Int, vm: MainViewModel, pages: Map<String, PageSta
     val valid = form.optInt("clientId") > 0 && form.text("subject", "").length >= 2 && form.optInt("technicianId") > 0 &&
         form.text("description", "").length >= 3 && form.optInt("state") in 1..4 && form.optInt("priority") in 1..4
 
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = dismiss) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(
                 topBar = { TopAppBar(title = { Text(if (id == 0) "Nuevo ticket" else "Ticket #$id") }, navigationIcon = { IconButton(onClick = dismiss, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar editor") } }) },

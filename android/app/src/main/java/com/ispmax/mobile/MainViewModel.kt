@@ -50,7 +50,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         catch (error: Exception) { handleAuth(error); _app.update { it.copy(error = error.message) } }
     }
     private fun handleAuth(error: Exception) {
-        if (error is ApiFailure && error.status == 401) {
+        if (error is ApiFailure && error.sessionEnded) {
             _pages.value = emptyMap()
             _app.update { it.copy(user = null, capabilities = null, error = error.message) }
         }
@@ -110,6 +110,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     suspend fun exportRows(path: String) = mutation { repo.exportRows(path) }
+    /**
+     * Accion sobre una ruta de la web (misma que usa la pagina). Al terminar vuelve a leer
+     * las pantallas abiertas cuyas rutas empiecen con alguno de [refresh].
+     */
+    suspend fun web(method: String, path: String, body: JSONObject? = null, vararg refresh: String): JSONObject = mutation {
+        repo.web(path, method, body).also {
+            val prefixes = refresh.map { if (it.startsWith(WEB_PREFIX) || !it.startsWith("/")) it else WEB_PREFIX + it }
+            _pages.value.keys.filter { key -> prefixes.any { key.startsWith(it) } }.forEach { key -> jobs.remove(key)?.cancel(); load(key, true) }
+        }
+    }
     suspend fun saveClientGps(id: Int, lat: Double, lng: Double, accuracy: Double?, key: String) = mutation {
         repo.saveClientGps(id, lat, lng, accuracy, key).also {
             _pages.value.keys.filter { path -> path == "/clients/$id" || path.startsWith("/map/clients") }.forEach { path ->

@@ -141,7 +141,7 @@ internal val promiseStatuses = linkedMapOf("pending" to "Pendiente", "paid" to "
             vm.saveRecordDraft(kind, id, JSONObject(raw))
         } finally { busy = false }
     }; Unit }
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = dismiss) {
         Surface(Modifier.fillMaxSize()) {
             Scaffold(topBar = { TopAppBar(title = { Text(if (alias) "Editar expediente local" else if (id == 0) "Nueva promesa" else "Editar promesa") }, navigationIcon = { IconButton(onClick = dismiss, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar editor de expediente") } }) }, bottomBar = {
                 Button(onClick = { if (!alias && data.optString("status") != "pending" && !attempted) confirm = true else submit() }, enabled = loaded && !busy && !stale, modifier = Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(16.dp)) {

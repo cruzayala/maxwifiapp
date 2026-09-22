@@ -174,7 +174,7 @@ import java.util.UUID
     LaunchedEffect(raw, loaded) { if (loaded) { delay(250); vm.saveExpenseDraft(id, JSONObject(raw)) } }
     fun update(field: String, value: Any) { raw = JSONObject(raw).put(field, value).put("key", UUID.randomUUID().toString()).toString() }
     val dismiss: () -> Unit = { if (!busy) scope.launch { if (loaded) vm.saveExpenseDraft(id, JSONObject(raw)); close() }; Unit }
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = dismiss) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(topBar = { TopAppBar(title = { Text(if (id == 0) "Nuevo gasto" else "Editar gasto") }, navigationIcon = { IconButton(onClick = dismiss, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar editor de gasto") } }) }, bottomBar = {
                 Button(modifier = Modifier.fillMaxWidth().padding(16.dp), enabled = loaded && !busy && !stale && (id == 0 || form.optBoolean("editable", true)), onClick = {

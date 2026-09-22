@@ -15,8 +15,12 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-class ApiFailure(val status: Int, val code: String, message: String) : IOException(message)
+class ApiFailure(val status: Int, val code: String, message: String, val details: JSONObject? = null) : IOException(message) {
+    val sessionEnded: Boolean get() = status == 401 && code in setOf("SESSION_REVOKED", "ACCESS_EXPIRED", "LOGIN_FAILED")
+}
 data class ReadResult(val body: JSONObject, val cached: Boolean, val savedAt: Long)
+
+const val WEB_PREFIX = "web:"
 
 fun serverUrl(input: String, debug: Boolean = BuildConfig.DEBUG): String {
     val url = input.trim().trimEnd('/').toHttpUrlOrNull() ?: error("URL del servidor invalida")
@@ -35,7 +39,7 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
     // Recover stale pooled sockets for reads only; writes retain explicit idempotent retries.
     private val readHttp = http.newBuilder().retryOnConnectionFailure(true).build()
     private val authLock = Mutex()
-    private var session: JSONObject? = null
+    @Volatile private var session: JSONObject? = null
     val user: JSONObject? get() = session?.optJSONObject("user")
     val base: String get() = session?.optString("server") ?: vault.server()
     private fun scope(): String = MessageDigest.getInstance("SHA-256")
@@ -60,38 +64,49 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
         session = result
     }
     private fun request(origin: String, path: String, method: String = "GET", body: JSONObject? = null, token: String? = null, idempotency: String? = null, version: String? = null): JSONObject {
-        val builder = Request.Builder().url("$origin/mobile/v1$path").header("Accept", "application/json")
+        // "web:" usa las mismas rutas que la pagina web (OLT, MikroTik, TR-069...) con la sesion movil.
+        val web = path.startsWith(WEB_PREFIX)
+        val url = if (web) "$origin${path.removePrefix(WEB_PREFIX)}" else "$origin/mobile/v1$path"
+        val builder = Request.Builder().url(url).header("Accept", "application/json")
         if (token != null) builder.header("Authorization", "Bearer $token")
         if (idempotency != null) builder.header("Idempotency-Key", idempotency)
         if (version != null) builder.header("If-Match", version)
-        builder.method(method, if (method in listOf("POST", "PUT", "PATCH")) (body ?: JSONObject()).toString().toRequestBody("application/json".toMediaType()) else null)
+        builder.method(method, if (method in listOf("POST", "PUT", "PATCH") || method == "DELETE" && body != null) (body ?: JSONObject()).toString().toRequestBody("application/json".toMediaType()) else null)
         (if (method == "GET") readHttp else http).newCall(builder.build()).execute().use { response ->
             val raw = response.body?.string().orEmpty()
-            val parsed = runCatching { JSONObject(raw) }.getOrNull()
+            val trimmed = raw.trimStart()
+            val parsed = runCatching { if (web && trimmed.startsWith("[")) JSONObject().put("items", org.json.JSONArray(trimmed)) else JSONObject(raw) }.getOrNull()
+                ?: if (web && response.isSuccessful && trimmed.isEmpty()) JSONObject() else null
             if (!response.isSuccessful) {
-                throw ApiFailure(response.code, parsed?.optString("code") ?: "HTTP_ERROR",
-                    parsed?.optString("error")?.take(250) ?: "Servidor no disponible (${response.code})")
+                throw ApiFailure(response.code, parsed?.optString("code")?.ifBlank { null } ?: "HTTP_ERROR",
+                    (parsed?.optString("error")?.ifBlank { null } ?: parsed?.optString("message")?.ifBlank { null })?.take(250) ?: "Servidor no disponible (${response.code})", parsed)
             }
             return parsed ?: throw ApiFailure(502, "INVALID_RESPONSE", "El servidor no devuelve la API movil. Comprueba su version.")
         }
     }
     private suspend fun authorized(path: String, method: String = "GET", body: JSONObject? = null, idempotency: String? = null, version: String? = null): JSONObject = withContext(Dispatchers.IO) {
-        authLock.withLock {
-            val current = session ?: throw ApiFailure(401, "SESSION_REVOKED", "Inicia sesion")
+        // Las solicitudes van en paralelo (una lectura lenta de la OLT no frena las demas);
+        // solo la renovacion del token se hace de a una.
+        val current = session ?: throw ApiFailure(401, "SESSION_REVOKED", "Inicia sesion")
+        try {
             try {
-                try {
-                    request(base, path, method, body, current.getString("accessToken"), idempotency, version)
-                } catch (error: ApiFailure) {
-                    if (error.status != 401 || error.code != "ACCESS_EXPIRED") throw error
-                    val refreshed = request(base, "/sessions/refresh", "POST", JSONObject().put("refreshToken", current.getString("refreshToken")))
-                    refreshed.put("server", base)
-                    vault.save(refreshed); session = refreshed
-                    request(base, path, method, body, refreshed.getString("accessToken"), idempotency, version)
-                }
+                request(base, path, method, body, current.getString("accessToken"), idempotency, version)
             } catch (error: ApiFailure) {
-                if (error.status == 401) { vault.clear(); session = null }
-                throw error
+                if (error.status != 401 || error.code != "ACCESS_EXPIRED") throw error
+                val fresh = authLock.withLock {
+                    val now = session ?: throw ApiFailure(401, "SESSION_REVOKED", "Inicia sesion")
+                    if (now.getString("accessToken") != current.getString("accessToken")) now
+                    else request(base, "/sessions/refresh", "POST", JSONObject().put("refreshToken", now.getString("refreshToken"))).also { refreshed ->
+                        refreshed.put("server", base)
+                        vault.save(refreshed); session = refreshed
+                    }
+                }
+                request(base, path, method, body, fresh.getString("accessToken"), idempotency, version)
             }
+        } catch (error: ApiFailure) {
+            // Un 401 de un servicio externo (WispHub) no es la sesion movil: solo se cierra la sesion propia.
+            if (error.sessionEnded) { vault.clear(); session = null }
+            throw error
         }
     }
     suspend fun read(path: String): ReadResult {
@@ -99,13 +114,20 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
         try {
             val body = authorized(path)
             val now = System.currentTimeMillis()
-            if (!path.startsWith("/sessions")) dao.save(Snapshot(owner, path, body.toString(), now))
+            // Las rutas web (OLT, MikroTik, TR-069, ajustes...) pueden traer datos sensibles: no se guardan en disco.
+            val volatile = path.startsWith("/sessions") || path.startsWith(WEB_PREFIX)
+            if (!volatile) dao.save(Snapshot(owner, path, body.toString(), now))
             return ReadResult(body, false, now)
         } catch (error: IOException) {
-            if (path.startsWith("/sessions") || error is ApiFailure && error.status < 500) throw error
+            if (path.startsWith("/sessions") || path.startsWith(WEB_PREFIX) || error is ApiFailure && error.status < 500) throw error
             val cached = dao.snapshot(owner, path) ?: throw error
             return ReadResult(JSONObject(cached.payload), true, cached.savedAt)
         }
+    }
+    /** Operacion sobre una ruta de la web (misma validacion y permisos que la pagina). */
+    suspend fun web(path: String, method: String, body: JSONObject? = null): JSONObject {
+        require(path.startsWith("/") && !path.startsWith("/mobile/")) { "Ruta web invalida" }
+        return authorized(WEB_PREFIX + path, method, body)
     }
     suspend fun exportRows(path: String): org.json.JSONArray {
         require(path.startsWith("/exports/")) { "Exportacion invalida" }

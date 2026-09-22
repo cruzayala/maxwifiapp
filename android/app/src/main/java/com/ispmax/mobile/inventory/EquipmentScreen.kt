@@ -166,7 +166,7 @@ import java.util.UUID
     fun update(field: String, value: Any) { val next = JSONObject(raw); next.getJSONObject("data").put(field, value); raw = next.put("key", UUID.randomUUID().toString()).toString() }
     val dismiss: () -> Unit = { if (!busy) scope.launch { if (loaded) vm.saveEquipmentDraft(id, JSONObject(raw)); close() }; Unit }
     val title = when (op) { "create" -> "Registrar equipo"; "update" -> "Editar equipo"; "assign" -> "Asignar equipo"; "return" -> "Devolver equipo"; else -> "Eliminar equipo" }
-    Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = dismiss) {
         Surface(Modifier.fillMaxSize()) {
             Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = { IconButton(onClick = dismiss, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar operacion de equipo") } }) }, bottomBar = {
                 Button(onClick = { scope.launch {

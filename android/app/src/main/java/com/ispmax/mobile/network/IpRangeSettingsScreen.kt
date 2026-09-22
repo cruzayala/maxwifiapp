@@ -99,7 +99,7 @@ private fun IpRangeEditor(initial: LocalIpRange, vm: MainViewModel, close: () ->
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    Dialog(onDismissRequest = { if (!busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = { if (!busy) close() }) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(topBar = { TopAppBar(title = { Text(if (initial.id == 0L) "Agregar rango IP" else "Editar rango IP") }, navigationIcon = { IconButton(onClick = close, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar") } }) }, bottomBar = {
                 Box(Modifier.fillMaxWidth().padding(16.dp)) {

@@ -92,7 +92,7 @@ fun ExternalClientEditor(id: Int, initialSection: String, vm: MainViewModel, clo
         }
     }
 
-    Dialog(onDismissRequest = { if (!busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = { if (!busy) close() }) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(topBar = { TopAppBar(
                 title = { Column { Text("Editar cliente"); Text("WispHub en vivo · #$id", style = MaterialTheme.typography.labelSmall) } },

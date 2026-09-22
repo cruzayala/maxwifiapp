@@ -145,7 +145,7 @@ private fun UserEditor(id: Int, me: JSONObject?, vm: MainViewModel, close: () ->
         } catch (e: Exception) { error = e.message }
     }
     fun update(field: String, value: Any) { raw = JSONObject(raw).put(field, value).put("key", UUID.randomUUID().toString()).toString() }
-    Dialog(onDismissRequest = { if (!busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = { if (!busy) close() }) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(topBar = { TopAppBar(title = { Text(if (id == 0) "Crear usuario" else "Editar usuario") }, navigationIcon = { IconButton(onClick = close, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar") } }) }, bottomBar = {
                 Button(enabled = loaded && !busy && (id != 0 || password.length >= 8), onClick = {

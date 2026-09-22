@@ -339,6 +339,8 @@ function userHasRole(session, allowedRoles) {
   return allowedRoles.some((r) => userLevel >= (ROLE_HIERARCHY[r] || 99));
 }
 
+const { mobileBridgeSession } = require('./lib/mobile-bridge');
+
 async function authMiddleware(req, res, next) {
   // Endpoints publicos (no requieren login)
   if (
@@ -351,6 +353,19 @@ async function authMiddleware(req, res, next) {
   ) return next();
 
   const token = req.headers['x-auth-token'];
+  if (!token && /^Bearer /.test(String(req.headers.authorization || ''))) {
+    // La app Android usa las mismas rutas que la web con su sesion movil:
+    // mismo usuario, mismo rol y las mismas reglas de cada ruta.
+    try {
+      const mobile = await mobileBridgeSession(prisma, String(req.headers.authorization).slice(7));
+      if (mobile.error) return res.status(401).json(mobile.error);
+      req.session = mobile.session;
+      req.user = mobile.session;
+      return next();
+    } catch (error) {
+      return next(error);
+    }
+  }
   const session = await getSession(token);
   if (!session) return res.status(401).json({ error: 'No autorizado' });
 
@@ -1970,9 +1985,6 @@ mtRouter.delete('/backups/:id', requireRole(['admin']), asyncHandler(async (req,
   await logActivity(req, {
     action: 'mikrotik_backup_deleted', entityType: 'mikrotik_backup', entityId: id,
     entityName: removed.name, details: removed,
-  });
-  await prisma.trustedDeviceSession.updateMany({
-    where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() },
   });
   res.json({ ok: true });
 }));

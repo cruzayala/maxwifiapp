@@ -254,7 +254,7 @@ private fun PurchaseEditor(vm: MainViewModel, pages: Map<String, PageState>, clo
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun InventoryEditor(title: String, busy: Boolean, close: () -> Unit, save: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
-    Dialog(onDismissRequest = { if (!busy) close() }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = { if (!busy) close() }) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(topBar = { TopAppBar(title = { Text(title) }, navigationIcon = { IconButton(onClick = close, enabled = !busy) { Icon(Icons.Outlined.Close, "Cerrar") } }) }, bottomBar = { Button(onClick = save, enabled = !busy, modifier = Modifier.fillMaxWidth().padding(16.dp)) { Icon(Icons.Outlined.Save, null); Spacer(Modifier.width(8.dp)); Text(if (busy) "Guardando..." else "Guardar") } }) { padding ->
                 Column(Modifier.padding(padding).fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)

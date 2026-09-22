@@ -59,13 +59,14 @@ fun NetworkHome(vm: MainViewModel, pages: Map<String, PageState>, capabilities: 
             }
         }
         if (capabilities?.optBoolean("networkLive") == true) MenuRow("Monitoreo en vivo", "Presencia y consumo actual por cliente", Icons.Outlined.Podcasts) { open("live") }
-        if (capabilities?.optBoolean("mikrotikRead") == true) MenuRow("MikroTik", "Router, recursos e interfaces", Icons.Outlined.Router) { open("mikrotik") }
+        if (capabilities?.optBoolean("mikrotikRead") == true) MenuRow("MikroTik", "Colas, IPs, firewall, netwatch, respaldos y seguridad", Icons.Outlined.Router) { open("mikrotik") }
         MenuRow("Incidentes NOC", "Reconocer, asignar y resolver", Icons.Outlined.CrisisAlert) { open("incidents") }
         MenuRow("Estabilidad por cliente", "Disponibilidad, consumo y fibra por periodos", Icons.Outlined.QueryStats) { open("network-audit") }
         MenuRow("Historico WAN", "Consumo, latencia, perdida y estabilidad", Icons.Outlined.ShowChart) { open("wan-history") }
         MenuRow("Direcciones IP", "Disponibles, ocupadas y conflictos por segmento", Icons.Outlined.Lan) { open("ipam") }
-        MenuRow("Diagrama OLT y ONU", "Puertos PON y diagnostico optico", Icons.Outlined.AccountTree) { open("onus") }
-        MenuRow("Configurar ONU", "Asistente local compatible", Icons.Outlined.Router) { open("onu-local") }
+        MenuRow("OLT y ONU", "Autorizar, reiniciar, asociar clientes, perfiles y NAP", Icons.Outlined.AccountTree) { open("onus") }
+        MenuRow("Configurar ONU", "Agentes, asistente guiado, expedientes y reservas IP", Icons.Outlined.SettingsInputAntenna) { open("onu-provisioner") }
+        MenuRow("Prueba de velocidad", "Medir desde este telefono y comparar con el plan", Icons.Outlined.Speed) { open("web-bandwidth") }
     }
 }
 
@@ -78,7 +79,7 @@ private fun NetworkMetric(label: String, value: String, icon: androidx.compose.u
 private fun bps(value: Double) = if (value >= 1e9) "%.2f Gbps".format(value / 1e9) else if (value >= 1e6) "%.2f Mbps".format(value / 1e6) else "%.0f Kbps".format(value / 1e3)
 
 @Composable
-fun IncidentsScreen(vm: MainViewModel, pages: Map<String, PageState>) {
+fun IncidentsScreen(vm: MainViewModel, pages: Map<String, PageState>, role: String = "") {
     var search by rememberSaveable { mutableStateOf("") }
     var status by rememberSaveable { mutableStateOf("active") }
     var severity by rememberSaveable { mutableStateOf("") }
@@ -89,6 +90,7 @@ fun IncidentsScreen(vm: MainViewModel, pages: Map<String, PageState>) {
     val state = pages[path] ?: PageState(loading = true)
     val rows = state.body?.optJSONArray("items").objects()
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        WebParityNocPanel(vm, pages, role)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { Text("${state.body?.optInt("total") ?: 0} incidencias", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text("Abiertas ${state.body?.optJSONObject("summary")?.optInt("open") ?: 0} · reconocidas ${state.body?.optJSONObject("summary")?.optInt("acknowledged") ?: 0}", style = MaterialTheme.typography.bodySmall) }
             IconButton(onClick = { vm.load(path, true) }, enabled = !state.loading) { Icon(Icons.Outlined.Refresh, "Actualizar incidencias") }

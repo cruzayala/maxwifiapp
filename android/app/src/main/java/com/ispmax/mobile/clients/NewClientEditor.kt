@@ -90,7 +90,7 @@ fun NewClientEditor(vm: MainViewModel, pages: Map<String, PageState>, close: (In
             if (e !is IOException || e is ApiFailure && e.status in 400..499) raw = JSONObject(raw).put("attempted", false).toString()
         } finally { busy = false }
     } }
-    Dialog(onDismissRequest = { if (!busy) close(null) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    com.ispmax.mobile.ui.IspFullScreenDialog(onDismissRequest = { if (!busy) close(null) }) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Scaffold(topBar = { TopAppBar(title = { Column { Text("Nuevo cliente"); Text(listOf("Datos", "Servicio", "Confirmar")[step], style = MaterialTheme.typography.labelSmall) } }, navigationIcon = { IconButton(onClick = { if (step > 0 && !attempted) step-- else close(null) }, enabled = !busy) { Icon(if (step > 0) Icons.Outlined.ArrowBack else Icons.Outlined.Close, "Volver") } }) }, bottomBar = {
                 Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

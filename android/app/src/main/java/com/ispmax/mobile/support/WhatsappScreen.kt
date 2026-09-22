@@ -1,6 +1,8 @@
 package com.ispmax.mobile
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -98,6 +100,7 @@ private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>, onClie
     var requested by remember { mutableStateOf<Boolean?>(null) }
     var busy by remember { mutableStateOf(false) }
     var error by rememberSaveable { mutableStateOf<String?>(null) }
+    var conversation by rememberSaveable { mutableStateOf<String?>(null) }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
             ReadStatus(state) { vm.load(statusPath, true); vm.load(conversationsPath, true) }
@@ -134,7 +137,10 @@ private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>, onClie
                     leadingContent = { Icon(Icons.Outlined.Forum, null, tint = IspGreen) }
                 )
                 // Desde la conversacion se llega al cliente o se sigue el chat en WhatsApp.
-                Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { conversation = row.text("phone", "") }, enabled = row.text("phone", "").isNotBlank()) {
+                        Icon(Icons.Outlined.Forum, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Ver conversacion")
+                    }
                     if (row.optInt("idServicio") > 0) OutlinedButton(onClick = { onClient(row.optInt("idServicio")) }) {
                         Icon(Icons.Outlined.Person, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Expediente")
                     }
@@ -145,6 +151,7 @@ private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>, onClie
             }
         }
     }
+    conversation?.let { phone -> WebParityBotConversation(phone, vm, pages) { conversation = null } }
     requested?.let { enabled ->
         AlertDialog(onDismissRequest = { if (!busy) requested = null }, title = { Text(if (enabled) "Activar bot" else "Desactivar bot") },
             text = { Text(if (enabled) "El bot empezara a responder cuando WhatsApp este conectado." else "El bot dejara de responder automaticamente; el historial se conserva.") },

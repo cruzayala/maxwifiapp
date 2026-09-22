@@ -12,8 +12,8 @@ android {
         applicationId = "com.ispmax.mobile"
         minSdk = 29
         targetSdk = 35
-        versionCode = 18
-        versionName = "0.15.0-preview"
+        versionCode = 19
+        versionName = "0.16.0-preview"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true; buildConfig = true }

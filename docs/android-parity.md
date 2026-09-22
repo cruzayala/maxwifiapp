@@ -1,6 +1,6 @@
 # ISP Max Android: matriz de entrega
 
-Estado actual: hito 0.15.0 desplegado y verificado. La paridad de consulta y administracion certificada esta disponible, mientras las operaciones de infraestructura marcadas como pendientes siguen bloqueadas.
+Estado actual: hito 0.16.0 (paridad con la web: OLT, MikroTik, TR-069, Configurar ONU, ajustes y resto de modulos). La paridad de consulta y administracion certificada esta disponible, mientras las operaciones de infraestructura marcadas como pendientes siguen bloqueadas.
 Cada fila requiere pruebas de contrato, UI y dispositivo antes de marcarse completa.
 El agente Windows y la web se conservan; los dispositivos de produccion no son fixtures.
 
@@ -202,3 +202,14 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - `/mobile/v1/surveys` y `/surveys/reminders` (admin, idempotente, auditado); la busqueda del bot y el precio tipico por plan amplian contratos existentes.
 - Expediente con llamar, WhatsApp y probar enlace. Se corrigio la lectura de telefonos vacios que Android convertia en el texto "null".
 - Regresion: 192 pruebas Node y 28 pruebas Android aprobadas. Evidencia: `docs/android-0.15-qa.md`.
+
+## Hito 0.16.0
+
+- Puente movil: las rutas de la web (`/olt-api`, `/mikrotik`, `/tr069-api`, `/agent-api`, `/provisioning`, `/db`, `/wa`...) aceptan el token de la sesion movil (`Authorization: Bearer`). Mismo usuario, mismo rol y las mismas reglas de cada ruta que la web (`lib/mobile-bridge.js`, pruebas en `test/mobile-bridge.test.js`).
+- OLT: mapa PON con clientes y señal, salud, inventario con filtros y vistas, detalle con lectura en vivo, diagnostico, historial optico, asociar/desasociar cliente, reiniciar, renombrar, retirar (vista previa del servidor + confirmacion escrita), autorizacion de ONU completa con IP y `AUTORIZAR <serial>`, instalaciones, NAP y splitters, perfiles, sincronizacion de planes (`SINCRONIZAR PLANES`), alarmas y bitacora.
+- TR-069: consola completa (WiFi, LAN, DHCP, hora, ping/traceroute, pruebas, reinicio, historial con cancelar/reintentar). Las claves WiFi solo en memoria; el servidor oculta los parametros secretos por ruta.
+- Configurar ONU: agentes, asistente guiado, historial, expedientes (cancelar, retirar ONU anterior) y reservas IP.
+- MikroTik: resumen y salud, IPs libres, clientes y colas (crear/editar, plantillas), desconocidos, infraestructura, firewall, netwatch, respaldos y seguridad.
+- Resto de la web: configuracion (empresa, avisos, aviso de pago, sistema), WhatsApp (conexion, QR, envios), encuestas, reportes de cartera, sincronizacion, prueba de velocidad, acciones extra del expediente (piloto, WispHub activar/suspender, ping, metricas).
+- Las lecturas de rutas web no se guardan en disco. Un 401 de WispHub ya no cierra la sesion movil. Las solicitudes van en paralelo.
+- Verificado en el emulador Vetlis_QA_API35 contra un servidor local aislado (sin OLT/MikroTik/WispHub reales): todas las pantallas abren, la operacion de reinicio muestra la vista previa del servidor, exige la confirmacion y muestra el error real ("OLT no configurada"). Pendiente: probar escrituras reales con una ONU de prueba.
