@@ -124,6 +124,19 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
         }
         return result
     }
+    /** Prueba del enlace MikroTik -> equipo del cliente. Solo lectura; se confirma que sea de este cliente. */
+    suspend fun linkTest(id: Int, seconds: Int = 8): JSONObject {
+        val result = authorized("/clients/$id/link-test", "POST", JSONObject().put("seconds", seconds))
+        if (!result.optBoolean("verified") || result.optJSONObject("client")?.optInt("idServicio") != id || result.optJSONObject("traffic") == null) {
+            throw ApiFailure(502, "INVALID_RESPONSE", "No se confirmo la prueba de enlace")
+        }
+        return result
+    }
+    suspend fun setSurveyReminders(paused: Boolean, key: String): JSONObject {
+        val result = authorized("/surveys/reminders", "POST", JSONObject().put("paused", paused), key)
+        if (!result.optBoolean("confirmed") || result.optBoolean("pausedGlobally") != paused) throw ApiFailure(502, "INVALID_RESPONSE", "No se confirmo el estado de los recordatorios")
+        return result
+    }
     suspend fun saveClientGps(id: Int, lat: Double, lng: Double, accuracy: Double?, key: String): JSONObject {
         val body = JSONObject().put("lat", lat).put("lng", lng).put("accuracy", accuracy ?: JSONObject.NULL)
         val result = authorized("/clients/$id/gps", "POST", body, key)

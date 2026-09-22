@@ -1,6 +1,6 @@
 # ISP Max Android: matriz de entrega
 
-Estado actual: hito 0.14.0 desplegado y verificado. La paridad de consulta y administracion certificada esta disponible, mientras las operaciones de infraestructura marcadas como pendientes siguen bloqueadas.
+Estado actual: hito 0.15.0 desplegado y verificado. La paridad de consulta y administracion certificada esta disponible, mientras las operaciones de infraestructura marcadas como pendientes siguen bloqueadas.
 Cada fila requiere pruebas de contrato, UI y dispositivo antes de marcarse completa.
 El agente Windows y la web se conservan; los dispositivos de produccion no son fixtures.
 
@@ -12,12 +12,12 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 | clients/new | /client-provisioning | Alta idempotente WispHub + MikroTik | Implementado con IPAM en vivo, reserva atomica y servicio compartido WispHub/MikroTik/SQLite; certificacion Android pendiente |
 | clients/:id | /db, /clients-actions, /mobile/v1/clients/:id/external | Datos, cartera, notas, equipo, acciones, historial | Datos, servicio, cartera, notas, equipos, promesas, historial, acciones y edicion externa verificada en WispHub implementados; certificacion con una modificacion real controlada pendiente |
 | invoices | /db/invoices, /billing/payments | Buscar, filtros, cobro, documentos, exportacion | Consulta, cartera, filtros, KPI, documentos y CSV; pago persistente, confirmacion, recuperacion tras recrear la actividad y no duplicacion verificados en MuMu con fixtures aislados |
-| morosos | /db/invoices, /db/promises | Deuda, antiguedad, promesas, seguimiento | Saldos, cartera y promesas con historial implementados; alta y cumplimiento de promesa verificados en MuMu; seguimiento directo por mensaje pendiente |
-| tickets | /api/tickets | Fuera del alcance por decision operativa | Oculto de la navegacion Android; el backend compatible se conserva para no romper instalaciones anteriores |
-| plans | /api/plan-internet | Catalogo y acciones existentes | Consulta SQLite implementada |
+| morosos | /db/invoices, /db/promises, /mobile/v1/collections/queue | Deuda, antiguedad, promesas, seguimiento | Cola de cobranza 0.15 con las mismas reglas web (suspendidos incluidos, anuladas y transferidas fuera), prioridad, riesgo, WhatsApp con mensaje real, llamada, cobro y aviso/corte; promesas con historial |
+| tickets | /api/tickets | Consultar, crear, editar y cerrar | Reactivado en 0.15 (la web volvio a usar tickets): lista, filtros y editor versionado con lectura posterior de WispHub |
+| plans | /api/plan-internet | Catalogo, ingreso y clientes por plan | Ingreso mensual, precio de la mayoria, planes por revisar y salto a la lista de clientes del plan |
 | reports | /db, /metrics | Filtros, comparacion, graficas, exportacion | Facturacion por emision, 3/6/12/24 meses, comparacion, grafica, CSV y auditoria de estabilidad/WAN implementados |
 | network | /mikrotik | Estado, interfaces, conectividad | Resumen SQLite, WAN, OLT, incidencias, auditoria, IPAM, recursos e interfaces MikroTik implementados; operaciones de escritura pendientes |
-| bandwidth | /mikrotik | Trafico y limites | Consumo actual agregado y por cliente implementado en En vivo; pruebas de velocidad y edicion de limites pendientes |
+| bandwidth | /mikrotik | Trafico y limites | Consumo en vivo y prueba de enlace MikroTik -> cliente (cola, trafico real, ping, ARP y veredicto) compartida con la web; edicion de limites pendiente |
 | auditoria-red | /network-audit | Muestras, historico, estabilidad | Lista, filtros, KPI, detalle por cliente, historial WAN y graficas nativas implementados |
 | mikrotik | /mikrotik | Diagnosticos y operaciones tipadas | Identidad, recursos, salud, interfaces y ping verificado implementados; escrituras tipadas pendientes |
 | IPAM (tab MikroTik) | /provisioning/ip-catalog, reservations | Rangos, validar, reservar atomicamente | Rangos locales CRUD en Room, validacion CIDR/VLAN/intervalo/exclusiones y catalogo/reserva atomica en vivo integrados al alta de cliente |
@@ -26,7 +26,8 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 | live | /mikrotik, /sync | Snapshot unico, filtros, retroceso | Snapshot compartido, KPI, consumo, presencia, diferencias, busqueda, filtros, orden y refresco adaptativo implementados en 0.8 |
 | incidents | /noc | Consultar, reconocer, resolver | Consulta, clientes afectados, historial, reconocer, asignar, anotar, resolver y reabrir implementados en 0.6; certificacion Android pendiente |
 | whatsapp | /wa, /templates | Conversaciones y envios explicitos | Estado, historial, plantillas y envio manual idempotente implementados; mensajes inciertos quedan en revision |
-| whatsapp-bot | /wa | Configuracion y seguimiento | Estado, KPI, conversaciones y activacion idempotente por admin implementados; respuesta real depende de WhatsApp conectado |
+| whatsapp-bot | /wa | Configuracion y seguimiento | Estado, KPI, busqueda por nombre o numero, salto al expediente, seguir en WhatsApp y activacion idempotente por admin |
+| encuestas | /api/survey | Resultados y pausa de recordatorios | Tasa de respuesta, lista filtrable y pausa/reanudacion global idempotente y auditada (solo admin); el envio de encuestas nuevas sigue en la web |
 | mapa | /db/clients/map | Mapa, posiciones y captura GPS | Lista GPS filtrable, apertura del punto, captura y edicion GPS idempotente implementadas; prueba de GPS fisico pendiente |
 | inventory | /inventory | Tipos, compras, seriales, asignar/devolver | Equipos, tipos, compras, materiales, seriales, asignar/devolver, filtros, historial y borradores implementados |
 | expenses | /expenses | Consulta y CRUD | CRUD nativo, borradores, cliente, filtros, KPI, auditoria y reintentos implementados; protege gastos de compras/nomina |
@@ -44,7 +45,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Certificar EG8141A5 y F670L con firmware real, por WiFi y USB-Ethernet compatible.
 - Cambiar WiFi puede desconectar: reconectar y verificar antes de finalizar.
 - GenieACS permanece en el servidor actual. Android no reemplaza el ACS.
-- Encuestas desactivadas; APK privada; Android 10+; interfaz nativa Compose en espanol.
+- Encuestas: solo resultados y pausa de recordatorios; APK privada; Android 10+; interfaz nativa Compose en espanol.
 
 ## Limites de esta entrega preliminar
 
@@ -192,3 +193,12 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Regresion de 185 pruebas Node y 25 pruebas Android aprobada. Build web, variante debug, release firmada, `lintVital` y validacion portable finalizaron correctamente.
 - Railway quedo en `SUCCESS` con SQLite conectado. La verificacion autenticada devolvio 398 clientes, 343 activos, 9,370 facturas y 180 ONU; las exportaciones completas coincidieron exactamente con sus totales.
 - APK firmada `0.14.0-preview`, `versionCode=17`, instalada y abierta en MuMu Device-1 sin errores fatales. Evidencia completa: `docs/android-0.14-qa.md`.
+
+## Hito 0.15.0 (desplegado y verificado)
+
+- Alcanza a la web actualizada: cola de cobranza, encuestas, prueba de enlace, busqueda del bot, planes con ingreso y tickets.
+- `/mobile/v1/collections/queue` aplica las reglas web de factura pendiente y el orden de prioridad; mensaje de WhatsApp con la plantilla de avisos.
+- `/mobile/v1/clients/:id/link-test` reutiliza `runClientLinkTest` del servidor web: solo lectura, una prueba a la vez y auditada.
+- `/mobile/v1/surveys` y `/surveys/reminders` (admin, idempotente, auditado); la busqueda del bot y el precio tipico por plan amplian contratos existentes.
+- Expediente con llamar, WhatsApp y probar enlace. Se corrigio la lectura de telefonos vacios que Android convertia en el texto "null".
+- Regresion: 192 pruebas Node y 28 pruebas Android aprobadas. Evidencia: `docs/android-0.15-qa.md`.

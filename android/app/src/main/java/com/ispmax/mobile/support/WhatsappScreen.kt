@@ -13,7 +13,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import com.ispmax.mobile.ui.IspGreen
+import com.ispmax.mobile.ui.PhoneLinks
+import kotlinx.coroutines.delay
 import com.ispmax.mobile.ui.IspPrimaryButton as Button
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -22,7 +25,7 @@ import java.util.UUID
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WhatsappScreen(vm: MainViewModel, pages: Map<String, PageState>) {
+fun WhatsappScreen(vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit = {}) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val statusPath = "/whatsapp/status"
     LaunchedEffect(Unit) { vm.load(statusPath, true) }
@@ -33,7 +36,7 @@ fun WhatsappScreen(vm: MainViewModel, pages: Map<String, PageState>) {
             IconButton(onClick = { vm.load(statusPath, true) }) { Icon(Icons.Outlined.Refresh, "Actualizar estado") }
         }
         PrimaryTabRow(tab) { listOf("Historial", "Nuevo", "Plantillas", "Bot").forEachIndexed { index, label -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) }) } }
-        when (tab) { 0 -> WhatsappHistory(vm, pages); 1 -> WhatsappComposer(vm, pages, status?.optBoolean("canSend") == true); 2 -> WhatsappTemplates(vm, pages); else -> WhatsappBot(vm, pages) }
+        when (tab) { 0 -> WhatsappHistory(vm, pages); 1 -> WhatsappComposer(vm, pages, status?.optBoolean("canSend") == true); 2 -> WhatsappTemplates(vm, pages); else -> WhatsappBot(vm, pages, onClient) }
     }
 }
 
@@ -79,10 +82,15 @@ private fun WhatsappTemplates(vm: MainViewModel, pages: Map<String, PageState>) 
 }
 
 @Composable
-private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>) {
+private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit) {
+    val context = LocalContext.current
+    var search by rememberSaveable { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     val statusPath = "/whatsapp/bot"
-    val conversationsPath = "/whatsapp/bot/conversations?limit=50"
-    LaunchedEffect(Unit) { vm.load(statusPath, true); vm.load(conversationsPath, true) }
+    val conversationsPath = "/whatsapp/bot/conversations?limit=50&q=${URLEncoder.encode(query, "UTF-8")}"
+    LaunchedEffect(Unit) { vm.load(statusPath, true) }
+    LaunchedEffect(search) { if (search != query) { delay(350); query = search } }
+    LaunchedEffect(conversationsPath) { vm.load(conversationsPath, true) }
     val state = pages[statusPath] ?: PageState(loading = true)
     val status = state.body
     val conversations = pages[conversationsPath]?.body?.optJSONArray("items").objects()
@@ -113,8 +121,11 @@ private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>) {
             }
             error?.let { Notice(it, true) }
             Text("Conversaciones recientes", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+            OutlinedTextField(search, { search = it }, singleLine = true, label = { Text("Buscar por nombre o numero") },
+                leadingIcon = { Icon(Icons.Outlined.Search, null) }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { search = "" }) { Icon(Icons.Outlined.Close, "Limpiar busqueda") } })
         }
-        if (conversations.isEmpty() && pages[conversationsPath]?.loading != true) item { EmptyState("Todavia no hay conversaciones del bot") }
+        if (conversations.isEmpty() && pages[conversationsPath]?.loading != true) item { EmptyState(if (query.isBlank()) "Todavia no hay conversaciones del bot" else "Ninguna conversacion coincide con \"$query\"") }
         items(conversations, key = { it.text("phone") }) { row ->
             OutlinedCard(Modifier.fillMaxWidth()) {
                 ListItem(
@@ -122,6 +133,15 @@ private fun WhatsappBot(vm: MainViewModel, pages: Map<String, PageState>) {
                     supportingContent = { Text("${row.text("lastMessage")}\n${row.optInt("messageCount")} mensajes · ${row.text("lastAt")}", maxLines = 3) },
                     leadingContent = { Icon(Icons.Outlined.Forum, null, tint = IspGreen) }
                 )
+                // Desde la conversacion se llega al cliente o se sigue el chat en WhatsApp.
+                Row(Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (row.optInt("idServicio") > 0) OutlinedButton(onClick = { onClient(row.optInt("idServicio")) }) {
+                        Icon(Icons.Outlined.Person, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Expediente")
+                    }
+                    if (PhoneLinks.international(row.text("phone", "")) != null) FilledTonalButton(onClick = { PhoneLinks.openWhatsapp(context, row.text("phone", ""), null) }) {
+                        Icon(Icons.Outlined.Chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Seguir en WhatsApp")
+                    }
+                }
             }
         }
     }

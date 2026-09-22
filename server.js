@@ -2749,17 +2749,18 @@ mtRouter.post('/ping', asyncHandler(async (req, res) => {
 // Mide lo que el router entrega a ese cliente: limite configurado en su cola,
 // trafico real durante una ventana, respuesta del equipo (ping) y si esta presente en la red.
 // Es de solo lectura: no cambia colas ni genera trafico artificial.
-mtRouter.post('/link-test', asyncHandler(async (req, res) => {
-  const seconds = Math.min(Math.max(parseInt(req.body?.seconds) || 8, 3), 20);
-  const idServicio = parseInt(req.body?.idServicio);
+// La usan la web (/mikrotik/link-test) y la app movil, para que ambas midan igual.
+async function runClientLinkTest(options = {}) {
+  const seconds = Math.min(Math.max(parseInt(options.seconds) || 8, 3), 20);
+  const idServicio = parseInt(options.idServicio);
   let client = null;
   if (Number.isFinite(idServicio)) {
     client = await prisma.client.findUnique({ where: { idServicio } });
-    if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
+    if (!client) throw Object.assign(new Error('Cliente no encontrado'), { status: 404 });
   }
-  const ip = String(client?.ip || req.body?.ip || '').trim();
+  const ip = String(client?.ip || options.ip || '').trim();
   if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
-    return res.status(400).json({ error: 'El cliente no tiene una IP válida para probar' });
+    throw Object.assign(new Error('El cliente no tiene una IP válida para probar'), { status: 400 });
   }
 
   const connection = await getMtConnection();
@@ -2780,7 +2781,7 @@ mtRouter.post('/link-test', asyncHandler(async (req, res) => {
 
   const first = await readQueue();
   if (!first.queue) {
-    return res.status(404).json({ error: `No hay una cola en el MikroTik para la IP ${ip}. Revise que el cliente tenga su cola creada.` });
+    throw Object.assign(new Error(`No hay una cola en el MikroTik para la IP ${ip}. Revise que el cliente tenga su cola creada.`), { status: 404 });
   }
   // El ping ocupa la cola de comandos ~5 s; se hace mientras transcurre la ventana de medicion.
   const pingRows = await mtWrite(connection, 9_000, '/ping', `=address=${ip}`, '=count=5');
@@ -2795,7 +2796,7 @@ mtRouter.post('/link-test', asyncHandler(async (req, res) => {
   const delta = (a, b) => (b >= a ? ((b - a) * 8) / elapsedSeconds : 0);
   const limits = String(second.queue?.['max-limit'] || '0/0').split('/');
 
-  res.json({
+  return {
     ip,
     client: client ? { idServicio: client.idServicio, nombre: client.nombre, plan: client.planInternetName, estado: client.estado } : null,
     queue: {
@@ -2822,7 +2823,16 @@ mtRouter.post('/link-test', asyncHandler(async (req, res) => {
       interface: arpEntry?.interface || null,
     },
     readAt: new Date().toISOString(),
-  });
+  };
+}
+
+mtRouter.post('/link-test', asyncHandler(async (req, res) => {
+  try {
+    res.json(await runClientLinkTest({ seconds: req.body?.seconds, idServicio: req.body?.idServicio, ip: req.body?.ip }));
+  } catch (error) {
+    if (!error.status) throw error;
+    res.status(error.status).json({ error: error.message });
+  }
 }));
 
 // Trafico WAN (interfaz upstream) en tiempo real para detectar saturacion del backhaul
@@ -4241,6 +4251,9 @@ app.use('/mobile/v1', require('./lib/mobile-api').createMobileRouter({
       return { configured: true, connected: false, error: String(error.message || 'MikroTik no disponible').slice(0, 300), system: null, interfaces: [], telemetry: mtCommands.snapshot() };
     }
   },
+  linkTest: (options) => runClientLinkTest(options),
+  surveyConfig: () => getSurveyConfig(),
+  invalidateSurveyConfig: () => invalidateSurveyConfig(),
   mikrotikPing: async ({ address, count }) => {
     const c = await getMtConnection();
     const rows = await mtWrite(c, count * 1500 + 2000, '/ping', `=address=${address}`, `=count=${count}`);

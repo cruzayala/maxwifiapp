@@ -101,7 +101,7 @@ private fun TicketDetail(id: Int, vm: MainViewModel, pages: Map<String, PageStat
 }
 
 @Composable
-fun PlansScreen(vm: MainViewModel, pages: Map<String, PageState>) {
+fun PlansScreen(vm: MainViewModel, pages: Map<String, PageState>, onPlanClients: (String) -> Unit = {}) {
     var search by rememberSaveable { mutableStateOf("") }
     var query by rememberSaveable { mutableStateOf("") }
     val path = "/plans?q=${URLEncoder.encode(query, "UTF-8")}"
@@ -117,7 +117,8 @@ fun PlansScreen(vm: MainViewModel, pages: Map<String, PageState>) {
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             PlanMetric("Clientes", summary?.optInt("clients")?.toString() ?: "0", Modifier.weight(1f))
-            PlanMetric("Ingreso activo", money(summary?.optDouble("expectedMonthly") ?: 0.0), Modifier.weight(1f))
+            PlanMetric("Entra al mes", money(summary?.optDouble("expectedMonthly") ?: 0.0), Modifier.weight(1f))
+            PlanMetric("Por revisar", summary?.optInt("toReview")?.toString() ?: "0", Modifier.weight(1f))
         }
         OutlinedTextField(search, { search = it }, label = { Text("Buscar plan") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         ReadStatus(state) { vm.load(path, true) }
@@ -129,7 +130,13 @@ fun PlansScreen(vm: MainViewModel, pages: Map<String, PageState>) {
                     LinearProgressIndicator(progress = { if ((summary?.optInt("clients") ?: 0) > 0) plan.optInt("clientCount").toFloat() / summary!!.optInt("clients") else 0f }, modifier = Modifier.fillMaxWidth())
                     Text("${plan.optInt("activeCount")} activos · ${money(plan.optDouble("expectedMonthly"))}/mes", style = MaterialTheme.typography.bodyMedium)
                     val min = plan.optDouble("observedPriceMin"); val max = plan.optDouble("observedPriceMax")
-                    Text(if (min == max) "Precio observado ${money(min)}" else "Precios observados ${money(min)} a ${money(max)}", style = MaterialTheme.typography.bodySmall)
+                    val typical = plan.optDouble("typicalPrice", max)
+                    Text(if (min == max) "Precio ${money(typical)}" else "Precio de la mayoria ${money(typical)} (hay de ${money(min)} a ${money(max)})", style = MaterialTheme.typography.bodySmall)
+                    if (plan.optDouble("averagePerActive") > 0) Text("Promedio por cliente activo ${money(plan.optDouble("averagePerActive"))}", style = MaterialTheme.typography.bodySmall)
+                    plan.optJSONArray("review").let { review -> (0 until (review?.length() ?: 0)).map { review!!.optString(it) } }.forEach { reason ->
+                        Surface(color = com.ispmax.mobile.ui.IspAmber.copy(alpha = .1f), contentColor = com.ispmax.mobile.ui.IspAmber, shape = MaterialTheme.shapes.small) { Text("Revisar: $reason", Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium) }
+                    }
+                    if (plan.optInt("clientCount") > 0) TextButton(onClick = { onPlanClients(plan.optString("nombre")) }, contentPadding = PaddingValues(0.dp)) { Text("Ver clientes de este plan") }
                     Text(plan.text("tipo", "Simple Queue"), style = MaterialTheme.typography.labelSmall)
                 } }
             }

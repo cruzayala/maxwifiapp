@@ -103,6 +103,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
     suspend fun queryIpam(cidrs: org.json.JSONArray) = mutation { repo.queryIpam(cidrs) }
     suspend fun mikrotikPing(address: String) = mutation { repo.mikrotikPing(address) }
+    suspend fun linkTest(id: Int) = mutation { repo.linkTest(id) }
+    suspend fun setSurveyReminders(paused: Boolean, key: String) = mutation {
+        repo.setSurveyReminders(paused, key).also {
+            _pages.value.keys.filter { path -> path.startsWith("/surveys") }.forEach { path -> jobs.remove(path)?.cancel(); load(path, true) }
+        }
+    }
     suspend fun exportRows(path: String) = mutation { repo.exportRows(path) }
     suspend fun saveClientGps(id: Int, lat: Double, lng: Double, accuracy: Double?, key: String) = mutation {
         repo.saveClientGps(id, lat, lng, accuracy, key).also {

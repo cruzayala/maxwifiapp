@@ -91,6 +91,24 @@ async function startQa(port = 0, billingAdapter, provisioningAdapter, mobileInte
     }),
     mikrotikOverview: async () => ({ configured: true, connected: true, error: null, system: { identity: 'MikroTik-QA', version: '7.qa', boardName: 'QA', uptime: '1d', cpuLoadPercent: 7, totalMemoryBytes: 1000, freeMemoryBytes: 600, health: [] }, interfaces: [{ name: 'ether1-QA', type: 'ether', running: true, disabled: false, mtu: 1500, rxBytes: 100, txBytes: 200 }], telemetry: { depth: 0 } }),
     mikrotikPing: async ({ address, count }) => ({ address, count, sent: count, received: count, lossPercent: 0, avgMs: 12.4, maxMs: 13.1 }),
+    // Prueba de enlace ficticia: misma forma que runClientLinkTest, sin tocar ningun router.
+    linkTest: async ({ idServicio, seconds }) => {
+      const client = await prisma.client.findUnique({ where: { idServicio } });
+      if (!client) throw Object.assign(new Error('Cliente no encontrado'), { status: 404 });
+      if (!client.ip) throw Object.assign(new Error('El cliente no tiene una IP valida para probar'), { status: 400 });
+      return {
+        ip: client.ip, client: { idServicio, nombre: client.nombre, plan: client.planInternetName, estado: client.estado },
+        queue: { name: `QA-${idServicio}`, target: `${client.ip}/32`, disabled: false, maxUploadBps: 10_000_000, maxDownloadBps: 50_000_000, comment: null },
+        traffic: { seconds, avgUploadBps: 1_200_000, avgDownloadBps: 9_800_000, instantUploadBps: 1_000_000, instantDownloadBps: 10_000_000, uploadBytes: 1_500_000, downloadBytes: 12_250_000 },
+        ping: { address: client.ip, count: 5, sent: 5, received: 5, lossPercent: 0, avgMs: 3.2, maxMs: 4.1 },
+        presence: { inArp: true, macAddress: '00:00:5E:00:53:01', interface: 'bridge-QA' },
+        readAt: new Date().toISOString(),
+      };
+    },
+    surveyConfig: async () => {
+      const paused = await prisma.appSetting.findUnique({ where: { key: 'survey_reminder_paused' } });
+      return { pausedGlobally: paused?.value === 'true', intervalHours: 168, maxReminders: 3 };
+    },
   };
   app.use(express.json());
   app.use('/mobile/v1', createMobileRouter({ prisma, billing, provisionClient: provisioningAdapter, ...defaultMobileIntegrations, ...mobileIntegrations, loginLimiter: (_req, _res, next) => next() }));
@@ -121,7 +139,19 @@ async function startQa(port = 0, billingAdapter, provisioningAdapter, mobileInte
   return { prisma, externalClients, externalClient: qaExternalClient, server, url: `http://127.0.0.1:${server.address().port}`, database: path.join(dir, 'qa.db'), close: async () => { await new Promise((resolve) => server.close(resolve)); await prisma.$disconnect(); } };
 }
 if (require.main === module) {
-  startQa(Number(process.env.MOBILE_QA_PORT || 7415)).then((qa) => {
+  startQa(Number(process.env.MOBILE_QA_PORT || 7415)).then(async (qa) => {
+    // Datos ficticios extra para recorrer a mano la cola de cobranza, encuestas y el bot.
+    await qa.prisma.client.update({ where: { idServicio: 302 }, data: { estadoFacturas: 'Pendiente de pago', telefono: '8095550202' } });
+    await qa.prisma.client.update({ where: { idServicio: 303 }, data: { estadoFacturas: 'Pendiente de pago', telefono: '8295550303', crmAction: 'moroso' } });
+    await qa.prisma.invoice.create({ data: { idFactura: 9003, clienteIdServicio: 303, clienteNombre: 'Farmacia del Parque', estado: 'Pendiente de Pago', subTotal: 2100, total: 2100, totalCobrado: 0, saldo: 2100, fechaEmision: '2026-09-05', fechaVencimiento: '2026-09-10' } });
+    await qa.prisma.surveyResponse.createMany({ data: [
+      { clientIp: '192.0.2.10', idServicio: 301, status: 'submitted', sentBy: 'qa-admin', fullName: 'Ana Torres', submittedAt: new Date() },
+      { clientIp: '192.0.2.11', idServicio: 302, status: 'pending', sentBy: 'qa-admin', reminderCount: 1 },
+    ] });
+    await qa.prisma.whatsappLog.createMany({ data: [
+      { phone: '18095550202', clientName: 'Luis Rodriguez', idServicio: 302, messageType: 'incoming', message: 'Quiero pagar mi factura', status: 'received' },
+      { phone: '18095550202', clientName: 'Luis Rodriguez', idServicio: 302, messageType: 'bot_reply', message: 'Su saldo es RD$ 900.00', status: 'sent' },
+    ] });
     console.log(`QA AISLADO: ${qa.url} | SQLite ${qa.database}`);
     console.log('Solo fixtures: usuario qa-admin / clave qa-only-12345');
     process.on('SIGINT', async () => { await qa.close(); process.exit(0); });

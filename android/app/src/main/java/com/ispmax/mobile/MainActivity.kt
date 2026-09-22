@@ -51,6 +51,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ispmax.mobile.onu.LocalOnuProbe
 import com.ispmax.mobile.onu.ProbeResult
+import com.ispmax.mobile.ui.PhoneLinks
 import com.ispmax.mobile.ui.*
 import com.ispmax.mobile.ui.IspPrimaryButton as Button
 import com.ispmax.mobile.data.DEFAULT_SERVER
@@ -102,7 +103,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
     }
     val back: () -> Unit = { if (clientId != 0) clientId = 0 else route = "" }
     BackHandler(clientId != 0 || route.isNotEmpty(), back)
-    val title = if (clientId != 0) "Expediente #$clientId" else if (route == "sessions") "Sesiones moviles" else if (section == "home" && route.isEmpty()) "ISP Max" else labels[route] ?: visible.firstOrNull { it.key == section }?.label ?: "ISP Max"
+    val title = if (clientId != 0) "Expediente #$clientId" else if (route == "sessions") "Sesiones moviles" else if (route.startsWith("plan-clients:")) "Clientes · ${route.removePrefix("plan-clients:")}" else if (section == "home" && route.isEmpty()) "ISP Max" else labels[route] ?: visible.firstOrNull { it.key == section }?.label ?: "ISP Max"
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val wide = maxWidth >= 720.dp
         Row {
@@ -128,7 +129,11 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                             target.startsWith("client-") -> ClientDetail(target.removePrefix("client-").toInt(), role, vm, pages, app.capabilities?.optJSONObject("capabilities"))
                             target == "home" -> Overview(vm, pages["/overview"] ?: PageState(), onClients = { section = "clients" }, onNetwork = { section = "network" }, role = role)
                             target == "clients" -> Collection("clients", vm, pages, onClient = { clientId = it })
-                            target == "billing" -> MenuPage(listOf("invoices", "pending") + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("paymentsWrite") == true) listOf("payment-requests") else emptyList()) + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("promisesWrite") == true) listOf("promises") else emptyList()) + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("billingReport") == true) listOf("billing-report") else emptyList()), onOpen = { route = it })
+                            target == "billing" -> MenuPage((if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("collectionsQueue") == true) listOf("collection-queue") else emptyList()) + listOf("invoices", "pending") + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("paymentsWrite") == true) listOf("payment-requests") else emptyList()) + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("promisesWrite") == true) listOf("promises") else emptyList()) + (if (app.capabilities?.optJSONObject("capabilities")?.optBoolean("billingReport") == true) listOf("billing-report") else emptyList()), onOpen = { route = it })
+                            target == "collection-queue" -> CollectionQueueScreen(vm, pages, role, app.capabilities?.optJSONObject("capabilities"), onClient = { clientId = it })
+                            target == "surveys" -> SurveysScreen(vm, pages, onClient = { clientId = it })
+                            target == "tickets" -> TicketsScreen(vm, pages, canWrite = app.capabilities?.optJSONObject("capabilities")?.optBoolean("ticketWrite") == true)
+                            target.startsWith("plan-clients:") -> Collection("clients", vm, pages, onClient = { clientId = it }, initialFilters = "&plan=" + encode(target.removePrefix("plan-clients:")))
                             target == "payment-requests" -> PaymentRequestsScreen(vm, pages)
                             target == "promises" -> PromisesScreen(vm, pages)
                             target == "billing-report" -> BillingReportScreen(vm, pages)
@@ -145,8 +150,8 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                             target == "ip-ranges" -> IpRangeSettingsScreen(vm)
                             target == "map" -> ClientMapScreen(vm, pages)
                             target == "system" -> SystemStatusScreen(vm, pages)
-                            target == "whatsapp" -> WhatsappScreen(vm, pages)
-                            target == "plans" -> PlansScreen(vm, pages)
+                            target == "whatsapp" -> WhatsappScreen(vm, pages, onClient = { clientId = it })
+                            target == "plans" -> PlansScreen(vm, pages, onPlanClients = { plan -> route = "plan-clients:$plan" })
                             target == "expenses" -> ExpensesScreen(vm, pages)
                             target == "inventory" && app.capabilities?.optJSONObject("capabilities")?.optBoolean("equipmentWrite") == true -> InventoryScreen(vm, pages)
                             target == "payroll" && app.capabilities?.optJSONObject("capabilities")?.optBoolean("payrollWrite") == true -> PayrollScreen(vm, pages)
@@ -280,12 +285,12 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
     }
 }
 
-private val labels = mapOf("payment-requests" to "Solicitudes de pago", "billing-report" to "Reporte de facturacion", "promises" to "Promesas de pago", "invoices" to "Facturas", "pending" to "Saldos pendientes", "onus" to "OLT y ONU", "incidents" to "Incidencias", "network-audit" to "Estabilidad de clientes", "live" to "Monitoreo en vivo", "mikrotik" to "MikroTik", "wan-history" to "Historico WAN", "ipam" to "Direcciones IP", "ip-ranges" to "Rangos IP locales", "map" to "Mapa de clientes", "system" to "Estado del sistema", "whatsapp" to "WhatsApp", "plans" to "Planes", "inventory" to "Inventario", "expenses" to "Gastos", "payroll" to "Nomina", "users" to "Usuarios", "onu-local" to "Configurar ONU")
-private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pending" to Icons.Outlined.AccountBalanceWallet, "onus" to Icons.Outlined.Hub, "incidents" to Icons.Outlined.WarningAmber, "network-audit" to Icons.Outlined.QueryStats, "live" to Icons.Outlined.Podcasts, "mikrotik" to Icons.Outlined.Router, "wan-history" to Icons.Outlined.ShowChart, "ipam" to Icons.Outlined.Lan, "ip-ranges" to Icons.Outlined.AccountTree, "map" to Icons.Outlined.Map, "system" to Icons.Outlined.SettingsSuggest, "whatsapp" to Icons.Outlined.Chat, "plans" to Icons.Outlined.Speed, "inventory" to Icons.Outlined.Inventory2, "expenses" to Icons.Outlined.Payments, "payroll" to Icons.Outlined.Badge, "users" to Icons.Outlined.ManageAccounts, "onu-local" to Icons.Outlined.Router)
+private val labels = mapOf("collection-queue" to "Cola de cobranza", "surveys" to "Encuestas", "tickets" to "Tickets", "payment-requests" to "Solicitudes de pago", "billing-report" to "Reporte de facturacion", "promises" to "Promesas de pago", "invoices" to "Facturas", "pending" to "Saldos pendientes", "onus" to "OLT y ONU", "incidents" to "Incidencias", "network-audit" to "Estabilidad de clientes", "live" to "Monitoreo en vivo", "mikrotik" to "MikroTik", "wan-history" to "Historico WAN", "ipam" to "Direcciones IP", "ip-ranges" to "Rangos IP locales", "map" to "Mapa de clientes", "system" to "Estado del sistema", "whatsapp" to "WhatsApp", "plans" to "Planes", "inventory" to "Inventario", "expenses" to "Gastos", "payroll" to "Nomina", "users" to "Usuarios", "onu-local" to "Configurar ONU")
+private val moduleIcons = mapOf("collection-queue" to Icons.Outlined.PendingActions, "surveys" to Icons.Outlined.Poll, "tickets" to Icons.Outlined.ConfirmationNumber, "invoices" to Icons.Outlined.ReceiptLong, "pending" to Icons.Outlined.AccountBalanceWallet, "onus" to Icons.Outlined.Hub, "incidents" to Icons.Outlined.WarningAmber, "network-audit" to Icons.Outlined.QueryStats, "live" to Icons.Outlined.Podcasts, "mikrotik" to Icons.Outlined.Router, "wan-history" to Icons.Outlined.ShowChart, "ipam" to Icons.Outlined.Lan, "ip-ranges" to Icons.Outlined.AccountTree, "map" to Icons.Outlined.Map, "system" to Icons.Outlined.SettingsSuggest, "whatsapp" to Icons.Outlined.Chat, "plans" to Icons.Outlined.Speed, "inventory" to Icons.Outlined.Inventory2, "expenses" to Icons.Outlined.Payments, "payroll" to Icons.Outlined.Badge, "users" to Icons.Outlined.ManageAccounts, "onu-local" to Icons.Outlined.Router)
 
 @Composable private fun MenuPage(keys: List<String>, onOpen: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        keys.forEach { key -> MenuRow(labels[key] ?: key, if (key == "onu-local") "Compatibilidad Android" else "", if (key == "payment-requests") Icons.Outlined.Payments else if (key == "promises") Icons.Outlined.EventAvailable else if (key == "billing-report") Icons.Outlined.BarChart else moduleIcons[key] ?: Icons.Outlined.Folder, { onOpen(key) }) }
+        keys.forEach { key -> MenuRow(labels[key] ?: key, when (key) { "onu-local" -> "Compatibilidad Android"; "collection-queue" -> "Quien debe, WhatsApp, cobro y corte"; else -> "" }, if (key == "payment-requests") Icons.Outlined.Payments else if (key == "promises") Icons.Outlined.EventAvailable else if (key == "billing-report") Icons.Outlined.BarChart else moduleIcons[key] ?: Icons.Outlined.Folder, { onOpen(key) }) }
     }
 }
 @Composable internal fun MenuRow(title: String, subtitle: String, icon: ImageVector, click: () -> Unit) {
@@ -302,7 +307,8 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
         HorizontalDivider()
         val modules = listOf("plans", "system") +
             (if (can(role, "tecnico")) listOf("map") else emptyList()) +
-            (if (can(role, "cobranza")) listOf("whatsapp") else emptyList())
+            (if (can(role, "tecnico")) listOf("tickets") else emptyList()) +
+            (if (can(role, "cobranza")) listOf("whatsapp", "surveys") else emptyList())
         (modules + if (can(role)) listOf("inventory", "expenses", "payroll", "users") else emptyList()).forEach { key -> MenuRow(labels.getValue(key), "", moduleIcons.getValue(key), { open(key) }) }
         if (can(role)) MenuRow(labels.getValue("ip-ranges"), "Segmentos usados al crear clientes", moduleIcons.getValue("ip-ranges"), { open("ip-ranges") })
         if (can(role)) MenuRow("Sesiones moviles", "Acceso desde celulares", Icons.Outlined.PhonelinkLock, { open("sessions") })
@@ -312,7 +318,7 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
     }
 }
 
-@Composable private fun Collection(kind: String, vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit, fixedClient: Int? = null, pon: JSONObject? = null) {
+@Composable private fun Collection(kind: String, vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit, fixedClient: Int? = null, pon: JSONObject? = null, initialFilters: String = "") {
     val app by vm.app.collectAsStateWithLifecycle()
     val filtersAvailable = app.capabilities?.optJSONObject("capabilities")?.optBoolean("advancedFilters") == true
     var search by rememberSaveable(kind, fixedClient) { mutableStateOf("") }
@@ -322,7 +328,7 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
     var selectedJson by rememberSaveable(kind, fixedClient) { mutableStateOf<String?>(null) }
     var documentId by rememberSaveable(kind, fixedClient) { mutableIntStateOf(0) }
     var paymentId by rememberSaveable(kind, fixedClient) { mutableIntStateOf(0) }
-    var filters by rememberSaveable(kind, fixedClient) { mutableStateOf("") }
+    var filters by rememberSaveable(kind, fixedClient, initialFilters) { mutableStateOf(initialFilters) }
     var filterDialog by rememberSaveable(kind, fixedClient) { mutableStateOf(false) }
     var newClient by rememberSaveable(kind) { mutableStateOf(false) }
     val invoice = kind == "invoices" || kind == "pending"
@@ -425,6 +431,8 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
     val promisesWrite = capabilities?.optBoolean("promisesWrite") == true
     val serviceActions = capabilities?.optBoolean("clientServiceActions") == true
     val gpsWrite = capabilities?.optBoolean("gpsWrite") == true
+    val linkTest = capabilities?.optBoolean("linkTest") == true
+    val clientContext = LocalContext.current
     val externalWrite = capabilities?.optBoolean("clientExternalWrite") == true
     val path = "/clients/$id"
     LaunchedEffect(id) { vm.load(path, true) }
@@ -436,6 +444,7 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
     var editRecord by rememberSaveable(id) { mutableStateOf(false) }
     var managePromises by rememberSaveable(id) { mutableStateOf(false) }
     var manageService by rememberSaveable(id) { mutableStateOf(false) }
+    var linkTestOpen by rememberSaveable(id) { mutableStateOf(false) }
     var editGps by rememberSaveable(id) { mutableStateOf(false) }
     var editExternal by rememberSaveable(id) { mutableStateOf<String?>(null) }
     val client = state.body?.optJSONObject("client")
@@ -468,6 +477,16 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
         }
         if (can(role, "cobranza")) TextButton(onClick = { wallet = true }, modifier = Modifier.padding(horizontal = 8.dp)) { Icon(Icons.Outlined.AccountBalanceWallet, null); Spacer(Modifier.width(8.dp)); Text("Abrir cartera y facturas") }
         if (serviceActions) TextButton(onClick = { manageService = true }, modifier = Modifier.padding(horizontal = 8.dp)) { Icon(Icons.Outlined.Router, null); Spacer(Modifier.width(8.dp)); Text("Administrar servicio") }
+        // Contacto directo y prueba del enlace, igual que en el expediente web.
+        // optString convierte null en el texto "null": se usa text() para respetar los vacios.
+        val phone = client?.text("aliasTelefono", "")?.takeIf(String::isNotBlank) ?: client?.text("telefono", "")
+        if (PhoneLinks.international(phone) != null || linkTest) Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (PhoneLinks.international(phone) != null) {
+                OutlinedButton(onClick = { PhoneLinks.openDialer(clientContext, phone) }) { Icon(Icons.Outlined.Call, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Llamar") }
+                OutlinedButton(onClick = { PhoneLinks.openWhatsapp(clientContext, phone, null) }) { Icon(Icons.Outlined.Chat, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("WhatsApp") }
+            }
+            if (linkTest && client?.optString("ip").orEmpty().isNotBlank()) OutlinedButton(onClick = { linkTestOpen = true }) { Icon(Icons.Outlined.NetworkCheck, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Probar enlace") }
+        }
         PrimaryScrollableTabRow(tab.coerceAtMost(if (recordsWrite) 4 else 3), edgePadding = 0.dp) { (listOf("Datos", "Servicio", "Equipos", "Notas") + if (recordsWrite) listOf("Historial") else emptyList()).forEachIndexed { index, label -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label, maxLines = 1, fontSize = 13.sp) }) } }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             ReadStatus(state) { vm.load(path, true) }
@@ -511,6 +530,7 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
     if (note) NoteDialog(id, vm) { note = false }
     if (editRecord && recordsWrite) ClientRecordEditor("alias", id, id, vm, pages) { editRecord = false }
     if (manageService && serviceActions) ClientServiceDialog(id, role, vm, pages) { manageService = false }
+    if (linkTestOpen && linkTest) LinkTestDialog(id, vm) { linkTestOpen = false }
     if (editGps && gpsWrite && client != null) ClientGpsDialog(id, client, vm) { editGps = false }
     editExternal?.takeIf { externalWrite }?.let { section -> ExternalClientEditor(id, section, vm) { editExternal = null } }
 }
@@ -555,7 +575,7 @@ private val moduleIcons = mapOf("invoices" to Icons.Outlined.ReceiptLong, "pendi
     }, confirmButton = { Button(onClick = { scope.launch { busy = true; error = null; try { vm.saveClientGps(id, lat!!, lng!!, acc, key); close() } catch (failure: Exception) { error = failure.message } finally { busy = false } } }, enabled = valid && !busy) { Icon(Icons.Outlined.Save, null); Spacer(Modifier.width(8.dp)); Text("Guardar GPS") } }, dismissButton = { TextButton(onClick = close, enabled = !busy) { Text("Cancelar") } })
 }
 
-@Composable private fun ClientServiceDialog(id: Int, role: String, vm: MainViewModel, pages: Map<String, PageState>, close: () -> Unit) {
+@Composable internal fun ClientServiceDialog(id: Int, role: String, vm: MainViewModel, pages: Map<String, PageState>, close: () -> Unit) {
     val path = "/clients/$id/service-actions"; LaunchedEffect(id) { vm.load(path, true) }; val state = pages[path] ?: PageState(loading = true); val body = state.body; val client = body?.optJSONObject("client"); val caps = body?.optJSONObject("capabilities")
     var action by rememberSaveable(id) { mutableStateOf("") }; var reason by rememberSaveable(id) { mutableStateOf("") }; var busy by remember { mutableStateOf(false) }; var result by rememberSaveable(id) { mutableStateOf<String?>(null) }; var error by rememberSaveable(id) { mutableStateOf<String?>(null) }; val scope = rememberCoroutineScope()
     AlertDialog(onDismissRequest = { if (!busy) close() }, title = { Text("Administrar servicio") }, text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
