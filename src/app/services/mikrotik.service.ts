@@ -30,28 +30,6 @@ export interface MtTraffic {
   txPackets: number;
 }
 
-export interface MtQueue {
-  id: string;
-  name: string;
-  target: string;
-  maxLimit: string;
-  burstLimit?: string;
-  bytes?: string;
-  packets?: string;
-  rate?: string;
-  disabled: boolean;
-  comment?: string | null;
-}
-
-export interface MtConsumer {
-  name: string;
-  target: string;
-  maxLimit: string;
-  uploadBytes: number;
-  downloadBytes: number;
-  totalBytes: number;
-}
-
 export type MtSyncState = 'synced' | 'missing_wisphub' | 'missing_mikrotik' | 'missing_ip' | 'queue_mismatch' | 'state_mismatch';
 
 export interface MtLiveClient {
@@ -228,24 +206,8 @@ export class MikrotikService {
     return this.http.get<MtSystem>('/mikrotik/system');
   }
 
-  getInterfaces(): Observable<any[]> {
-    return this.http.get<any[]>('/mikrotik/interfaces');
-  }
-
   getTraffic(): Observable<MtTraffic[]> {
     return this.http.get<MtTraffic[]>('/mikrotik/traffic');
-  }
-
-  monitorInterface(name: string): Observable<any> {
-    return this.http.get(`/mikrotik/monitor/${encodeURIComponent(name)}`);
-  }
-
-  getQueues(): Observable<MtQueue[]> {
-    return this.http.get<MtQueue[]>('/mikrotik/queues');
-  }
-
-  getQueueStats(): Observable<any[]> {
-    return this.http.get<any[]>('/mikrotik/queue-stats');
   }
 
   createQueue(data: Required<Pick<MtQueueMutation, 'targetIp' | 'name' | 'uploadMbps' | 'downloadMbps'>> & MtQueueMutation): Observable<any> {
@@ -264,24 +226,8 @@ export class MikrotikService {
     return this.http.get<MtSecurityAudit>('/mikrotik/security-audit');
   }
 
-  getTopConsumers(limit = 20): Observable<MtConsumer[]> {
-    return this.http.get<MtConsumer[]>(`/mikrotik/top-consumers?limit=${limit}`);
-  }
-
-  getAddresses(): Observable<any[]> {
-    return this.http.get<any[]>('/mikrotik/addresses');
-  }
-
   getActiveSessions(): Observable<{ pppoe: any[]; hotspot: any[] }> {
     return this.http.get<{ pppoe: any[]; hotspot: any[] }>('/mikrotik/active-sessions');
-  }
-
-  getDhcpLeases(): Observable<any[]> {
-    return this.http.get<any[]>('/mikrotik/dhcp-leases');
-  }
-
-  getArp(): Observable<any[]> {
-    return this.http.get<any[]>('/mikrotik/arp');
   }
 
   getBackups(): Observable<MtBackup[]> { return this.http.get<MtBackup[]>('/mikrotik/backups'); }

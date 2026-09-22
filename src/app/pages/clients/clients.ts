@@ -10,9 +10,8 @@ import { ExportService } from '../../services/export.service';
 import { ClientBlockActionsComponent } from '../../components/client-block-actions/client-block-actions';
 import { ClientActionsService } from '../../services/client-actions.service';
 import { MetricsService } from '../../services/metrics.service';
-import { SurveyService } from '../../services/survey.service';
 import { ToastService } from '../../services/toast.service';
-import { ClientMetric, tierStyle, consStyle, CreditTier } from '../../models/metrics.model';
+import { ClientMetric, tierStyle, consStyle } from '../../models/metrics.model';
 import { DecimalPipe } from '@angular/common';
 import { formatPlanName } from '../../pipes/plan-label.pipe';
 import { initialsOf } from '../../pipes/initials';
@@ -774,7 +773,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
   private syncService = inject(SyncService);
   private exportSvc = inject(ExportService);
   private actions = inject(ClientActionsService);
-  private survey = inject(SurveyService);
   private toast = inject(ToastService);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
@@ -789,7 +787,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
   selected = signal<Set<number>>(new Set());
   selectedCount = computed(() => this.selected().size);
 
-  surveyLoading = signal<number | null>(null);
   expandedGroups = signal<Set<string>>(new Set());
   private host = inject(ElementRef<HTMLElement>);
   // Cierra el menú de acciones de la fila al hacer clic fuera o al elegir una opción.
@@ -970,42 +967,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     this.filterClients(false);
   }
 
-  enviarEncuesta(c: WispHubClient) {
-    const ip = c.ip;
-    if (!ip) {
-      this.toast.error('Cliente sin IP asignada');
-      return;
-    }
-    const confirmMsg = `¿Crear encuesta para ${c.nombre} (${ip})?\n\nSe creará un enlace seguro en la nube y recordatorios. No se tocará el MikroTik ni se afectará el internet del cliente.`;
-    if (!confirm(confirmMsg)) return;
-    this.surveyLoading.set(c.id_servicio);
-    this.survey.start(ip, c.id_servicio).subscribe({
-      next: (r) => {
-        this.surveyLoading.set(null);
-        if (r.alreadySubmitted) {
-          this.toast.info('Este cliente ya llenó la encuesta. No se enviará de nuevo.');
-        } else if (r.alreadyPending) {
-          this.copySurveyLink(r.publicUrl);
-          this.toast.info('Ya hay encuesta pendiente. Enlace copiado y recordatorio reactivado.');
-        } else if (r.ok) {
-          this.copySurveyLink(r.publicUrl);
-          this.toast.success(`Encuesta creada para ${c.nombre}. Enlace copiado y recordatorios activos, sin tocar internet.`);
-        } else {
-          this.toast.error(r.error || 'No se pudo activar la encuesta');
-        }
-      },
-      error: (e) => {
-        this.surveyLoading.set(null);
-        this.toast.error(e.error?.error || e.message || 'Error al activar encuesta');
-      },
-    });
-  }
-
-  private copySurveyLink(url?: string | null) {
-    if (!url) return;
-    navigator.clipboard?.writeText(url).catch(() => {});
-  }
-
   setQuickFilter(filter: ClientQuickFilter) {
     this.quickFilter = filter;
     this.filterClients();
@@ -1055,15 +1016,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
 
   countMissingData(): number {
     return this.allClients().filter(client => this.hasMissingData(client)).length;
-  }
-
-  dataCompleteness(): number {
-    const clients = this.allClients();
-    if (!clients.length) return 0;
-    const present = clients.reduce((sum, client) => sum + [
-      client.ip, client.telefono, client.zona?.nombre, client.plan_internet?.nombre,
-    ].filter(Boolean).length, 0);
-    return Math.round((present / (clients.length * 4)) * 100);
   }
 
   countWithOnu(): number { return this.allClients().filter(client => Boolean(client.sn_onu)).length; }
@@ -1248,10 +1200,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     return this.allClients().filter(c => this.hasPendingInvoices(c)).length;
   }
 
-  countRiskClients(): number {
-    return this.allClients().filter(c => this.isRiskClient(c)).length;
-  }
-
   private hasPendingInvoices(c: WispHubClient): boolean {
     return c.estado_facturas?.toLowerCase().includes('pendiente') ?? false;
   }
@@ -1358,34 +1306,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
     const normalized = String(value ?? '').replace(/,/g, '').replace(/[^\d.-]/g, '');
     const parsed = Number.parseFloat(normalized);
     return Number.isFinite(parsed) ? parsed : 0;
-  }
-
-  quitarEncuesta(c: WispHubClient) {
-    if (!c.ip) {
-      this.toast.error('Cliente sin IP asignada');
-      return;
-    }
-    if (!confirm(`¿Pausar la encuesta para ${c.nombre}?\n\nEl cliente navega normal. Si no la llena, el sistema volverá a recordarle en unas horas.`)) return;
-
-    this.surveyLoading.set(c.id_servicio);
-    this.survey.clear(c.ip, c.id_servicio).subscribe({
-      next: (r) => {
-        this.surveyLoading.set(null);
-        if (r.ok) {
-          const mtCleaned = r.mikrotik?.removed?.some((x: any) => x.wasInList);
-          const detail = r.snoozed > 0
-            ? `${r.snoozed} encuesta(s) pausada(s) por ${r.reminderIntervalHours || 4}h`
-            : 'sin encuestas pendientes';
-          this.toast.success(`Encuesta pausada: ${detail}${mtCleaned ? '; aviso retirado del MikroTik' : ''}`);
-        } else {
-          this.toast.error(r.error || 'No se pudo quitar la encuesta');
-        }
-      },
-      error: (e) => {
-        this.surveyLoading.set(null);
-        this.toast.error(e.error?.error || e.message || 'Error al quitar encuesta');
-      },
-    });
   }
 
   async loadLocal(forceRefresh = false) {
@@ -1627,27 +1547,6 @@ export class ClientsComponent implements OnInit, OnDestroy {
   ariaSort(col: string): 'ascending' | 'descending' | null {
     if (this.sortCol !== col) return null;
     return this.sortDir === 'asc' ? 'ascending' : 'descending';
-  }
-
-  contactLine(c: WispHubClient): string {
-    return [c.telefono, c.email].filter(Boolean).join(' · ');
-  }
-
-  clientSubline(c: WispHubClient): string {
-    const parts = [
-      c.zona?.nombre,
-      c.telefono,
-      c.usuario,
-    ].filter(Boolean);
-    return parts.length ? parts.join(' · ') : (c.direccion || '-');
-  }
-
-  serviceSubline(c: WispHubClient): string {
-    const parts = [
-      c.ip || 'Sin IP',
-      `RD$ ${c.precio_plan || '0'}`,
-    ];
-    return parts.join(' | ');
   }
 
   exportCSV() {

@@ -23,11 +23,6 @@ export interface PaymentPilotResult {
   captiveUrl?: string | null;
 }
 
-export interface BlockListSnapshot {
-  morosos: { id: string; address: string; comment: string }[];
-  bloqueados: { id: string; address: string; comment: string }[];
-}
-
 @Injectable({ providedIn: 'root' })
 export class ClientActionsService {
   private http = inject(HttpClient);
@@ -61,11 +56,4 @@ export class ClientActionsService {
     return this.http.get<any[]>(`/clients-actions/states`);
   }
 
-  blockListSnapshot(): Observable<BlockListSnapshot> {
-    return this.http.get<BlockListSnapshot>('/mikrotik/blocklist/list');
-  }
-
-  setupRules(host?: string, port?: number): Observable<unknown> {
-    return this.http.post('/mikrotik/blocklist/setup', { host, port });
-  }
 }

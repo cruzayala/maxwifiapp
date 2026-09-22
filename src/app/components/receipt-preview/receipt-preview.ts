@@ -1,13 +1,12 @@
 import { Component, HostListener, computed, inject } from '@angular/core';
 import { ReceiptService, PaperSize } from '../../services/receipt.service';
-import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { LucidePrinter, LucideX } from '@lucide/angular';
 
 @Component({
   selector: 'app-receipt-preview',
   standalone: true,
-  imports: [FormsModule, LucidePrinter, LucideX],
+  imports: [LucidePrinter, LucideX],
   template: `
     @if (receipt.previewVisible()) {
       <div class="overlay" (click)="receipt.closePreview()"></div>

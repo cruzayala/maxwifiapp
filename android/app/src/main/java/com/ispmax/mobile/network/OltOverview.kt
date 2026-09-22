@@ -39,7 +39,6 @@ private fun portState(onu: JSONObject?): String = if (onu == null) "empty" else 
 private fun portColor(state: String): Color = when (state) {
     "online" -> IspGreen; "warning" -> IspAmber; "critical", "damaged" -> IspRed; "offline" -> OltGray; else -> Color(0xFFC3CCD3)
 }
-private fun stateRank(onu: JSONObject) = when (portState(onu)) { "critical" -> 0; "offline" -> 1; "warning" -> 2; "online" -> 3; else -> 4 }
 
 /** Misma construccion de grupos que buildPonMapGroups() de la web: NAP fisicas o grupos logicos de 8. */
 private fun buildGroups(activePon: JSONObject, rows: List<JSONObject>, topology: List<JSONObject>): List<MapGroup> {

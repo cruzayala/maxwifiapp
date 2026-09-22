@@ -1,5 +1,5 @@
 import { Component, OnInit, inject, signal, computed } from '@angular/core';
-import { CommonModule, DatePipe } from '@angular/common';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { NavbarComponent } from '../../components/layout/navbar';
@@ -23,7 +23,7 @@ interface ReminderConfig {
   selector: 'app-encuestas',
   standalone: true,
   imports: [
-    CommonModule, FormsModule, NavbarComponent, DatePipe, PlanLabelPipe,
+    FormsModule, NavbarComponent, DatePipe, PlanLabelPipe,
     LucideCalendarDays, LucideLink, LucideMessageCircle, LucidePause, LucidePencil, LucidePlay,
     LucideRefreshCw, LucideRepeat, LucideSearch, LucideSettings, LucideTimer, LucideTrash2, LucideX,
   ],

@@ -46,7 +46,7 @@ const {
   sanitizeRouterFileName,
   sanitizeSpeedTemplate,
 } = require('./lib/mikrotik-ops');
-const { ZteC320Client, assertOnuIndex, assertOnuName, findInternetSpeedProfile, normalizeGponSerial, normalizeMacAddress, resolveClientMapping, summarizePons } = require('./lib/zte-c320');
+const { ZteC320Client, assertOnuIndex, assertOnuName, findInternetSpeedProfile, normalizeGponSerial, normalizeMacAddress, resolveClientMapping } = require('./lib/zte-c320');
 const { buildPonHealth, evaluateOpticalSignal } = require('./lib/olt-ops');
 const { evaluateAgentAutoAuthorization, selectSpeedProfile } = require('./lib/olt-auto-authorize');
 const { buildOltPlanSyncPreview } = require('./lib/olt-plan-sync');
@@ -83,7 +83,7 @@ const {
   tr069SerialCandidates,
   validateTaskInput: validateTr069TaskInput,
 } = require('./lib/tr069-control');
-const { actionDefinition: tr069ActionDefinition, profileForDevice: tr069ProfileForDevice } = require('./lib/tr069-catalog');
+const { profileForDevice: tr069ProfileForDevice } = require('./lib/tr069-catalog');
 const {
   matchOnuModelProfile,
   normalizePrefixesJson,
@@ -317,10 +317,6 @@ setInterval(async () => {
     if (r.count > 0) console.log('[sessions] cleanup:', r.count, 'expired removed');
   } catch (e) { console.error('[sessions] cleanup error:', e.message); }
 }, 60 * 60 * 1000);
-
-async function isValidToken(token) {
-  return !!(await getSession(token));
-}
 
 // Roles - jerarquia (super_admin > admin > tecnico/cobranza > viewer)
 const ROLE_HIERARCHY = {
@@ -666,15 +662,6 @@ dbRouter.post('/payments', asyncHandler(async (req, res) => {
     details: { idFactura: p.idFactura, idServicio: p.idServicio, amount: p.amount },
   });
   res.json(p);
-}));
-
-// WHATSAPP LOG
-dbRouter.get('/whatsapp', asyncHandler(async (req, res) => {
-  const msgs = await prisma.whatsappLog.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: parseInt(req.query.limit) || 200,
-  });
-  res.json(msgs);
 }));
 
 // NOTES
@@ -1123,104 +1110,6 @@ dbRouter.post('/invoices/sync-history', requireRole(['admin']), asyncHandler(asy
     console.error('[invoice-sync] manual history sync failed:', error.message);
   });
   res.status(202).json({ started: true, ...invoiceHistorySyncStatus });
-}));
-
-// SYNC FROM WISPHUB - guarda clientes/facturas en la DB
-dbRouter.post('/sync/clients', asyncHandler(async (req, res) => {
-  if (!userHasRole(req.session, ['admin'])) return res.status(403).json({ error: 'Permisos insuficientes' });
-  const { clients } = req.body;
-  if (!Array.isArray(clients)) return res.status(400).json({ error: 'clients array required' });
-
-  const log = await prisma.syncLog.create({
-    data: { entity: 'clients', status: 'pending', recordCount: clients.length }
-  });
-
-  let count = 0;
-  let created = 0;
-  let changed = 0;
-  let unchanged = 0;
-  try {
-    const existing = await prisma.client.findMany({ select: { idServicio: true, sourceHash: true } });
-    const hashes = new Map(existing.map((client) => [client.idServicio, client.sourceHash]));
-    for (const c of clients) {
-      const idServicio = Number(c.id_servicio);
-      if (!Number.isInteger(idServicio) || idServicio <= 0) continue;
-      const createData = mapWisphubClient(c, {}, { forCreate: true });
-      const updateData = mapWisphubClient(c);
-      const sourceHash = sourceStateHash(createData);
-      if (hashes.get(idServicio) === sourceHash) {
-        unchanged++;
-        continue;
-      }
-      if (hashes.has(idServicio)) {
-        await prisma.client.update({ where: { idServicio }, data: { ...updateData, sourceHash } });
-        changed++;
-      } else {
-        await prisma.client.create({ data: { ...createData, sourceHash } });
-        created++;
-      }
-      hashes.set(idServicio, sourceHash);
-      count++;
-    }
-
-    await prisma.syncLog.update({
-      where: { id: log.id },
-      data: { status: 'success', recordCount: count, endedAt: new Date(), durationMs: Date.now() - log.startedAt.getTime() },
-    });
-
-    await logActivity(req, {
-      action: 'sync_clients',
-      entityType: 'sync',
-      entityName: 'clients',
-      details: { count, created, changed, unchanged },
-    });
-    res.json({ success: true, received: clients.length, count, created, changed, unchanged });
-  } catch (e) {
-    await prisma.syncLog.update({
-      where: { id: log.id },
-      data: { status: 'error', errorMessage: e.message, endedAt: new Date() },
-    });
-    throw e;
-  }
-}));
-
-dbRouter.post('/sync/invoices', asyncHandler(async (req, res) => {
-  if (!userHasRole(req.session, ['admin'])) return res.status(403).json({ error: 'Permisos insuficientes' });
-  const { invoices } = req.body;
-  if (!Array.isArray(invoices)) return res.status(400).json({ error: 'invoices array required' });
-
-  const log = await prisma.syncLog.create({
-    data: { entity: 'invoices', status: 'pending', recordCount: invoices.length }
-  });
-
-  try {
-    const { saved: count } = await upsertWisphubInvoices(invoices);
-
-    await prisma.syncLog.update({
-      where: { id: log.id },
-      data: { status: 'success', recordCount: count, endedAt: new Date(), durationMs: Date.now() - log.startedAt.getTime() },
-    });
-
-    let autoPaymentWarningCleared = [];
-    try {
-      autoPaymentWarningCleared = await reconcileResolvedPaymentWarnings();
-    } catch (e) {
-      console.error('[payment-warning] reconcile after invoice sync failed:', e.message);
-    }
-    await logActivity(req, {
-      action: 'sync_invoices',
-      entityType: 'sync',
-      entityName: 'invoices',
-      details: { count, autoPaymentWarningCleared: autoPaymentWarningCleared.length },
-    });
-    res.json({ success: true, count, autoPaymentWarningCleared: autoPaymentWarningCleared.length });
-  } catch (e) {
-    await prisma.syncLog.update({
-      where: { id: log.id },
-      data: { status: 'error', errorMessage: e.message, endedAt: new Date() },
-    });
-    throw e;
-  }
 }));
 
 // STATS
@@ -7142,14 +7031,6 @@ oltRouter.get('/alarms', asyncHandler(async (req, res) => {
   res.json(items);
 }));
 
-oltRouter.get('/history', asyncHandler(async (req, res) => {
-  const items = await prisma.oltSnapshot.findMany({
-    orderBy: { capturedAt: 'desc' },
-    take: Math.min(500, Math.max(10, Number(req.query.limit) || 120)),
-  });
-  res.json(items.reverse());
-}));
-
 oltRouter.post('/sync', requireRole(['admin']), asyncHandler(async (req, res) => {
   const result = await runOltSync({ forceInventory: req.body?.full === true });
   await logActivity(req, {
@@ -7725,24 +7606,6 @@ async function tr069IdentityHints(device) {
   };
 }
 
-tr069Router.post('/agents/pair', asyncHandler(async (req, res) => {
-  const name = String(req.body?.agentId || '').trim();
-  if (!/^[A-Za-z0-9_.:-]{4,100}$/.test(name)) return res.status(400).json({ error: 'Identificador de agente inválido' });
-  const version = String(req.body?.agentVersion || '').trim().slice(0, 40) || null;
-  const token = crypto.randomBytes(48).toString('base64url');
-  const tokenHash = crypto.createHash('sha256').update(token, 'utf8').digest('hex');
-  const agent = await prisma.tr069Agent.upsert({
-    where: { name },
-    update: { tokenHash, active: true, version, createdBy: req.session.username, lastSeenAt: new Date() },
-    create: { name, tokenHash, active: true, version, createdBy: req.session.username, lastSeenAt: new Date() },
-  });
-  await logActivity(req, {
-    action: 'tr069_agent_paired', entityType: 'olt', entityId: agent.id,
-    entityName: agent.name, details: { version },
-  });
-  res.status(201).json({ agentId: agent.name, token });
-}));
-
 tr069Router.get('/devices/:serial/capabilities', asyncHandler(async (req, res) => {
   const candidates = tr069SerialCandidates(req.params.serial);
   const device = await prisma.tr069Device.findFirst({ where: { serial: { in: candidates } } });
@@ -8142,25 +8005,6 @@ async function findRuleByComment(c, path, comment) {
   return rules[0] || null;
 }
 
-async function ensureNatRedirect(c, list, comment, captive) {
-  return mtSerialize(async () => {
-    const existing = await findRuleByComment(c, '/ip/firewall/nat', comment);
-    if (existing) return { action: 'exists', id: existing['.id'] };
-    const res = await mtWrite(c, null,
-      '/ip/firewall/nat/add',
-      '=chain=dstnat',
-      `=src-address-list=${list}`,
-      '=protocol=tcp',
-      '=dst-port=80',
-      '=action=dst-nat',
-      `=to-addresses=${captive.host}`,
-      `=to-ports=${captive.port}`,
-      `=comment=${comment}`,
-    );
-    return { action: 'created', id: res[0]?.ret || null };
-  });
-}
-
 async function ensureSurveySoftPortalNat(c) {
   const dns = require('dns').promises;
   const host = publicHostFromEnv(process.env);
@@ -8213,10 +8057,6 @@ async function ensureFilterRuleUnserialized(c, comment, params, options) {
   }
   const res = await mtWrite(c, null, ...args);
   return { action: 'created', id: res[0]?.ret || null };
-}
-
-async function ensureFilterRule(c, comment, params, options) {
-  return mtSerialize(() => ensureFilterRuleUnserialized(c, comment, params, options));
 }
 
 async function resolveCaptiveTarget() {
@@ -8684,54 +8524,6 @@ function getPaymentPortalConfig() {
     bankInfo: process.env.INVOICE_BANK_INFO || '',
     supportPhone: process.env.SUPPORT_PHONE || process.env.INVOICE_SUPPORT_PHONE || '',
   });
-}
-
-function buildCaptive({ mode, name, ip, plan, priceDop, reason, contact }) {
-  const banner = mode === 'bloqueado'
-    ? { title: 'Servicio bloqueado', color: '#ef4444', badge: 'BLOQUEADO',
-        defaultMsg: 'Tu servicio fue bloqueado por el administrador. Contacta a soporte para reactivarlo.' }
-    : mode === 'moroso'
-    ? { title: 'Falta de pago', color: '#f97316', badge: 'PAGO PENDIENTE',
-        defaultMsg: 'Hemos detectado un saldo pendiente. Realiza el pago para reactivar tu internet.' }
-    : { title: 'Informacion', color: '#0ea5e9', badge: 'INFO',
-        defaultMsg: 'Tu servicio esta activo.' };
-  const cta = mode === 'bloqueado' ? 'Contactar al administrador' : 'Pagar ahora';
-  const price = priceDop ? `RD$ ${Number(priceDop).toLocaleString('es-DO')}` : '—';
-  return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8"/>
-<title>${htmlEscape(banner.title)}</title>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<style>
-*,*::before,*::after{box-sizing:border-box}
-body{margin:0;min-height:100vh;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
-  background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,${banner.color} 100%);
-  color:#f8fafc;display:flex;align-items:center;justify-content:center;padding:24px}
-.card{width:100%;max-width:560px;background:rgba(15,23,42,.85);border:1px solid ${banner.color}80;
-  border-radius:18px;padding:40px;box-shadow:0 30px 80px rgba(0,0,0,.55)}
-.badge{display:inline-flex;background:${banner.color}33;color:#f1f5f9;border:1px solid ${banner.color}80;
-  border-radius:999px;padding:6px 14px;font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
-h1{font-size:32px;margin:18px 0 8px;line-height:1.15}
-p.lead{color:#cbd5e1;margin:0 0 24px;line-height:1.55}
-.grid{display:grid;grid-template-columns:max-content 1fr;gap:10px 18px;background:rgba(15,23,42,.6);
-  border:1px solid rgba(148,163,184,.18);border-radius:12px;padding:18px;margin-bottom:24px}
-.grid dt{color:#94a3b8;font-size:13px}.grid dd{margin:0;font-weight:600;color:#f1f5f9}
-.cta{display:inline-block;background:${banner.color};color:#0f172a;font-weight:700;padding:14px 24px;
-  border-radius:12px;text-decoration:none}
-.foot{color:#94a3b8;font-size:12px;margin-top:18px}
-</style></head><body>
-<div class="card">
-<span class="badge">${htmlEscape(banner.badge)}</span>
-<h1>Hola ${htmlEscape(name)}, ${mode === 'bloqueado' ? 'tu servicio esta bloqueado' : 'tu internet esta pausado'}</h1>
-<p class="lead">${htmlEscape(reason || banner.defaultMsg)}</p>
-<dl class="grid">
-<dt>Cliente</dt><dd>${htmlEscape(name)}</dd>
-<dt>IP</dt><dd>${htmlEscape(ip)}</dd>
-<dt>Plan</dt><dd>${htmlEscape(plan)}</dd>
-<dt>Cuota mensual</dt><dd>${htmlEscape(price)}</dd>
-</dl>
-<a class="cta" href="#">${htmlEscape(cta)}</a>
-${contact ? `<p class="foot">Soporte: ${htmlEscape(contact)}</p>` : ''}
-</div></body></html>`;
 }
 
 function buildServiceStatusCaptive({
@@ -9770,84 +9562,6 @@ surveyRouter.delete('/responses/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-function buildSurveyHotspotSnippet(req) {
-  const base = `${getPublicBaseUrl(req)}/survey/portal`;
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta http-equiv="refresh" content="0; url=${base}?ip=$(ip)&mac=$(mac)">
-  <title>Encuesta</title>
-</head>
-<body>
-  <script>location.replace('${base}?ip=$(ip)&mac=$(mac)');</script>
-  <a href="${base}?ip=$(ip)&mac=$(mac)">Continuar</a>
-</body>
-</html>`;
-}
-
-// Setup seguro: por defecto NO crea NAT ciego hacia Railway. Railway enruta por
-// Host y fuerza HTTPS, por eso la encuesta segura debe abrir una URL real con
-// el dominio correcto. Un portal local/Hotspot puede enlazar a /survey/portal.
-// El modo legacy queda disponible solo si se pide explicitamente.
-surveyRouter.post('/setup', asyncHandler(async (req, res) => {
-  if (req.body?.mode !== 'legacy-nat' && req.body?.forceLegacy !== true) {
-    return res.json({
-      ok: true,
-      mode: 'cloud-link',
-      portalUrl: buildSurveyPortalUrl(req, ''),
-      hotspotLoginHtml: buildSurveyHotspotSnippet(req),
-      note: 'No se creo NAT legacy. Usa el enlace seguro o instala este HTML solo en un Hotspot/portal local que abra el dominio real de Railway.',
-    });
-  }
-
-  const dns = require('dns').promises;
-  const host = req.body?.host || publicHostFromEnv(process.env);
-  if (!host) return res.status(400).json({ error: 'Configura PUBLIC_APP_URL o indique el host del portal' });
-  const port = parseInt(req.body?.port || '80');
-  const NAT_COMMENT = 'WISP RD - Encuesta forzada (HTTP)';
-
-  // Resolver el dominio a IP
-  const resolved = await dns.lookup(host);
-  const serverIp = resolved.address;
-
-  const c = await getMtConnection();
-
-  // Buscar regla existente
-  const natRules = await mtWrite(c, 9000, '/ip/firewall/nat/print', `?comment=${NAT_COMMENT}`);
-  let action;
-  if (natRules.length > 0) {
-    const rule = natRules[0];
-    if (rule['to-addresses'] !== serverIp || rule['to-ports'] !== String(port)) {
-      await mtWrite(c, 9000,
-        '/ip/firewall/nat/set',
-        '=.id=' + rule['.id'],
-        '=to-addresses=' + serverIp,
-        '=to-ports=' + port,
-      );
-      action = 'updated';
-    } else {
-      action = 'unchanged';
-    }
-    res.json({ ok: true, action, ruleId: rule['.id'], serverIp, port, host });
-  } else {
-    const r = await mtWrite(c, 9000,
-      '/ip/firewall/nat/add',
-      '=chain=dstnat',
-      '=protocol=tcp',
-      '=dst-port=80',
-      '=src-address-list=' + LIST_SURVEY,
-      '=action=dst-nat',
-      '=to-addresses=' + serverIp,
-      '=to-ports=' + port,
-      '=comment=' + NAT_COMMENT,
-    );
-    action = 'created';
-    res.json({ ok: true, action, ruleId: r[0]?.ret, serverIp, port, host });
-  }
-}));
-
 // Stats rapidos para dashboard
 surveyRouter.get('/stats', asyncHandler(async (req, res) => {
   const [pending, submitted, total] = await Promise.all([
@@ -10743,72 +10457,6 @@ async function formatInvoiceMessage(client, invoice = null) {
   return renderClientTemplate('invoice', client, invoice);
 }
 
-waRouter.post('/preview-invoice/:idServicio', asyncHandler(async (req, res) => {
-  const idServicio = parseInt(req.params.idServicio);
-  const client = await prisma.client.findUnique({ where: { idServicio } });
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-
-  // Si hay invoice especifica solicitada, traerla
-  let invoice = null;
-  if (req.body?.invoiceId) {
-    invoice = await prisma.invoice.findUnique({ where: { id: parseInt(req.body.invoiceId) } });
-  } else {
-    // ultima factura pendiente
-    invoice = await prisma.invoice.findFirst({
-      where: { idServicio, status: { in: ['pendiente', 'PENDING'] } },
-      orderBy: { dueDate: 'desc' },
-    }).catch(() => null);
-  }
-
-  const message = await formatInvoiceMessage(client, invoice);
-  res.json({ idServicio, telefono: client.telefono, nombre: client.nombre, message, invoice });
-}));
-
-waRouter.post('/send-invoice/:idServicio', asyncHandler(async (req, res) => {
-  if (waStatus !== 'connected' || !waSocket) {
-    return res.status(400).json({ error: 'WhatsApp no conectado. Conecta primero en /whatsapp' });
-  }
-  const idServicio = parseInt(req.params.idServicio);
-  const client = await prisma.client.findUnique({ where: { idServicio } });
-  if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-  if (!client.telefono) return res.status(400).json({ error: 'Cliente sin teléfono' });
-
-  let invoice = null;
-  if (req.body?.invoiceId) {
-    invoice = await prisma.invoice.findUnique({ where: { id: parseInt(req.body.invoiceId) } });
-  }
-
-  const message = await formatInvoiceMessage(client, invoice);
-  const r = await sendWhatsappNotification(client.idServicio, client.telefono, message, 'invoice', client.nombre);
-  res.status(r.ok ? 200 : 500).json(r);
-}));
-
-waRouter.post('/send-invoices-bulk', asyncHandler(async (req, res) => {
-  if (waStatus !== 'connected' || !waSocket) {
-    return res.status(400).json({ error: 'WhatsApp no conectado' });
-  }
-  // Acepta { idsServicio: [...] } o { onlyPendientes: true }
-  let candidates = [];
-  if (Array.isArray(req.body?.idsServicio)) {
-    candidates = await prisma.client.findMany({
-      where: { idServicio: { in: req.body.idsServicio.map(Number) }, telefono: { not: null } },
-    });
-  } else if (req.body?.onlyPendientes) {
-    candidates = await prisma.client.findMany({
-      where: { telefono: { not: null }, estadoFacturas: { contains: 'endiente' } },
-    });
-  }
-
-  const results = [];
-  for (const cl of candidates) {
-    const message = await formatInvoiceMessage(cl);
-    const r = await sendWhatsappNotification(cl.idServicio, cl.telefono, message, 'invoice', cl.nombre);
-    results.push({ idServicio: cl.idServicio, nombre: cl.nombre, ok: r.ok, error: r.error });
-    await new Promise((r) => setTimeout(r, 2000));
-  }
-  res.json({ total: candidates.length, sent: results.filter((r) => r.ok).length, results });
-}));
-
 waRouter.post('/send', asyncHandler(async (req, res) => {
   const { phone, message, idServicio, clientName, messageType = 'manual' } = req.body;
   if (!phone || !message) return res.status(400).json({ error: 'phone y message requeridos' });
@@ -10991,7 +10639,6 @@ app.use(asyncHandler(async (req, res, next) => {
     req.path.startsWith('/web-activity') ||
     req.path.startsWith('/auto-block') ||
     req.path.startsWith('/notifications') ||
-    req.path.startsWith('/templates') ||
     req.path.startsWith('/sys') ||
     req.path.startsWith('/users') ||
     req.path.startsWith('/metrics') ||
@@ -11049,129 +10696,7 @@ webActivityRouter.get('/:id', asyncHandler(async (req, res) => {
   });
 }));
 
-webActivityRouter.get('/', asyncHandler(async (req, res) => {
-  const KEEP_DAYS = parseInt(process.env.WEB_ACTIVITY_KEEP_DAYS || '30');
-  const days = Math.min(parseInt(req.query.days || '1'), KEEP_DAYS);
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-  const rows = await prisma.webActivity.groupBy({
-    by: ['domain'],
-    where: { day: { gte: cutoff } },
-    _sum: { queryCount: true },
-    orderBy: { _sum: { queryCount: 'desc' } },
-    take: 50,
-  });
-
-  res.json(rows.map((r) => ({ domain: r.domain, queryCount: r._sum.queryCount })));
-}));
-
 app.use('/web-activity', webActivityRouter);
-
-// ─── TEMPLATES (CRUD + preview render) ───
-const templatesRouter = express.Router();
-templatesRouter.use(authMiddleware);
-templatesRouter.use(requireAnyRole(['cobranza']));
-
-// Lista todos los templates
-templatesRouter.get('/', asyncHandler(async (req, res) => {
-  const all = await prisma.whatsappTemplate.findMany({ orderBy: { name: 'asc' } });
-  res.json(all);
-}));
-
-// Vars disponibles (para autocomplete en UI)
-templatesRouter.get('/variables', (req, res) => {
-  res.json({
-    placeholders: [
-      'negocio', 'soporte', 'bancos', 'hoy',
-      'nombre', 'cedula', 'direccion', 'telefono',
-      'plan', 'zona', 'ip', 'macCpe',
-      'estado', 'estadoFacturas', 'fechaCorte',
-      'precio', 'saldo', 'total', 'periodo',
-      'dias', // solo en recordatorios
-    ],
-    blocks: 'Usa {{#var}}...{{/var}} para condicionar bloques. Ej: {{#telefono}}📞 {{telefono}}{{/telefono}}',
-  });
-});
-
-// Get individual
-templatesRouter.get('/:name', asyncHandler(async (req, res) => {
-  const t = await prisma.whatsappTemplate.findUnique({ where: { name: req.params.name } });
-  if (!t) return res.status(404).json({ error: 'Template no encontrado' });
-  res.json(t);
-}));
-
-// Editar (solo content + category)
-templatesRouter.patch('/:name', requireRole(['admin']), asyncHandler(async (req, res) => {
-  const data = {};
-  if (typeof req.body?.content === 'string') data.content = req.body.content;
-  if (typeof req.body?.category === 'string') data.category = req.body.category;
-  if (typeof req.body?.variables === 'string') data.variables = req.body.variables;
-  if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Nada que actualizar' });
-
-  const updated = await prisma.whatsappTemplate.update({
-    where: { name: req.params.name },
-    data,
-  }).catch(() => null);
-  if (!updated) return res.status(404).json({ error: 'Template no encontrado' });
-  res.json(updated);
-}));
-
-// Restaurar a default (descarta edits)
-templatesRouter.post('/:name/reset', requireRole(['admin']), asyncHandler(async (req, res) => {
-  const def = DEFAULT_TEMPLATES[req.params.name];
-  if (!def) return res.status(404).json({ error: 'No hay default para este template' });
-  const updated = await prisma.whatsappTemplate.update({
-    where: { name: req.params.name },
-    data: { content: def.content, category: def.category, variables: def.variables },
-  });
-  res.json(updated);
-}));
-
-// Crear template custom (no-default)
-templatesRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
-  const { name, content, category, variables } = req.body || {};
-  if (!name || !content) return res.status(400).json({ error: 'name y content requeridos' });
-  const created = await prisma.whatsappTemplate.create({
-    data: { name, content, category: category || 'custom', variables: variables || '', isDefault: false },
-  }).catch((e) => ({ error: e.message }));
-  if (created.error) return res.status(400).json({ error: created.error });
-  res.status(201).json(created);
-}));
-
-// Eliminar template (no-default solamente)
-templatesRouter.delete('/:name', requireRole(['admin']), asyncHandler(async (req, res) => {
-  const t = await prisma.whatsappTemplate.findUnique({ where: { name: req.params.name } });
-  if (!t) return res.status(404).json({ error: 'No encontrado' });
-  if (t.isDefault) return res.status(400).json({ error: 'No se puede eliminar template default. Usa POST /reset para restaurar.' });
-  await prisma.whatsappTemplate.delete({ where: { name: req.params.name } });
-  res.json({ ok: true });
-}));
-
-// Preview con cliente real o vars custom
-templatesRouter.post('/:name/preview', asyncHandler(async (req, res) => {
-  const tpl = await prisma.whatsappTemplate.findUnique({ where: { name: req.params.name } });
-  if (!tpl) return res.status(404).json({ error: 'Template no encontrado' });
-
-  let vars;
-  if (req.body?.idServicio) {
-    const client = await prisma.client.findUnique({ where: { idServicio: parseInt(req.body.idServicio) } });
-    if (!client) return res.status(404).json({ error: 'Cliente no encontrado' });
-    vars = buildTemplateVars(client, null, req.body?.extras || {});
-  } else if (req.body?.vars) {
-    vars = req.body.vars;
-  } else {
-    // Cliente sample
-    vars = buildTemplateVars(
-      { nombre: 'Juan Perez (sample)', telefono: '8090000000', planInternetName: '20M Fibra', precioPlan: '1500', fechaCorte: '15/06/2026', ip: '192.168.16.99', zonaNombre: 'Centro', estado: 'Activo' },
-      null,
-      req.body?.extras || {},
-    );
-  }
-
-  res.json({ rendered: renderTemplate(tpl.content, vars), vars });
-}));
-
-app.use('/templates', templatesRouter);
 
 // Forward declared routers para auto-block y notifications
 // (los handlers se definen mas abajo, pero el mount tiene que ir antes del static catch-all)
@@ -11235,9 +10760,7 @@ function ensureNumber(v, { min = -Infinity, max = Infinity, label = 'value' } = 
 
 const ALLOWED_UNITS = ['u', 'm', 'kg', 'caja', 'rollo'];
 const ALLOWED_EQUIP_CATEGORIES = ['wifi', 'cable', 'onu', 'antena', 'otro'];
-const ALLOWED_EXPENSE_CATEGORIES = ['inventario', 'nomina', 'servicios', 'transporte', 'otros'];
 const ALLOWED_PAYROLL_STATUS = ['pending', 'paid', 'cancelled'];
-const ALLOWED_EQUIP_STATUS = ['stock', 'assigned', 'rma', 'lost', 'retired'];
 
 // ─── EquipmentType ───
 const equipTypeRouter = express.Router();
@@ -11658,15 +11181,6 @@ payrollRouter.get('/', asyncHandler(async (req, res) => {
     take: Math.min(parseInt(req.query.limit) || 200, 1000),
   });
   res.json(entries);
-}));
-
-payrollRouter.get('/stats', asyncHandler(async (req, res) => {
-  const [total, byStatus, lastMonths] = await Promise.all([
-    prisma.payrollEntry.aggregate({ _sum: { netAmount: true }, _count: { _all: true } }),
-    prisma.payrollEntry.groupBy({ by: ['status'], _sum: { netAmount: true }, _count: { _all: true } }),
-    prisma.payrollEntry.groupBy({ by: ['period'], _sum: { netAmount: true }, orderBy: { period: 'desc' }, take: 12 }),
-  ]);
-  res.json({ totalPaid: total._sum.netAmount || 0, totalCount: total._count._all, byStatus, lastMonths });
 }));
 
 payrollRouter.post('/', requireRole(['admin']), asyncHandler(async (req, res) => {
@@ -12211,21 +11725,6 @@ metricsRouter.get('/:id', asyncHandler(async (req, res) => {
   res.json({ ...c, creditFactors: factors });
 }));
 
-metricsRouter.get('/', asyncHandler(async (req, res) => {
-  // Resumen global por tier
-  const all = await prisma.client.findMany({
-    where: { creditTier: { not: null } },
-    select: { creditTier: true, consumptionTier: true },
-  });
-  const byCreditTier = {};
-  const byConsumption = {};
-  for (const c of all) {
-    if (c.creditTier) byCreditTier[c.creditTier] = (byCreditTier[c.creditTier] || 0) + 1;
-    if (c.consumptionTier) byConsumption[c.consumptionTier] = (byConsumption[c.consumptionTier] || 0) + 1;
-  }
-  res.json({ total: all.length, byCreditTier, byConsumption });
-}));
-
 metricsRouter.post('/recompute', requireRole(['admin']), asyncHandler(async (req, res) => {
   recomputeAllMetrics().catch(() => {});
   res.json({ status: 'recompute started' });
@@ -12531,17 +12030,6 @@ async function cleanupResolvedPaymentWarnings(currentCandidateIds) {
   return cleared;
 }
 
-async function reconcileResolvedPaymentWarnings() {
-  const config = await getPaymentWarningConfig().catch(() => ({
-    enabled: false,
-    overdueDays: parseInt(PAYMENT_WARNING_DEFAULTS.paymentWarningOverdueDays, 10),
-    runHour: parseInt(PAYMENT_WARNING_DEFAULTS.paymentWarningRunHour, 10),
-    mode: 'moroso',
-  }));
-  const candidates = await buildPaymentWarningCandidates(config);
-  return cleanupResolvedPaymentWarnings(new Set(candidates.map((c) => c.idServicio)));
-}
-
 async function runPaymentWarningCheck({ manual = false, ignoreEnabled = false } = {}) {
   const config = await getPaymentWarningConfig();
   if (!config.enabled && !ignoreEnabled) {
@@ -12655,10 +12143,6 @@ let lastNotifRun = null;
 
 // NOTIF_TEMPLATES ahora se cargan de DB via WhatsappTemplate (editables)
 // Templates usados: reminder_t-3, reminder_t-1, due_today, overdue_t3, overdue_t7
-
-function isSameDay(a, b) {
-  return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
-}
 
 async function alreadyNotifiedToday(idServicio, type) {
   const todayStart = new Date();
@@ -12923,33 +12407,6 @@ surveyRouter.post('/reminders/resume-all', requireRole(['admin']), asyncHandler(
   invalidateSurveyConfig();
   await logActivity(req, { action: 'resume_survey_reminders_global', entityType: 'setting' });
   res.json({ ok: true, pausedGlobally: false });
-}));
-
-// Pausa / reanudar por survey individual
-surveyRouter.post('/:id/pause', requireRole(['admin']), asyncHandler(async (req, res) => {
-  const id = parseInt(req.params.id);
-  const updated = await prisma.surveyResponse.update({
-    where: { id },
-    data: { paused: true, pausedAt: new Date(), pausedBy: req.session?.username || null, nextReminderAt: null },
-  });
-  await logActivity(req, { action: 'pause_survey', entityType: 'survey', entityId: String(id) });
-  res.json({ ok: true, id: updated.id, paused: true });
-}));
-
-surveyRouter.post('/:id/resume', requireRole(['admin']), asyncHandler(async (req, res) => {
-  const id = parseInt(req.params.id);
-  const cfg = await getSurveyConfig();
-  // Re-schedular el proximo reminder respetando el intervalo desde el ultimo envio (o ahora si nunca se mando).
-  const survey = await prisma.surveyResponse.findUnique({ where: { id } });
-  if (!survey) return res.status(404).json({ error: 'not found' });
-  const base = survey.lastReminderAt || new Date();
-  const nextAt = addHours(base, cfg.intervalHours);
-  const updated = await prisma.surveyResponse.update({
-    where: { id },
-    data: { paused: false, pausedAt: null, pausedBy: null, nextReminderAt: nextAt > new Date() ? nextAt : new Date() },
-  });
-  await logActivity(req, { action: 'resume_survey', entityType: 'survey', entityId: String(id) });
-  res.json({ ok: true, id: updated.id, paused: false, nextReminderAt: updated.nextReminderAt });
 }));
 
 surveyRouter.post('/reminders/run', requireRole(['admin']), asyncHandler(async (req, res) => {

@@ -212,14 +212,6 @@ export class OltComponent implements OnInit, OnDestroy {
   readonly clientSearch = signal('');
   readonly search = signal('');
   readonly lastLoadedAt = signal<Date | null>(null);
-  readonly onlinePercent = computed(() => {
-    const totals = this.status().totals;
-    return totals.totalOnus ? Math.round((totals.onlineOnus / totals.totalOnus) * 100) : 0;
-  });
-  readonly hottestCard = computed<import('../../services/olt.service').OltCard | null>(() => {
-    const cards = this.status().cards.filter((card) => card.temperatureC != null);
-    return cards.sort((a, b) => (b.temperatureC || 0) - (a.temperatureC || 0))[0] || null;
-  });
   readonly filteredPons = computed(() => {
     const query = this.ponSearch().trim().toLowerCase();
     return this.pons().filter((pon) => !query || `pon ${pon.pon} ${pon.ponIndex}`.toLowerCase().includes(query));
@@ -1180,17 +1172,6 @@ export class OltComponent implements OnInit, OnDestroy {
     });
   }
 
-  saveTr069Wifi() {
-    const payload: Record<string, unknown> = {
-      ssid: this.tr069Ssid.trim(),
-      enabled: this.tr069WifiEnabled,
-      broadcast: this.tr069WifiBroadcast,
-    };
-    if (this.tr069Channel != null) payload['channel'] = Number(this.tr069Channel);
-    if (this.tr069Password) payload['password'] = this.tr069Password;
-    this.queueTr069Action('set_wifi', payload);
-  }
-
   queueTr069Action(action: Tr069TaskAction, payload: Record<string, unknown> = {}) {
     const onu = this.selectedOnu();
     if (!onu?.serial || this.tr069Saving()) return;
@@ -1212,10 +1193,6 @@ export class OltComponent implements OnInit, OnDestroy {
 
   tr069ActionLabel(task: Pick<Tr069Task, 'action'>) {
     return task.action === 'refresh' ? 'Actualización' : task.action === 'set_wifi' ? 'Configuración WiFi' : 'Reinicio';
-  }
-
-  tr069StatusLabel(status: string) {
-    return ({ pending: 'En cola', processing: 'Ejecutando', success: 'Completada', failed: 'Con error', cancelled: 'Cancelada' } as Record<string, string>)[status] || status;
   }
 
   private populateTr069Form(device: Tr069Device) {
@@ -1480,10 +1457,8 @@ export class OltComponent implements OnInit, OnDestroy {
     this.tr069Device.set(null);
     this.activeWorkspace.set('map');
   }
-  ponUsage(pon: OltPon) { return pon.utilizationPercent; }
   isWeakPower(value?: number | null) { return weakPower(value); }
   isCriticalPower(value?: number | null) { return criticalPower(value); }
-  trackPon(_: number, pon: OltPon) { return pon.ponIndex; }
 
   formatDate(value?: string | Date | null) {
     return formatDateTime(value);

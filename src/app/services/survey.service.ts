@@ -34,12 +34,6 @@ export interface SurveyResponse {
   } | null;
 }
 
-export interface SurveyStats {
-  pending: number;
-  submitted: number;
-  total: number;
-}
-
 @Injectable({ providedIn: 'root' })
 export class SurveyService {
   private http = inject(HttpClient);
@@ -77,7 +71,4 @@ export class SurveyService {
     return this.http.delete<any>(`/api/survey/responses/${id}`);
   }
 
-  stats(): Observable<{ ok: boolean } & SurveyStats> {
-    return this.http.get<any>('/api/survey/stats');
-  }
 }

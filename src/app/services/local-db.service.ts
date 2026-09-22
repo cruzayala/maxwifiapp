@@ -115,12 +115,6 @@ export class LocalDbService {
   }
 
   // ─── INVOICES ───
-  saveInvoices(invoices: Invoice[]): Promise<void> {
-    const merged = new Map((this.invoiceCache || []).map((invoice) => [invoice.id_factura, invoice]));
-    for (const invoice of invoices) merged.set(invoice.id_factura, invoice);
-    this.invoiceCache = [...merged.values()];
-    return Promise.resolve();
-  }
 
   async getInvoices(forceRefresh = false): Promise<Invoice[]> {
     if (!forceRefresh && this.invoiceCache) return this.invoiceCache;

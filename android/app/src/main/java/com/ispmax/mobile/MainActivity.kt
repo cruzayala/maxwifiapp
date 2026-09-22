@@ -307,11 +307,11 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
 }
 
 private val labels = mapOf("onu-provisioner" to "Configurar ONU", "web-settings" to "Configuracion", "web-whatsapp" to "WhatsApp: conexion y envios", "web-surveys" to "Gestion de encuestas", "web-bandwidth" to "Prueba de velocidad", "web-reports" to "Reportes de cartera", "web-operations" to "Sincronizacion", "collection-queue" to "Cola de cobranza", "surveys" to "Encuestas", "tickets" to "Tickets", "payment-requests" to "Solicitudes de pago", "billing-report" to "Reporte de facturacion", "promises" to "Promesas de pago", "invoices" to "Facturas", "pending" to "Saldos pendientes", "onus" to "OLT y ONU", "incidents" to "Incidencias", "network-audit" to "Estabilidad de clientes", "live" to "Monitoreo en vivo", "mikrotik" to "MikroTik", "wan-history" to "Historico WAN", "ipam" to "Direcciones IP", "ip-ranges" to "Rangos IP locales", "map" to "Mapa de clientes", "system" to "Estado del sistema", "whatsapp" to "WhatsApp", "plans" to "Planes", "inventory" to "Inventario", "expenses" to "Gastos", "payroll" to "Nomina", "users" to "Usuarios", "onu-local" to "Prueba local de ONU")
-private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInputAntenna, "web-settings" to Icons.Outlined.Settings, "web-whatsapp" to Icons.Outlined.QrCode2, "web-surveys" to Icons.Outlined.FactCheck, "web-bandwidth" to Icons.Outlined.Speed, "web-reports" to Icons.Outlined.Assessment, "web-operations" to Icons.Outlined.CloudSync, "collection-queue" to Icons.Outlined.PendingActions, "surveys" to Icons.Outlined.Poll, "tickets" to Icons.Outlined.ConfirmationNumber, "invoices" to Icons.Outlined.ReceiptLong, "pending" to Icons.Outlined.AccountBalanceWallet, "onus" to Icons.Outlined.Hub, "incidents" to Icons.Outlined.WarningAmber, "network-audit" to Icons.Outlined.QueryStats, "live" to Icons.Outlined.Podcasts, "mikrotik" to Icons.Outlined.Router, "wan-history" to Icons.Outlined.ShowChart, "ipam" to Icons.Outlined.Lan, "ip-ranges" to Icons.Outlined.AccountTree, "map" to Icons.Outlined.Map, "system" to Icons.Outlined.SettingsSuggest, "whatsapp" to Icons.Outlined.Chat, "plans" to Icons.Outlined.Speed, "inventory" to Icons.Outlined.Inventory2, "expenses" to Icons.Outlined.Payments, "payroll" to Icons.Outlined.Badge, "users" to Icons.Outlined.ManageAccounts, "onu-local" to Icons.Outlined.Router)
+private val moduleIcons = mapOf("web-settings" to Icons.Outlined.Settings, "web-whatsapp" to Icons.Outlined.QrCode2, "web-surveys" to Icons.Outlined.FactCheck, "web-reports" to Icons.Outlined.Assessment, "web-operations" to Icons.Outlined.CloudSync, "collection-queue" to Icons.Outlined.PendingActions, "surveys" to Icons.Outlined.Poll, "tickets" to Icons.Outlined.ConfirmationNumber, "invoices" to Icons.Outlined.ReceiptLong, "pending" to Icons.Outlined.AccountBalanceWallet, "ip-ranges" to Icons.Outlined.AccountTree, "map" to Icons.Outlined.Map, "system" to Icons.Outlined.SettingsSuggest, "whatsapp" to Icons.Outlined.Chat, "plans" to Icons.Outlined.Speed, "inventory" to Icons.Outlined.Inventory2, "expenses" to Icons.Outlined.Payments, "payroll" to Icons.Outlined.Badge, "users" to Icons.Outlined.ManageAccounts)
 
 @Composable private fun MenuPage(keys: List<String>, onOpen: (String) -> Unit) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        keys.forEach { key -> MenuRow(labels[key] ?: key, when (key) { "onu-local" -> "Compatibilidad Android"; "collection-queue" -> "Quien debe, WhatsApp, cobro y corte"; else -> "" }, if (key == "payment-requests") Icons.Outlined.Payments else if (key == "promises") Icons.Outlined.EventAvailable else if (key == "billing-report") Icons.Outlined.BarChart else moduleIcons[key] ?: Icons.Outlined.Folder, { onOpen(key) }) }
+        keys.forEach { key -> MenuRow(labels[key] ?: key, if (key == "collection-queue") "Quien debe, WhatsApp, cobro y corte" else "", if (key == "payment-requests") Icons.Outlined.Payments else if (key == "promises") Icons.Outlined.EventAvailable else if (key == "billing-report") Icons.Outlined.BarChart else moduleIcons[key] ?: Icons.Outlined.Folder, { onOpen(key) }) }
     }
 }
 @Composable internal fun MenuRow(title: String, subtitle: String, icon: ImageVector, click: () -> Unit) {
@@ -354,7 +354,7 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
     }
 }
 
-@Composable private fun Collection(kind: String, vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit, fixedClient: Int? = null, pon: JSONObject? = null, initialFilters: String = "") {
+@Composable private fun Collection(kind: String, vm: MainViewModel, pages: Map<String, PageState>, onClient: (Int) -> Unit, fixedClient: Int? = null, initialFilters: String = "") {
     val app by vm.app.collectAsStateWithLifecycle()
     val filtersAvailable = app.capabilities?.optJSONObject("capabilities")?.optBoolean("advancedFilters") == true
     var search by rememberSaveable(kind, fixedClient) { mutableStateOf("") }
@@ -374,7 +374,6 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
         if (fixedClient != null) append("&clientId=$fixedClient")
         if (kind == "pending") append("&pending=true")
         if (status.isNotEmpty()) append("&status=${encode(status)}")
-        if (pon != null) append("&rack=${pon.optInt("rack")}&shelf=${pon.optInt("shelf")}&pon=${pon.optInt("pon")}")
     }
     val path = buildString {
         append(if (kind == "clients") "/clients" else if (invoice) "/invoices" else "/catalog/$kind")
@@ -425,8 +424,8 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
         if (rows.isEmpty() && !state.loading && state.error == null) EmptyState("No hay resultados para esta busqueda")
         LazyColumn(Modifier.weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = if (canCreate) 88.dp else 12.dp)) {
             items(rows, key = { it.text(if (kind == "clients") "idServicio" else if (invoice) "idFactura" else state.body?.text("idField", "id") ?: "id") }) { row ->
-                val title = when { kind == "clients" -> row.text("aliasNombre", row.text("nombre")); invoice -> row.text("clienteNombre"); kind == "onus" -> row.text("name", row.text("serial")); else -> row.text(state.body?.text("titleField", "id") ?: "id") }
-                val subtitle = when { kind == "clients" -> "${row.text("ip")} · ${row.text("planInternetName")}"; invoice -> "#${row.text("idFactura")} · ${money(row.optDouble("total", 0.0))}"; kind == "onus" -> "${row.text("onuIndex")} · ${row.text("serial")}"; else -> row.text("status", row.text("estado", row.text("tipo", "#${row.text("id")}"))) }
+                val title = when { kind == "clients" -> row.text("aliasNombre", row.text("nombre")); invoice -> row.text("clienteNombre"); else -> row.text(state.body?.text("titleField", "id") ?: "id") }
+                val subtitle = when { kind == "clients" -> "${row.text("ip")} · ${row.text("planInternetName")}"; invoice -> "#${row.text("idFactura")} · ${money(row.optDouble("total", 0.0))}"; else -> row.text("status", row.text("estado", row.text("tipo", "#${row.text("id")}"))) }
                 OutlinedCard(onClick = { if (kind == "clients") onClient(row.optInt("idServicio")) else selectedJson = row.toString() }, colors = CardDefaults.outlinedCardColors(containerColor = com.ispmax.mobile.ui.ispCardColor())) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (kind == "clients") Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) { Text(title.take(2).uppercase(), color = IspGreen, fontWeight = FontWeight.Bold) }
@@ -436,7 +435,6 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
                             if (kind == "expenses") Text(money(row.optDouble("amount", 0.0)), fontWeight = FontWeight.Medium)
                             if (kind == "payroll") Text(money(row.optDouble("netAmount", 0.0)), fontWeight = FontWeight.Medium)
                             if (row.has("estado")) StatusBadge(row.text("estado"))
-                            if (kind == "onus") { StatusBadge(if (row.optBoolean("online")) "En linea" else "Sin conexion"); Text("RX ${row.text("rxPowerDbm")} dBm", style = MaterialTheme.typography.bodySmall) }
                         }
                         Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -771,32 +769,3 @@ private fun csvValue(value: String): String {
     }
 }
 
-@Composable private fun PonPage(vm: MainViewModel, pages: Map<String, PageState>) {
-    LaunchedEffect(Unit) { vm.load("/pons", true) }
-    val state = pages["/pons"] ?: PageState(loading = true)
-    var selectedJson by rememberSaveable { mutableStateOf<String?>(null) }
-    val selected = selectedJson?.let { JSONObject(it) }
-    if (selected != null) {
-        Column(Modifier.fillMaxSize()) {
-            TextButton(onClick = { selectedJson = null }) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, null); Text("PON ${selected.text("key")}") }
-            Collection("onus", vm, pages, {}, pon = selected)
-        }
-        BackHandler { selectedJson = null }
-        return
-    }
-    LazyColumn(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        item { Row(verticalAlignment = Alignment.CenterVertically) { Text("Puertos PON", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); IconButton(onClick = { vm.load("/pons", true) }) { Icon(Icons.Outlined.Refresh, "Actualizar PON") } } }
-        item { ReadStatus(state) { vm.load("/pons", true) } }
-        if (state.body?.optJSONArray("items").objects().isEmpty() && !state.loading) item { EmptyState("Sin puertos con ONU registradas") }
-        items(state.body?.optJSONArray("items").objects(), key = { it.text("key") }) { port ->
-            OutlinedCard(onClick = { selectedJson = port.toString() }, colors = CardDefaults.outlinedCardColors(containerColor = com.ispmax.mobile.ui.ispCardColor())) {
-                Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.Hub, null, tint = IspGreen); Spacer(Modifier.width(10.dp)); Text("PON ${port.text("key")}", Modifier.weight(1f), fontWeight = FontWeight.Bold); Text("${port.text("total")} ONU") }
-                    LinearProgressIndicator(progress = { port.optInt("online").toFloat() / port.optInt("total").coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth().height(8.dp), color = IspGreen, trackColor = Color(0xFFFBE6E8))
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) { Text("${port.text("online")} en linea", color = IspGreen); Text("${port.text("offline")} sin conexion", color = IspRed) }
-                    Text("Ultima lectura: ${port.text("lastSeenAt")}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
-}

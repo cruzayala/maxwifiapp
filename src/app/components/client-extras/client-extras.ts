@@ -1,4 +1,4 @@
-import { Component, inject, input, OnInit, signal, effect } from '@angular/core';
+import { Component, inject, input, OnInit, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { DecimalPipe } from '@angular/common';

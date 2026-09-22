@@ -739,12 +739,6 @@ export class OltService {
   createTr069Task(serial: string, action: Tr069TaskAction, payload: Record<string, unknown> = {}) {
     return this.http.post<Tr069Task>(`/tr069-api/devices/${encodeURIComponent(serial)}/tasks`, { action, payload });
   }
-  getTr069Tasks(serial: string) {
-    return this.http.get<Tr069Task[]>(`/tr069-api/devices/${encodeURIComponent(serial)}/tasks`);
-  }
-  getTr069Capabilities(serial: string) {
-    return this.http.get<Tr069Capabilities>(`/tr069-api/devices/${encodeURIComponent(serial)}/capabilities`);
-  }
   getTr069Parameters(serial: string, query = '') {
     return this.http.get<Tr069Parameter[]>(`/tr069-api/devices/${encodeURIComponent(serial)}/parameters`, { params: query ? { q: query } : {} });
   }

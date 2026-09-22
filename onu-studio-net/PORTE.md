@@ -1,6 +1,6 @@
 # Qué se portó del agente anterior
 
-Mapa pieza por pieza entre el agente Python (`onu-provisioner/`) y esta aplicación .NET.
+Mapa pieza por pieza entre el agente Python (`onu-provisioner/`, retirado del repositorio y disponible en el historial de git) y esta aplicación .NET.
 Sirve para comprobar que no quedó nada fuera.
 
 ## Motor

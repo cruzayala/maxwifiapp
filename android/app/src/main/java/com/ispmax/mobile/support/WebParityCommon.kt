@@ -39,7 +39,6 @@ internal fun MainViewModel.reloadMobile(pages: Map<String, PageState>, vararg pr
 internal fun webEncode(value: String): String = URLEncoder.encode(value, "UTF-8")
 internal fun PageState?.webItems(): List<JSONObject> = this?.body?.optJSONArray("items").objects()
 internal fun JSONObject.stringList(key: String): List<String> = optJSONArray(key)?.let { array -> (0 until array.length()).map { array.optString(it) } } ?: emptyList()
-internal fun jsonArrayOf(values: Collection<Any>): JSONArray = JSONArray().apply { values.forEach { put(it) } }
 
 /** La web considera fallida una respuesta con `ok:false`, `success:false` o `error`. */
 internal fun JSONObject.serverRejected(): String? = when {

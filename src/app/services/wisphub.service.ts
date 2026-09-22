@@ -1,9 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
-import { Observable, expand, reduce, EMPTY, map } from 'rxjs';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
-import { WispHubClientResponse } from '../models/client.model';
-import { InvoiceResponse } from '../models/invoice.model';
 import { TicketResponse } from '../models/ticket.model';
 import { PlanResponse, ZoneResponse } from '../models/plan.model';
 
@@ -41,24 +39,6 @@ export class WisphubService {
   private api = environment.apiUrl;
 
   // ─── CLIENTES ───
-  getClientsPage(offset = 0): Observable<WispHubClientResponse> {
-    let params = new HttpParams();
-    if (offset > 0) params = params.set('offset', offset.toString());
-    return this.http.get<WispHubClientResponse>(`${this.api}/clientes/`, { params });
-  }
-
-  /** Carga TODAS las paginas automaticamente */
-  getAllClients(): Observable<any[]> {
-    return this.getClientsPage(0).pipe(
-      expand(res => res.next ? this.getClientsPage(this.extractOffset(res.next)) : EMPTY),
-      reduce((all: any[], res) => [...all, ...res.results], [])
-    );
-  }
-
-  getClientDetail(idServicio: number): Observable<any> {
-    return this.http.get(`${this.api}/clientes/${idServicio}/`);
-  }
-
   getClientProfile(idServicio: number): Observable<any> {
     return this.http.get(`${this.api}/clientes/${idServicio}/perfil/`);
   }
@@ -78,18 +58,8 @@ export class WisphubService {
     return this.http.put(`${this.api}/clientes/${idServicio}/perfil/`, data);
   }
 
-  /** Agregar cliente nuevo a una zona */
-  addClient(zonaId: number, data: any): Observable<any> {
-    return this.http.post(`${this.api}/clientes/agregar-cliente/${zonaId}/`, data);
-  }
-
   provisionClient(data: ClientProvisioningRequest): Observable<ClientProvisioningResult> {
     return this.http.post<ClientProvisioningResult>('/client-provisioning', data);
-  }
-
-  /** Eliminar clientes */
-  deleteClients(ids: number[]): Observable<any> {
-    return this.http.post(`${this.api}/clientes/eliminar-clientes/`, { clientes: ids });
   }
 
   activateClient(idServicio: number): Observable<any> {
@@ -110,24 +80,6 @@ export class WisphubService {
   }
   verifyPayment(id: string): Observable<any> { return this.http.post(`/billing/operations/${encodeURIComponent(id)}/verify`, {}); }
 
-  // ─── FACTURAS ───
-  getInvoicesPage(offset = 0): Observable<InvoiceResponse> {
-    let params = new HttpParams();
-    if (offset > 0) params = params.set('offset', offset.toString());
-    return this.http.get<InvoiceResponse>(`${this.api}/facturas/`, { params });
-  }
-
-  getAllInvoices(): Observable<any[]> {
-    return this.getInvoicesPage(0).pipe(
-      expand(res => res.next ? this.getInvoicesPage(this.extractOffset(res.next)) : EMPTY),
-      reduce((all: any[], res) => [...all, ...res.results], [])
-    );
-  }
-
-  getInvoice(idFactura: number): Observable<any> {
-    return this.http.get(`${this.api}/facturas/${idFactura}/`);
-  }
-
   // ─── TICKETS ───
   getTickets(): Observable<TicketResponse> {
     return this.http.get<TicketResponse>(`${this.api}/tickets/`);
@@ -143,23 +95,9 @@ export class WisphubService {
     return this.http.get<ZoneResponse>(`${this.api}/zonas/`);
   }
 
-  // ─── ROUTERS ───
-  getRouters(): Observable<any> {
-    return this.http.get(`${this.api}/router/`);
-  }
-
-  // ─── FORMAS DE PAGO ───
-  getPaymentMethods(): Observable<any> {
-    return this.http.get(`${this.api}/formas-de-pago/`);
-  }
-
   // ─── TASKS ASYNC ───
   getTaskStatus(taskId: string): Observable<any> {
     return this.http.get(`${this.api}/tasks/${taskId}/`);
   }
 
-  private extractOffset(url: string): number {
-    const match = url.match(/offset=(\d+)/);
-    return match ? parseInt(match[1], 10) : 0;
-  }
 }

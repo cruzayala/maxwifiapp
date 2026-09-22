@@ -42,9 +42,3 @@ export interface InvoiceArticle {
   servicio: { id_servicio: number };
 }
 
-export interface InvoiceResponse {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: Invoice[];
-}

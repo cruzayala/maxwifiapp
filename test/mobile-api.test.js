@@ -291,16 +291,6 @@ test('catalog allowlist and admin-only sessions', async () => {
   assert.equal(sessions.status, 200);
   assert.equal(JSON.stringify(sessions.data).includes('Hash'), false);
 });
-test('PON inventory groups exact rack/shelf/port and exposes observation time', async () => {
-  const { accessToken: token } = await login('tecnico');
-  const result = await api('/pons', { token });
-  assert.equal(result.status, 200);
-  assert.equal(result.data.items[0].key, '1/1/1');
-  assert.equal(result.data.items[0].online, 1);
-  assert.equal(result.data.items[0].offline, 0);
-  assert.ok(result.data.items[0].lastSeenAt);
-  assert.equal((await api('/catalog/onus?rack=2&shelf=1&pon=1', { token })).data.total, 0);
-});
 test('invoice documents use shared templates and role checks', async () => {
   const { accessToken: token } = await login('cobranza');
   for (const paper of ['A4', '58mm', '80mm']) {
@@ -750,35 +740,6 @@ test('mobile MikroTik ping is typed, bounded, audited and permission scoped', as
   assert.equal((await api('/mikrotik/ping', { token: viewer.accessToken, method: 'POST', body: { address: '192.0.2.1' } })).status, 403);
   assert.equal((await api('/me', { token })).data.capabilities.mikrotikDiagnostics, true);
   assert.equal((await api('/me', { token: viewer.accessToken })).data.capabilities.mikrotikDiagnostics, false);
-});
-
-test('mobile OLT inventory exposes PON, optical, pending and alarm evidence without unsafe controls', async () => {
-  const onu = await qa.prisma.oltOnu.findFirstOrThrow({ where: { serial: 'TEST00000301' } });
-  const pendingSerial = 'TESTPENDING01'; const alarmId = 'qa-mobile-alarm'; const fingerprint = 'qa-mobile-signal';
-  const previousClient = onu.clientIdServicio;
-  try {
-    await qa.prisma.oltOnu.update({ where: { id: onu.id }, data: { clientIdServicio: 301 } });
-    await qa.prisma.oltOpticalReading.create({ data: { onuIndex: onu.onuIndex, online: true, rxPowerDbm: -19.5, txPowerDbm: 2.0 } });
-    await qa.prisma.oltUnconfiguredOnu.create({ data: { serial: pendingSerial, ponIndex: '1/1/2', rack: 1, shelf: 1, pon: 2 } });
-    await qa.prisma.oltAlarm.create({ data: { alarmId, level: 'warning', description: 'Alarma movil QA' } });
-    await qa.prisma.oltSignalAlert.create({ data: { fingerprint, onuIndex: onu.onuIndex, type: 'power_drop', severity: 'warning', message: 'Caida optica QA' } });
-    await qa.prisma.tr069Device.create({ data: { serial: onu.serial, onuIndex: onu.onuIndex, enabled: true, status: 'online', manufacturer: 'Huawei', model: onu.model, capabilitiesJson: JSON.stringify({ wifi: 'verified' }) } });
-    const { accessToken: token } = await login('tecnico');
-    const status = await api('/olt/status', { token }); assert.equal(status.status, 200); assert.ok(status.data.totals.online >= 1); assert.ok(status.data.totals.pending >= 1);
-    const list = await api('/olt/onus?q=TEST00000301&status=online', { token }); assert.equal(list.data.items[0].client.idServicio, 301);
-    const detail = await api(`/olt/onus/${onu.id}`, { token });
-    assert.equal(detail.data.opticalHistory.at(-1).rxPowerDbm, -19.5); assert.equal(detail.data.tr069.capabilities.wifi, 'verified'); assert.equal(detail.data.operations.enabled, false); assert.equal(JSON.stringify(detail.data).includes('capabilitiesJson'), false);
-    assert.equal((await api(`/olt/unconfigured?q=${pendingSerial}`, { token })).data.items[0].serial, pendingSerial);
-    assert.equal((await api('/olt/alarms?q=movil', { token })).data.items[0].alarmId, alarmId);
-    const viewer = await login('viewer'); assert.equal((await api('/olt/status', { token: viewer.accessToken })).status, 403);
-  } finally {
-    await qa.prisma.tr069Device.deleteMany({ where: { serial: onu.serial } });
-    await qa.prisma.oltSignalAlert.deleteMany({ where: { fingerprint } });
-    await qa.prisma.oltAlarm.deleteMany({ where: { alarmId } });
-    await qa.prisma.oltUnconfiguredOnu.deleteMany({ where: { serial: pendingSerial } });
-    await qa.prisma.oltOpticalReading.deleteMany({ where: { onuIndex: onu.onuIndex } });
-    await qa.prisma.oltOnu.update({ where: { id: onu.id }, data: { clientIdServicio: previousClient } });
-  }
 });
 
 test('mobile map validates coordinates and system status never returns infrastructure secrets', async () => {

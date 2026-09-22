@@ -1201,11 +1201,6 @@ export class InvoicesComponent implements OnInit {
     this.filterInvoices();
   }
 
-  ariaSort(col: string): 'ascending' | 'descending' | null {
-    if (this.sortCol !== col) return null;
-    return this.sortDir === 'asc' ? 'ascending' : 'descending';
-  }
-
   trendTitle(point: InvoiceTrendPoint): string {
     return `${point.label}: facturado ${this.money(point.invoiced)} · cobrado ${this.money(point.collected)} · ${point.count} facturas`;
   }

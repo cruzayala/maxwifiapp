@@ -19,7 +19,3 @@ export interface TicketResponse {
   results: Ticket[];
 }
 
-export interface TicketSubject {
-  id: number;
-  nombre: string;
-}

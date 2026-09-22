@@ -187,7 +187,6 @@ export class OnuViewsComponent {
   displayName(onu: OltOnu) { return onuDisplayName(onu); }
   signalText(value?: number | null) { return signalLabel(value); }
   dbm(value?: number | null) { return formatDbm(value); }
-  date(value?: string | Date | null) { return formatDateTime(value); }
   ago(value?: string | Date | null) { return relativeTime(value); }
 
   signalTone(onu: OltOnu): string {

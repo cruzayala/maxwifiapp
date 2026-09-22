@@ -2,6 +2,7 @@ import { Component, inject, input, signal, OnInit, OnDestroy, computed } from '@
 import { HttpClient } from '@angular/common/http';
 import { DecimalPipe } from '@angular/common';
 import { LucideGauge, LucideTriangleAlert } from '@lucide/angular';
+import { consStyle, tierStyle } from '../../models/metrics.model';
 
 interface Metrics {
   idServicio: number;
@@ -14,21 +15,6 @@ interface Metrics {
   consumptionTier: string | null;
   metricsUpdatedAt: string | null;
 }
-
-const TIER_INFO: Record<string, { label: string; color: string; bg: string }> = {
-  EXCELENTE: { label: 'Excelente', color: '#0f7a53', bg: '#e9f8f1' },
-  BUENO:     { label: 'Bueno',     color: '#0b6b52', bg: '#e6f2ec' },
-  REGULAR:   { label: 'Regular',   color: '#b36b12', bg: '#fff6e8' },
-  RIESGO:    { label: 'Riesgo',    color: '#b4540f', bg: '#ffeedd' },
-  CRITICO:   { label: 'Crítico',   color: '#b42318', bg: '#fff0ef' },
-};
-
-const CONS_INFO: Record<string, { label: string; color: string; bg: string }> = {
-  INTENSIVO: { label: 'Intensivo', color: '#b36b12', bg: '#fff6e8' },
-  NORMAL:    { label: 'Normal',    color: '#0b6b52', bg: '#e6f2ec' },
-  BAJO:      { label: 'Bajo',      color: '#526b80', bg: '#eef3f7' },
-  INACTIVO:  { label: 'Inactivo',  color: '#56665e', bg: '#edf1ed' },
-};
 
 @Component({
   selector: 'app-client-metrics',
@@ -165,17 +151,8 @@ export class ClientMetricsComponent implements OnInit, OnDestroy {
   loadFailed = signal(false);
   private timer: ReturnType<typeof setInterval> | null = null;
 
-  creditTierInfo = computed(() => {
-    const m = this.metrics();
-    if (!m?.creditTier) return null;
-    return TIER_INFO[m.creditTier] || null;
-  });
-
-  consTierInfo = computed(() => {
-    const m = this.metrics();
-    if (!m?.consumptionTier) return null;
-    return CONS_INFO[m.consumptionTier] || null;
-  });
+  creditTierInfo = computed(() => tierStyle(this.metrics()?.creditTier ?? null));
+  consTierInfo = computed(() => consStyle(this.metrics()?.consumptionTier ?? null));
 
   ngOnInit() {
     this.load();

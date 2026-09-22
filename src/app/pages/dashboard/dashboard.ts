@@ -84,7 +84,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   totalClients = computed(() => this.clients().length);
   activeClients = computed(() => this.clients().filter(client => this.normalized(client.estado) === 'activo').length);
-  suspendedClients = computed(() => this.clients().filter(client => ['suspendido', 'cortado', 'retirado'].includes(this.normalized(client.estado))).length);
   pendingClients = computed(() => this.clients().filter(client => {
     const state = this.normalized(client.estado_facturas);
     return state.includes('pendiente') || state.includes('vencid') || state.includes('moros');

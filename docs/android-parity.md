@@ -58,7 +58,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - No hay ninguna operacion de configuracion de ONU habilitada desde Android. Los controles visibles explican la capacidad faltante y no simulan ejecucion.
 - Recibos y facturas usan `shared/invoice-renderer.ts` tanto en Angular como en servidor. El CommonJS de `lib` se genera y verifica antes del build web.
 - Fechas de calendario de facturas se conservan sin desplazamiento UTC; se probaron tres zonas horarias.
-- Consultar `android-qa.md` y `android-0.2-qa.md` para evidencia de compilacion, pruebas y limitaciones.
+- Consultar `qa/android-qa.md` y `qa/android-0.2-qa.md` para evidencia de compilacion, pruebas y limitaciones.
 
 ## Hito 0.2.0
 
@@ -81,7 +81,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Inventario y expediente se actualizan tras una operacion; cancelar una consulta antigua impide que sobrescriba la lectura posterior al cambio.
 - Android recupera conexiones HTTP reutilizadas en lecturas GET; escrituras mantienen reintento explicito y la misma clave de operacion.
 - El modulo operativo requiere `equipmentWrite` anunciado por `/me`. Ante un servidor antiguo se conserva la consulta anterior.
-- Evidencia y restricciones: `android-0.3-qa.md`.
+- Evidencia y restricciones: `qa/android-0.3-qa.md`.
 
 ## Hito 0.4.0 (en verificacion)
 
@@ -93,7 +93,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Totales de facturas calculados en SQLite para el filtro completo, no la pagina. Fechas de calendario inclusivas y validadas.
 - Reporte por mes de emision: cobrado corresponde a ese conjunto de facturas, no a flujo de caja. Excluye estado Anulada. Compara con el mismo numero de meses anteriores.
 - Pagos reales siguen pendientes: la ruta web existente usa un bloqueo en memoria; requiere operacion durable y conciliacion antes de reutilizarla desde Android. No se habilito un boton de cobro inseguro.
-- Este hito no completa Clientes, Cobros ni toda la matriz. Ver `android-0.4-qa.md` para la evidencia final.
+- Este hito no completa Clientes, Cobros ni toda la matriz. Ver `qa/android-0.4-qa.md` para la evidencia final.
 
 ## Hito 0.5.0 (local, en verificacion)
 
@@ -101,7 +101,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Formularios y consulta de solicitudes nativos; Room conserva intentos para recuperar sin duplicar.
 - Confirmacion externa y lectura posterior antes de registrar exito. Pagos inciertos permanecen bloqueados.
 - Contratos protegidos por `paymentsWrite`, disponibles solo cuando el servidor incorpora este modulo.
-- Evidencia, bloqueo de MuMu y restricciones: `android-0.5-qa.md`.
+- Evidencia, bloqueo de MuMu y restricciones: `qa/android-0.5-qa.md`.
 
 ## Hito 0.6.0 (local, en verificacion)
 
@@ -129,7 +129,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Resumen MikroTik nativo con identidad, RouterOS, placa, uptime, CPU, memoria e interfaces desde caches compartidas.
 - Refresco adaptativo y controles de capacidad por rol; ninguna escritura RouterOS fue habilitada implicitamente.
 - Regresion: 181 pruebas Node y 18 pruebas Android aprobadas. APK firmada verificada contra Railway y en MuMu Android Device-1 con datos reales.
-- Evidencia completa: `docs/android-0.8-qa.md`.
+- Evidencia completa: `qa/android-0.8-qa.md`.
 
 ## Hito 0.9.0 (desplegado y verificado)
 
@@ -138,14 +138,14 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - La pantalla MikroTik integra el formulario y el resultado sin salir del modulo.
 - Se corrigio el refresco adaptativo para responder a fallos posteriores a la primera carga.
 - Regresion de 182 pruebas Node y 18 pruebas Android aprobada; APK firmada validada en MuMu contra produccion.
-- Evidencia completa: `docs/android-0.9-qa.md`.
+- Evidencia completa: `qa/android-0.9-qa.md`.
 
 ## Hito 0.10.0 (desplegado y verificado)
 
 - Captura o edicion GPS desde el expediente, con validacion, permiso Android e idempotencia persistente.
 - Guarda coordenadas, precision, fecha y tecnico en SQLite y actualiza el mapa, sin escribir datos no certificados en WispHub.
 - Regresion de 182 pruebas Node y 18 pruebas Android aprobada; APK firmada validada en MuMu contra produccion.
-- Evidencia completa: `docs/android-0.10-qa.md`.
+- Evidencia completa: `qa/android-0.10-qa.md`.
 
 ## Hito 0.11.0 (desplegado y verificado)
 
@@ -153,7 +153,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Activacion y desactivacion limitadas a administracion, con confirmacion, idempotencia y auditoria SQLite.
 - Regresion de 182 pruebas Node y 18 pruebas Android aprobada; APK firmada y descarga de produccion verificadas en MuMu.
 - El contexto binario de futuros despliegues se redujo conservando las versiones antiguas fuera de Docker.
-- Evidencia completa: `docs/android-0.11-qa.md`.
+- Evidencia completa: `qa/android-0.11-qa.md`.
 
 ## Hito 0.12.0 (desplegado y verificado)
 
@@ -162,7 +162,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - La clave WiFi es de escritura unica: no se devuelve, no se registra en auditoria ni se persiste en el recibo movil.
 - Regresion de 183 pruebas Node y 18 pruebas Android aprobada; formularios y escritura completa verificados en MuMu con fixtures aislados.
 - Railway quedo en `SUCCESS`; MuMu abrio la lectura viva de WispHub en produccion sin ejecutar ninguna escritura real.
-- Evidencia completa: `docs/android-0.12-qa.md`.
+- Evidencia completa: `qa/android-0.12-qa.md`.
 
 ## Hito 0.13.0 (desplegado y verificado)
 
@@ -173,7 +173,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Regresion Node con 184 pruebas, 25 pruebas Android unitarias y 10 instrumentadas aprobadas; flujo completo de tickets, IPAM, pago y persistencia verificado en MuMu contra el servidor QA aislado.
 - APK firmada instalada sobre 0.12 sin perder sesion ni datos. Railway quedo en `SUCCESS`, con SQLite `/data/data.db`, salud correcta y sincronizaciones activas.
 - Se amplio el `keep-alive` HTTP del servidor para mantener estables las escrituras moviles no reintentables mientras el tecnico revisa formularios.
-- Evidencia completa: `docs/android-0.13-qa.md`.
+- Evidencia completa: `qa/android-0.13-qa.md`.
 
 ## Hito 0.13.1 (desplegado y verificado)
 
@@ -182,7 +182,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - Room conserva exclusivamente sesiones cifradas, preferencias, rangos locales, borradores y snapshots reales identificados como cache; las escrituras siempre requieren Railway en vivo.
 - Tickets se retiro de la navegacion Android por decision operativa. El contrato del backend se conserva por compatibilidad con versiones anteriores.
 - APK firmada `0.13.1-preview`, `versionCode=16`, instalada sobre 0.13 en MuMu Device-1 sin perder la sesion. Railway quedo en `SUCCESS` y la lectura autenticada devolvio 398 clientes y 9370 facturas desde `source=sqlite`.
-- Evidencia completa: `docs/android-0.13.1-qa.md`.
+- Evidencia completa: `qa/android-0.13.1-qa.md`.
 
 ## Hito 0.14.0 (desplegado y verificado)
 
@@ -192,7 +192,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - El limite de 20,000 filas evita respuestas no acotadas; al superarlo se exige aplicar filtros adicionales.
 - Regresion de 185 pruebas Node y 25 pruebas Android aprobada. Build web, variante debug, release firmada, `lintVital` y validacion portable finalizaron correctamente.
 - Railway quedo en `SUCCESS` con SQLite conectado. La verificacion autenticada devolvio 398 clientes, 343 activos, 9,370 facturas y 180 ONU; las exportaciones completas coincidieron exactamente con sus totales.
-- APK firmada `0.14.0-preview`, `versionCode=17`, instalada y abierta en MuMu Device-1 sin errores fatales. Evidencia completa: `docs/android-0.14-qa.md`.
+- APK firmada `0.14.0-preview`, `versionCode=17`, instalada y abierta en MuMu Device-1 sin errores fatales. Evidencia completa: `qa/android-0.14-qa.md`.
 
 ## Hito 0.15.0 (desplegado y verificado)
 
@@ -201,7 +201,7 @@ El agente Windows y la web se conservan; los dispositivos de produccion no son f
 - `/mobile/v1/clients/:id/link-test` reutiliza `runClientLinkTest` del servidor web: solo lectura, una prueba a la vez y auditada.
 - `/mobile/v1/surveys` y `/surveys/reminders` (admin, idempotente, auditado); la busqueda del bot y el precio tipico por plan amplian contratos existentes.
 - Expediente con llamar, WhatsApp y probar enlace. Se corrigio la lectura de telefonos vacios que Android convertia en el texto "null".
-- Regresion: 192 pruebas Node y 28 pruebas Android aprobadas. Evidencia: `docs/android-0.15-qa.md`.
+- Regresion: 192 pruebas Node y 28 pruebas Android aprobadas. Evidencia: `qa/android-0.15-qa.md`.
 
 ## Hito 0.16.0
 

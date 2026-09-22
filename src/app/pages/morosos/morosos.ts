@@ -97,7 +97,6 @@ export class MorososComponent implements OnInit, OnDestroy {
   riesgoBajo = signal(0);
 
   totalFacturasPendientes = computed(() => this.allMorosos().reduce((sum, item) => sum + item.facturasPendientes, 0));
-  totalContactables = computed(() => this.allMorosos().filter((item) => Boolean(item.waHref || item.telHref)).length);
   visibleAmount = computed(() => this.filtered().reduce((sum, item) => sum + item.montoTotal, 0));
   /** Clientes con aviso o corte ya aplicado: la cola de trabajo real es el resto. */
   gestionados = computed(() => this.allMorosos().filter((item) => this.gestionOf(item) !== 'none').length);

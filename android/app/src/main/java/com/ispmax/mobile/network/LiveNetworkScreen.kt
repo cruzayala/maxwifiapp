@@ -20,7 +20,6 @@ import com.ispmax.mobile.ui.IspBlue
 import com.ispmax.mobile.ui.IspGreen
 import com.ispmax.mobile.ui.IspRed
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.net.URLEncoder
 
@@ -109,78 +108,3 @@ internal fun compactBps(value: Double): String = when {
     value >= 1e3 -> "%.0f Kbps".format(value / 1e3)
     else -> "0 bps"
 }
-
-@Composable
-fun MikrotikOverviewScreen(vm: MainViewModel, pages: Map<String, PageState>, capabilities: JSONObject?) {
-    val path = "/mikrotik/summary"
-    val state = pages[path] ?: PageState(loading = true)
-    val latestMikrotikError by rememberUpdatedState(state.error)
-    LaunchedEffect(Unit) {
-        while (true) { vm.load(path, true); delay(if (latestMikrotikError == null) 10_000 else 30_000) }
-    }
-    val body = state.body
-    val system = body?.optJSONObject("system")
-    val interfaces = body?.optJSONArray("interfaces").objects()
-    val canPing = capabilities?.optBoolean("mikrotikDiagnostics") == true
-    val scope = rememberCoroutineScope()
-    var pingAddress by rememberSaveable { mutableStateOf("8.8.8.8") }
-    var pingBusy by remember { mutableStateOf(false) }
-    var pingResult by remember { mutableStateOf<JSONObject?>(null) }
-    var pingError by remember { mutableStateOf<String?>(null) }
-    LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) { Text(system?.text("identity", "MikroTik") ?: "MikroTik", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold); Text(system?.text("boardName", body?.text("error", "Sin lectura") ?: "Sin lectura") ?: "Sin lectura", style = MaterialTheme.typography.bodySmall) }
-                StatusBadge(if (body?.optBoolean("connected") == true) "Conectado" else "Sin conexion")
-                IconButton(onClick = { vm.load(path, true) }, enabled = !state.loading) { Icon(Icons.Outlined.Refresh, "Actualizar") }
-            }
-        }
-        item { ReadStatus(state) { vm.load(path, true) } }
-        body?.text("error", "")?.takeIf { it.isNotBlank() }?.let { error -> item { Notice(error, true) } }
-        system?.let { data ->
-            item {
-                OutlinedCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Recursos", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Row { NetworkDatum("CPU", "${data.optInt("cpuLoadPercent")}%", Modifier.weight(1f)); NetworkDatum("Memoria libre", memory(data.optDouble("freeMemoryBytes")), Modifier.weight(1f)) }
-                    Row { NetworkDatum("Uptime", data.text("uptime"), Modifier.weight(1f)); NetworkDatum("RouterOS", data.text("version"), Modifier.weight(1f)) }
-                } }
-            }
-        }
-        if (canPing) item {
-            OutlinedCard(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Diagnostico ping", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(pingAddress, { pingAddress = it.take(45) }, label = { Text("Direccion IP") }, singleLine = true, modifier = Modifier.fillMaxWidth(), leadingIcon = { Icon(Icons.Outlined.NetworkPing, null) })
-                    Button(onClick = {
-                        pingBusy = true; pingError = null; pingResult = null
-                        scope.launch {
-                            try { pingResult = vm.mikrotikPing(pingAddress) }
-                            catch (error: Exception) { pingError = error.message ?: "No se pudo completar el ping" }
-                            finally { pingBusy = false }
-                        }
-                    }, enabled = !pingBusy && pingAddress.isNotBlank(), modifier = Modifier.fillMaxWidth()) {
-                        if (pingBusy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp) else Icon(Icons.Outlined.NetworkPing, null)
-                        Spacer(Modifier.width(8.dp)); Text(if (pingBusy) "Consultando MikroTik" else "Ejecutar ping")
-                    }
-                    pingResult?.let { result ->
-                        Text("${result.optInt("received")}/${result.optInt("sent")} respuestas · perdida ${result.optDouble("lossPercent")}% · promedio ${result.optDouble("avgMs")} ms", color = IspGreen, style = MaterialTheme.typography.bodySmall)
-                    }
-                    pingError?.let { Text(it, color = IspRed, style = MaterialTheme.typography.bodySmall) }
-                }
-            }
-        }
-        item { Text("Interfaces", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold) }
-        if (interfaces.isEmpty() && !state.loading) item { EmptyState("No hay interfaces disponibles") }
-        items(interfaces, key = { it.text("name") }) { iface ->
-            OutlinedCard(Modifier.fillMaxWidth()) { ListItem(
-                headlineContent = { Text(iface.text("name"), fontWeight = FontWeight.SemiBold) },
-                supportingContent = { Text("${iface.text("type")} · MTU ${iface.text("mtu")}\nRX ${memory(iface.optDouble("rxBytes"))} · TX ${memory(iface.optDouble("txBytes"))}") },
-                leadingContent = { Icon(Icons.Outlined.SettingsEthernet, null, tint = if (iface.optBoolean("running")) IspGreen else IspAmber) },
-                trailingContent = { StatusBadge(if (iface.optBoolean("disabled")) "Deshabilitada" else if (iface.optBoolean("running")) "Activa" else "Sin enlace") },
-            ) }
-        }
-    }
-}
-
-@Composable private fun NetworkDatum(label: String, value: String, modifier: Modifier) { Column(modifier) { Text(label, style = MaterialTheme.typography.labelSmall); Text(value, fontWeight = FontWeight.SemiBold) } }
-private fun memory(value: Double): String = when { value >= 1e9 -> "%.1f GB".format(value / 1e9); value >= 1e6 -> "%.1f MB".format(value / 1e6); else -> "%.0f KB".format(value / 1e3) }

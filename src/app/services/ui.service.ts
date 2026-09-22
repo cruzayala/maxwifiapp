@@ -4,10 +4,6 @@ import { Injectable, signal } from '@angular/core';
 export class UiService {
   sidebarOpen = signal(false);
 
-  toggleSidebar() {
-    this.sidebarOpen.update(v => !v);
-  }
-
   openSidebar() {
     this.sidebarOpen.set(true);
   }

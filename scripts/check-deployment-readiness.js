@@ -7,8 +7,6 @@ const root = path.resolve(__dirname, '..');
 const runtimeFiles = [
   'server.js',
   'lib/deployment-config.js',
-  'onu-provisioner/app.py',
-  'onu-provisioner/static/index.html',
 ];
 const forbidden = [
   /isp-max-production-d0b9/i,
@@ -31,10 +29,6 @@ for (const relative of runtimeFiles) {
 const envExample = fs.readFileSync(path.join(root, '.env.example'), 'utf8');
 for (const key of ['DATABASE_URL', 'PUBLIC_APP_URL', 'WISPHUB_API_KEY', 'MIKROTIK_HOST', 'OLT_HOST']) {
   if (!new RegExp(`^${key}=`, 'm').test(envExample)) errors.push(`.env.example no documenta ${key}`);
-}
-const agentEnv = fs.readFileSync(path.join(root, 'onu-provisioner', '.env.example'), 'utf8');
-for (const key of ['ISP_MAX_CLOUD_URL', 'ONU_ALLOWED_ORIGINS']) {
-  if (!new RegExp(`^${key}=`, 'm').test(agentEnv)) errors.push(`onu-provisioner/.env.example no documenta ${key}`);
 }
 
 if (errors.length) {

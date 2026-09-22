@@ -8,7 +8,6 @@ export class MetricsService {
 
   metricsByClient = signal<Map<number, ClientMetric>>(new Map());
   loading = signal(false);
-  lastLoadAt = signal<Date | null>(null);
 
   private timer: ReturnType<typeof setInterval> | null = null;
 
@@ -20,7 +19,6 @@ export class MetricsService {
         const map = new Map<number, ClientMetric>();
         for (const r of rows) map.set(r.idServicio, r);
         this.metricsByClient.set(map);
-        this.lastLoadAt.set(new Date());
         this.loading.set(false);
       },
       error: () => {

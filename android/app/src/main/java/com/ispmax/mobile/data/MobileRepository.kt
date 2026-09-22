@@ -15,7 +15,7 @@ import java.io.IOException
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 
-class ApiFailure(val status: Int, val code: String, message: String, val details: JSONObject? = null) : IOException(message) {
+class ApiFailure(val status: Int, val code: String, message: String) : IOException(message) {
     val sessionEnded: Boolean get() = status == 401 && code in setOf("SESSION_REVOKED", "ACCESS_EXPIRED", "LOGIN_FAILED")
 }
 data class ReadResult(val body: JSONObject, val cached: Boolean, val savedAt: Long)
@@ -79,7 +79,7 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
                 ?: if (web && response.isSuccessful && trimmed.isEmpty()) JSONObject() else null
             if (!response.isSuccessful) {
                 throw ApiFailure(response.code, parsed?.optString("code")?.ifBlank { null } ?: "HTTP_ERROR",
-                    (parsed?.optString("error")?.ifBlank { null } ?: parsed?.optString("message")?.ifBlank { null })?.take(250) ?: "Servidor no disponible (${response.code})", parsed)
+                    (parsed?.optString("error")?.ifBlank { null } ?: parsed?.optString("message")?.ifBlank { null })?.take(250) ?: "Servidor no disponible (${response.code})")
             }
             return parsed ?: throw ApiFailure(502, "INVALID_RESPONSE", "El servidor no devuelve la API movil. Comprueba su version.")
         }
@@ -138,13 +138,6 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
             throw ApiFailure(502, "INVALID_RESPONSE", "Railway no confirmo la exportacion completa")
         }
         return rows
-    }
-    suspend fun mikrotikPing(address: String, count: Int = 4): JSONObject {
-        val result = authorized("/mikrotik/ping", "POST", JSONObject().put("address", address.trim()).put("count", count))
-        if (!result.optBoolean("verified") || result.optString("address") != address.trim() || result.optInt("sent") != count) {
-            throw ApiFailure(502, "INVALID_RESPONSE", "No se confirmo el diagnostico MikroTik")
-        }
-        return result
     }
     /** Prueba del enlace MikroTik -> equipo del cliente. Solo lectura; se confirma que sea de este cliente. */
     suspend fun linkTest(id: Int, seconds: Int = 8): JSONObject {
@@ -290,7 +283,6 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
     suspend fun payrollDraft(id: Int): JSONObject? = dao.draft(scope(), "payroll-$id")?.let { JSONObject(it.payload) }
     suspend fun savePayrollDraft(id: Int, value: JSONObject) = dao.save(Draft(scope(), "payroll-$id", "payroll", value.toString(), System.currentTimeMillis()))
     suspend fun discardPayrollDraft(id: Int) = dao.deleteDraft(scope(), "payroll-$id")
-    suspend fun payrollForEdit(id: Int): JSONObject = authorized("/payroll/$id")
     suspend fun createPayroll(body: JSONObject, key: String): JSONObject {
         val result = authorized("/payroll", "POST", body, key)
         if (result.optInt("id") <= 0 || result.optString("version").length != 64) throw ApiFailure(502, "INVALID_RESPONSE", "No se confirmo la nomina")

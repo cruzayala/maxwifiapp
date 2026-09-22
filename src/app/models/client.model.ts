@@ -57,9 +57,3 @@ export interface WispHubClient {
   tecnico: { id: number; nombre: string } | null;
 }
 
-export interface WispHubClientResponse {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: WispHubClient[];
-}

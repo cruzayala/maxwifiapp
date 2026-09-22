@@ -809,15 +809,6 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
     return error?.error?.error || error?.error?.detail || error?.message || fallback;
   }
 
-  selectCloudJob(jobId: string) {
-    this.cloudJobId = jobId;
-    const job = this.provisioningJobs().find(item => item.id === jobId);
-    if (!job) return;
-    if (job.ip) this.wanIp = job.ip; if (job.vlan) this.vlan = job.vlan;
-    if (job.model) this.deviceModel = this.normalizeModel(job.model);
-    if (job.clientName && !this.wifiSsid) this.wifiSsid = this.ssidFromName(job.clientName);
-  }
-
   actionLabel(action: AgentTaskAction) { return ({ discover: 'Detectar ONU', check: 'Comprobar conexión', provision: 'Configurar ONU' } as const)[action]; }
   statusLabel(status: AgentTaskStatus) { return ({ pending: 'En cola', processing: 'En progreso', success: 'Completado', failed: 'Fallido', cancelled: 'Cancelado' } as const)[status]; }
   agentStateLabel(agent: OnuAgent) { return !agent.active ? 'Revocado' : agent.online ? 'Conectado' : 'Desconectado'; }

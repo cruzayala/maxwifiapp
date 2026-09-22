@@ -1,5 +1,4 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
-import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
   LucideCalendarDays, LucideCircleCheck, LucideClock, LucideMessageCircle, LucidePencil,
@@ -24,7 +23,7 @@ type SortMode = 'oldest' | 'newest' | 'priority' | 'client';
   selector: 'app-tickets',
   standalone: true,
   imports: [
-    NavbarComponent, RouterLink, FormsModule, TicketFormComponent,
+    NavbarComponent, RouterLink, TicketFormComponent,
     LucideCalendarDays, LucideCircleCheck, LucideClock, LucideMessageCircle, LucidePencil,
     LucidePhone, LucidePlus, LucideRefreshCw, LucideSearch, LucideTicket, LucideTimer,
     LucideUserRound, LucideWrench,

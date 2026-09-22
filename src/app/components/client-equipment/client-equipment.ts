@@ -1,6 +1,5 @@
 import { Component, input, inject, signal, OnChanges, SimpleChanges, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { FormsModule } from '@angular/forms';
 import { DecimalPipe, DatePipe } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { LucideArrowRight, LucidePackage, LucideTriangleAlert } from '@lucide/angular';
@@ -18,7 +17,7 @@ interface ExpenseLite {
 @Component({
   selector: 'app-client-equipment',
   standalone: true,
-  imports: [FormsModule, DecimalPipe, DatePipe, RouterLink, LucideArrowRight, LucidePackage, LucideTriangleAlert],
+  imports: [DecimalPipe, DatePipe, RouterLink, LucideArrowRight, LucidePackage, LucideTriangleAlert],
   template: `
     <div class="card">
       <div class="card-head">

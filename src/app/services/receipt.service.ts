@@ -69,15 +69,6 @@ export class ReceiptService {
     if (this.openPrintWindow(html, features)) this.previewVisible.set(false);
   }
 
-  printDirect(inv: Invoice, mode: PrintMode = 'receipt') {
-    this.printMode.set(mode);
-    const html = this.generateHTML(inv, true);
-    const features = mode === 'invoice'
-      ? 'width=900,height=900'
-      : `width=${this.paperSize() === '58mm' ? '280' : '350'},height=600`;
-    this.openPrintWindow(html, features);
-  }
-
   printBatch(invoices: Invoice[], mode: PrintMode = 'invoice') {
     if (!invoices.length) return;
     const documents = invoices.map((invoice) => this.generateDocumentParts(invoice, mode));

@@ -134,11 +134,6 @@ export class Tr069ConsoleComponent implements OnChanges, OnDestroy {
     return !this.capability(action)?.executable;
   }
 
-  actionChannel(action: Tr069TaskAction) {
-    if (action === 'reboot' && this.omciOnline()) return 'OLT nativo';
-    return this.remoteOnline() ? 'Canal remoto' : 'No disponible';
-  }
-
   saveWifi() {
     const warning = this.wifi.password
       ? '¿Aplicar los cambios de WiFi? Los equipos del cliente se desconectarán y deberán entrar con la nueva clave.'

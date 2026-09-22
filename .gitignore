@@ -65,15 +65,8 @@ baileys-store.json
 backups/
 *.bak
 
-# Agente local de aprovisionamiento ONU
-/onu-provisioner/.venv/
-/onu-provisioner/.pytest_cache/
-/onu-provisioner/data/
-/onu-provisioner/build/
-/onu-provisioner/build-browsers/
-/onu-provisioner/release/
-/onu-provisioner/release-test/
-/onu-provisioner/release-v1.0.1/
+# Agente Python anterior (reemplazado por onu-studio-net); solo quedan datos locales
+/onu-provisioner/
 __pycache__/
 *.pyc
 
@@ -89,8 +82,8 @@ __pycache__/
 /agent-downloads/ONU-Studio-ISP-Max-v1.12.0.exe
 
 # Logs locales y artefactos de mocks/tests
-*.err.log
-*.out.log
+*.log
+/logs/
 mock-api-clients.*.log
 .playwright-mcp/
 .playwright-cli/
@@ -102,7 +95,6 @@ newcookies.txt
 
 # Binarios de distribucion: no se versionan, pero SI deben subirse con `railway up`
 # (el servidor los ofrece para descargar), por eso agent-downloads no se ignora aqui.
-/onu-provisioner/release-cloud/
 
 # Configuracion local de Claude Code
 /.claude/

@@ -415,4 +415,3 @@ internal fun oltConfirmed(required: String?, typed: String) = !required.isNullOr
     else OutlinedCard(modifier.fillMaxWidth()) { inner() }
 }
 
-internal fun oltBlue() = IspBlue

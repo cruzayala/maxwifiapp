@@ -277,7 +277,6 @@ export class NetworkAuditComponent implements OnInit {
   }
 
   mbps(bps: number): number { return Number((Number(bps || 0) / 1e6).toFixed(2)); }
-  percent(value: number, max: number): number { return max > 0 ? Math.min(100, (value / max) * 100) : 0; }
   issueLabel(value: string | null): string {
     if (!value) return 'Sin incidencias';
     const labels: Record<string, string> = {

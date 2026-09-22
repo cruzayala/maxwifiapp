@@ -93,7 +93,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun saveNewClientDraft(value: JSONObject) = repo.saveNewClientDraft(value)
     suspend fun discardNewClientDraft() = repo.discardNewClientDraft()
     suspend fun ensureIpRanges(): List<LocalIpRange> = repo.ipRanges().also { _ipRanges.value = it }
-    fun loadIpRanges() { viewModelScope.launch { runCatching { ensureIpRanges() } } }
     suspend fun saveIpRange(range: LocalIpRange) = repo.saveIpRange(range).also { _ipRanges.value = it }
     suspend fun deleteIpRange(id: Long) = repo.deleteIpRange(id).also { _ipRanges.value = it }
     suspend fun provisionClient(data: JSONObject, key: String) = mutation {
@@ -102,7 +101,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     suspend fun queryIpam(cidrs: org.json.JSONArray) = mutation { repo.queryIpam(cidrs) }
-    suspend fun mikrotikPing(address: String) = mutation { repo.mikrotikPing(address) }
     suspend fun linkTest(id: Int) = mutation { repo.linkTest(id) }
     suspend fun setSurveyReminders(paused: Boolean, key: String) = mutation {
         repo.setSurveyReminders(paused, key).also {
@@ -160,7 +158,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun payrollDraft(id: Int) = repo.payrollDraft(id)
     suspend fun savePayrollDraft(id: Int, value: JSONObject) = repo.savePayrollDraft(id, value)
     suspend fun discardPayrollDraft(id: Int) = repo.discardPayrollDraft(id)
-    suspend fun payrollForEdit(id: Int) = mutation { repo.payrollForEdit(id) }
     suspend fun createPayroll(data: JSONObject, key: String) = mutation {
         repo.createPayroll(data, key).also { invalidatePayroll(); invalidateExpenses() }
     }
