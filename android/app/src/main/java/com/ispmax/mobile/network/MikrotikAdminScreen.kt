@@ -458,7 +458,7 @@ private fun MtRouterHealthCard(system: JSONObject?, health: MtHealth) {
                     Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(contentAlignment = Alignment.Center) {
                             CircularProgressIndicator(progress = { ((metric.value ?: 0.0).coerceIn(0.0, 100.0) / 100).toFloat() }, modifier = Modifier.size(68.dp), strokeWidth = 7.dp,
-                                color = if (metric.level == MtLevel.NONE) IspBlue else mtLevelColor(metric.level), trackColor = Color(0xFFE8EDE8))
+                                color = if (metric.level == MtLevel.NONE) IspBlue else mtLevelColor(metric.level), trackColor = MaterialTheme.colorScheme.surfaceContainerHighest)
                             Text(metric.display, fontWeight = FontWeight.Bold)
                         }
                         Text(metric.label, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold, color = if (metric.level == MtLevel.WARN || metric.level == MtLevel.CRIT) mtLevelColor(metric.level) else Color.Unspecified)
@@ -467,7 +467,7 @@ private fun MtRouterHealthCard(system: JSONObject?, health: MtHealth) {
                 }
             }
             if (health.reasons.isNotEmpty()) {
-                Column(Modifier.fillMaxWidth().background(Color(0xFFFFF6E8), RoundedCornerShape(9.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.fillMaxWidth().background(com.ispmax.mobile.ui.IspTint.warning, RoundedCornerShape(9.dp)).padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     health.reasons.forEach { reason -> Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.ErrorOutline, null, tint = IspAmber, modifier = Modifier.size(15.dp)); Spacer(Modifier.width(6.dp)); Text(reason, style = MaterialTheme.typography.bodySmall, color = Color(0xFF8A520E)) } }
                 }
             }
@@ -595,7 +595,7 @@ private fun MtRankingCard(ui: MtUiState, actions: MtActions, clients: List<JSONO
             val online = row.mtBool("isOnline")
             Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(28.dp).background(if (index < 3) IspGreen else Color(0xFFE8EDE8), CircleShape), contentAlignment = Alignment.Center) { Text("${index + 1}", color = if (index < 3) Color.White else Color.Unspecified, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) }
+                    Box(Modifier.size(28.dp).background(if (index < 3) IspGreen else MaterialTheme.colorScheme.surfaceContainerHighest, CircleShape), contentAlignment = Alignment.Center) { Text("${index + 1}", color = if (index < 3) Color.White else Color.Unspecified, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold) }
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
                         Text(client.mtStr("name") ?: row.mtStr("queueName") ?: "-", fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)

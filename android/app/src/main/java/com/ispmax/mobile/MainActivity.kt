@@ -3,6 +3,8 @@ package com.ispmax.mobile
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -35,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +69,7 @@ import java.util.*
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent { IspTheme { IspApp() } }
     }
@@ -112,11 +116,16 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                 Spacer(Modifier.height(20.dp))
                 visible.forEach { item -> NavigationRailItem(selected = section == item.key, onClick = { section = item.key; route = ""; clientId = 0 }, icon = { NavigationGlyph(item.icon, item.label, section == item.key) }, label = { Text(item.label) }) }
             }
-            Scaffold(modifier = Modifier.weight(1f), containerColor = MaterialTheme.colorScheme.background,
-                topBar = { TopAppBar(title = { Text(title, fontWeight = FontWeight.SemiBold) },
+            val screenKey = if (clientId != 0) "client-$clientId" else route.ifBlank { section }
+            // Cada pantalla empieza con el titulo grande; al desplazar el contenido se encoge (Android 15).
+            val barState = remember(screenKey) { TopAppBarState(-Float.MAX_VALUE, 0f, 0f) }
+            val barScroll = TopAppBarDefaults.pinnedScrollBehavior(barState)
+            Scaffold(modifier = Modifier.weight(1f).nestedScroll(barScroll.nestedScrollConnection), containerColor = MaterialTheme.colorScheme.background,
+                topBar = { TopAppBar(title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold) }, scrollBehavior = barScroll,
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background, scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer),
                     navigationIcon = { if (clientId != 0 || route.isNotEmpty()) IconButton(onClick = back) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Volver") } },
                     actions = { if (section == "home") Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = CircleShape, modifier = Modifier.padding(end = 16.dp)) { Text(user.text("username").take(2).uppercase(), Modifier.padding(10.dp), color = IspGreen, fontWeight = FontWeight.Bold) } }) },
-                bottomBar = { if (!wide) NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                bottomBar = { if (!wide) NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                     visible.forEach { item -> NavigationBarItem(selected = section == item.key, onClick = { section = item.key; route = ""; clientId = 0 }, icon = { NavigationGlyph(item.icon, item.label, section == item.key) }, label = { Text(item.label, maxLines = 1, fontSize = 11.sp) }) }
                 } }
             ) { padding ->
@@ -187,10 +196,11 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
     val keyboard = LocalSoftwareKeyboardController.current
     val focus = LocalFocusManager.current
     val submit = { focus.clearFocus(); keyboard?.hide(); onLogin(server, username, password) }
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), contentAlignment = Alignment.Center) {
+    val hero = androidx.compose.ui.graphics.Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primaryContainer.copy(alpha = .75f), MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.surface))
+    Box(Modifier.fillMaxSize().background(hero).systemBarsPadding(), contentAlignment = Alignment.Center) {
         Column(Modifier.widthIn(max = 440.dp).fillMaxWidth().verticalScroll(rememberScrollState()).imePadding().padding(28.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                ReliefIcon(Icons.Outlined.Wifi, size = 64.dp)
+                ReliefIcon(Icons.Outlined.Wifi, MaterialTheme.colorScheme.primary, size = 72.dp)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("ISP Max", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                     Text("Acceso del personal", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -208,7 +218,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                 trailingIcon = { IconButton(onClick = { showPassword = !showPassword }) { Icon(if (showPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, "Mostrar u ocultar contrasena") } })
             if (state.error != null) Notice(state.error, error = true)
             Button(onClick = submit, enabled = !state.busy && username.isNotBlank() && password.isNotBlank(), modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp) else { Icon(Icons.Outlined.Login, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Iniciar sesion") }
+                if (state.busy) CircularProgressIndicator(Modifier.size(20.dp), color = LocalContentColor.current, strokeWidth = 2.dp) else { Icon(Icons.Outlined.Login, null, Modifier.size(20.dp)); Spacer(Modifier.width(10.dp)); Text("Iniciar sesion") }
             }
             if (BuildConfig.DEBUG) TextButton(onClick = { advanced = !advanced }, modifier = Modifier.align(Alignment.CenterHorizontally)) { Icon(Icons.Outlined.Dns, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Servidor QA") }
             AnimatedVisibility(BuildConfig.DEBUG && advanced) {
@@ -224,9 +234,9 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
 }
 
 @Composable internal fun Notice(text: String, error: Boolean = false) {
-    Row(Modifier.fillMaxWidth().background(if (error) MaterialTheme.colorScheme.errorContainer else Color(0xFFFFF1D6), MaterialTheme.shapes.small).padding(12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Icon(if (error) Icons.Outlined.ErrorOutline else Icons.Outlined.Info, null, modifier = Modifier.size(20.dp))
-        Text(text, style = MaterialTheme.typography.bodySmall)
+    Row(Modifier.fillMaxWidth().background(if (error) MaterialTheme.colorScheme.errorContainer else com.ispmax.mobile.ui.IspTint.warning, MaterialTheme.shapes.medium).padding(horizontal = 14.dp, vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Icon(if (error) Icons.Outlined.ErrorOutline else Icons.Outlined.Info, null, modifier = Modifier.size(20.dp), tint = if (error) MaterialTheme.colorScheme.onErrorContainer else IspAmber)
+        Text(text, style = MaterialTheme.typography.bodySmall, color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface)
     }
 }
 
@@ -258,8 +268,9 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
             val total = data.optInt("clients").coerceAtLeast(1).toFloat()
             val active = data.optInt("active").toFloat() / total
             val suspended = data.optInt("suspended").toFloat() / total
-            Canvas(Modifier.fillMaxWidth().height(12.dp)) {
-                drawRect(Color(0xFFDCE4E7))
+            val track = MaterialTheme.colorScheme.surfaceContainerHighest
+            Canvas(Modifier.fillMaxWidth().height(12.dp).clip(CircleShape)) {
+                drawRect(track)
                 drawRect(IspGreen, size = size.copy(width = size.width * active.coerceIn(0f, 1f)))
                 drawRect(IspAmber, topLeft = androidx.compose.ui.geometry.Offset(size.width * active, 0f), size = size.copy(width = size.width * suspended.coerceIn(0f, 1f - active.coerceIn(0f, 1f))))
             }
@@ -286,7 +297,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
 }
 
 @Composable private fun Metric(label: String, value: String, icon: ImageVector, color: Color, modifier: Modifier, onClick: () -> Unit) {
-    OutlinedCard(onClick = onClick, modifier = modifier, colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+    OutlinedCard(onClick = onClick, modifier = modifier, colors = CardDefaults.outlinedCardColors(containerColor = com.ispmax.mobile.ui.ispCardColor())) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             ReliefIcon(icon, color, 40.dp)
             Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
@@ -305,16 +316,28 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
 }
 @Composable internal fun MenuRow(title: String, subtitle: String, icon: ImageVector, click: () -> Unit) {
     val tint = when (title) { "Facturas", "Gastos", "Saldos pendientes", "Nomina" -> IspBlue; "Incidencias" -> IspAmber; else -> IspGreen }
-    OutlinedCard(onClick = click, modifier = Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
-        ListItem(headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) }, supportingContent = if (subtitle.isBlank()) null else ({ Text(subtitle) }), leadingContent = { ReliefIcon(icon, tint, 40.dp) }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }, modifier = Modifier.padding(vertical = 6.dp), colors = ListItemDefaults.colors(containerColor = Color.Transparent))
+    Surface(onClick = click, modifier = Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.large, color = com.ispmax.mobile.ui.ispCardColor()) {
+        ListItem(headlineContent = { Text(title, fontWeight = FontWeight.SemiBold) }, supportingContent = if (subtitle.isBlank()) null else ({ Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant) }), leadingContent = { ReliefIcon(icon, tint, 44.dp) }, trailingContent = { Icon(Icons.Outlined.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }, modifier = Modifier.padding(vertical = 4.dp), colors = ListItemDefaults.colors(containerColor = Color.Transparent))
     }
 }
 @Composable private fun More(user: JSONObject, server: String, role: String, open: (String) -> Unit, logout: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(user.text("fullName", user.text("username")), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(role, color = IspGreen)
-        Text(server, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        HorizontalDivider()
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val name = user.text("fullName", user.text("username"))
+        Surface(Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) {
+            Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Box(Modifier.size(60.dp).background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+                    Text(name.split(" ").filter { it.isNotBlank() }.take(2).joinToString("") { it.take(1) }.uppercase(), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onPrimaryContainer, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = .6f)) {
+                        Text(mapOf("super_admin" to "Super admin", "admin" to "Administrador", "tecnico" to "Tecnico", "cobranza" to "Cobranza", "viewer" to "Consulta")[role] ?: role, Modifier.padding(horizontal = 10.dp, vertical = 3.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                    }
+                    Text(server.removePrefix("https://").removePrefix("http://"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        Text("Modulos", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(start = 8.dp, top = 12.dp, bottom = 4.dp))
         val modules = listOf("plans", "system") +
             (if (can(role, "tecnico")) listOf("map") else emptyList()) +
             (if (can(role, "tecnico")) listOf("tickets") else emptyList()) +
@@ -325,9 +348,9 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
         if (can(role)) MenuRow(labels.getValue("ip-ranges"), "Segmentos usados al crear clientes", moduleIcons.getValue("ip-ranges"), { open("ip-ranges") })
         if (can(role)) MenuRow("Sesiones moviles", "Acceso desde celulares", Icons.Outlined.PhonelinkLock, { open("sessions") })
         if (can(role)) MenuRow(labels.getValue("web-settings"), "Empresa, avisos, corte y sistema", moduleIcons.getValue("web-settings"), { open("web-settings") })
-        HorizontalDivider()
-        TextButton(onClick = logout) { Icon(Icons.AutoMirrored.Outlined.Logout, null); Spacer(Modifier.width(8.dp)); Text("Cerrar sesion") }
-        Text("Version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(onClick = logout, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Icon(Icons.AutoMirrored.Outlined.Logout, null); Spacer(Modifier.width(8.dp)); Text("Cerrar sesion") }
+        Text("ISP Max · version ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.align(Alignment.CenterHorizontally).padding(vertical = 8.dp))
     }
 }
 
@@ -367,13 +390,12 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
         val next = "$page|$committed|$status|$filters"
         if (lastListKey != next) { list.scrollToItem(0); lastListKey = next }
     }
+    val canCreate = kind == "clients" && app.capabilities?.optJSONObject("capabilities")?.optBoolean("clientProvisioningWrite") == true
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (kind == "clients" && app.capabilities?.optJSONObject("capabilities")?.optBoolean("clientProvisioningWrite") == true) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            Button(onClick = { newClient = true }) { Icon(Icons.Outlined.PersonAdd, null); Spacer(Modifier.width(8.dp)); Text("Nuevo cliente") }
-        }
-        OutlinedTextField(search, { search = it }, singleLine = true, label = { Text(if (kind == "clients") "Nombre, IP, telefono o serial" else "Buscar") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, modifier = Modifier.fillMaxWidth(), trailingIcon = { if (search.isNotEmpty()) IconButton(onClick = { search = "" }) { Icon(Icons.Outlined.Close, "Limpiar busqueda") } })
+        IspSearchField(search, { search = it }, if (kind == "clients") "Buscar por nombre, IP, telefono o serial" else "Buscar")
         if (filtersAvailable && (invoice || kind == "clients")) Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = { filterDialog = true }) { Icon(Icons.Outlined.FilterAlt, null); Spacer(Modifier.width(6.dp)); Text(if (filters.isBlank()) "Mas filtros" else "Filtros aplicados") }
+            FilterChip(selected = filters.isNotBlank(), onClick = { filterDialog = true }, label = { Text(if (filters.isBlank()) "Mas filtros" else "Filtros aplicados") }, leadingIcon = { Icon(Icons.Outlined.FilterAlt, null, Modifier.size(18.dp)) }, modifier = Modifier.heightIn(min = 40.dp))
             if (filters.isNotBlank()) IconButton(onClick = { filters = ""; page = 1 }) { Icon(Icons.Outlined.FilterAltOff, "Limpiar filtros avanzados") }
         }
         if (invoice) state.body?.optJSONObject("summary")?.let { totals ->
@@ -401,13 +423,13 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
         }
         ReadStatus(state) { vm.load(path, true) }
         if (rows.isEmpty() && !state.loading && state.error == null) EmptyState("No hay resultados para esta busqueda")
-        LazyColumn(Modifier.weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 12.dp)) {
+        LazyColumn(Modifier.weight(1f), state = list, verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = if (canCreate) 88.dp else 12.dp)) {
             items(rows, key = { it.text(if (kind == "clients") "idServicio" else if (invoice) "idFactura" else state.body?.text("idField", "id") ?: "id") }) { row ->
                 val title = when { kind == "clients" -> row.text("aliasNombre", row.text("nombre")); invoice -> row.text("clienteNombre"); kind == "onus" -> row.text("name", row.text("serial")); else -> row.text(state.body?.text("titleField", "id") ?: "id") }
                 val subtitle = when { kind == "clients" -> "${row.text("ip")} · ${row.text("planInternetName")}"; invoice -> "#${row.text("idFactura")} · ${money(row.optDouble("total", 0.0))}"; kind == "onus" -> "${row.text("onuIndex")} · ${row.text("serial")}"; else -> row.text("status", row.text("estado", row.text("tipo", "#${row.text("id")}"))) }
-                OutlinedCard(onClick = { if (kind == "clients") onClient(row.optInt("idServicio")) else selectedJson = row.toString() }, colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+                OutlinedCard(onClick = { if (kind == "clients") onClient(row.optInt("idServicio")) else selectedJson = row.toString() }, colors = CardDefaults.outlinedCardColors(containerColor = com.ispmax.mobile.ui.ispCardColor())) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (kind == "clients") Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.primaryContainer, MaterialTheme.shapes.small), contentAlignment = Alignment.Center) { Text(title.take(2).uppercase(), color = IspGreen, fontWeight = FontWeight.Bold) }
+                        if (kind == "clients") Box(Modifier.size(44.dp).background(MaterialTheme.colorScheme.primaryContainer, CircleShape), contentAlignment = Alignment.Center) { Text(title.take(2).uppercase(), color = IspGreen, fontWeight = FontWeight.Bold) }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Text(title, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(catalogValue("status", subtitle), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -426,6 +448,9 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
             Text("Pagina $page", style = MaterialTheme.typography.bodySmall)
             IconButton(onClick = { page++ }, enabled = state.body?.optBoolean("hasMore") == true && !state.loading) { Icon(Icons.Outlined.ChevronRight, "Pagina siguiente") }
         }
+    }
+    if (canCreate) ExtendedFloatingActionButton(onClick = { newClient = true }, icon = { Icon(Icons.Outlined.PersonAdd, null) }, text = { Text("Nuevo cliente") },
+        modifier = Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = 64.dp))
     }
     selectedJson?.let { json -> val row = JSONObject(json); DetailsDialog(row, labels[kind] ?: kind,
         document = if (invoice) ({ documentId = row.optInt("idFactura"); selectedJson = null }) else null,
@@ -633,7 +658,7 @@ private val moduleIcons = mapOf("onu-provisioner" to Icons.Outlined.SettingsInpu
 
 @Composable internal fun StatusBadge(value: String) {
     val color = when (value.lowercase()) { "activo", "pagada", "en linea" -> IspGreen; "suspendido", "pendiente de pago" -> IspAmber; "sin conexion", "vencida" -> IspRed; else -> IspBlue }
-    Text(value, color = color, style = MaterialTheme.typography.labelSmall, modifier = Modifier.background(color.copy(alpha = 0.09f), MaterialTheme.shapes.extraSmall).padding(horizontal = 8.dp, vertical = 4.dp))
+    Text(value, color = color, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold, modifier = Modifier.background(color.copy(alpha = if (com.ispmax.mobile.ui.IspPalette.dark) .18f else .11f), CircleShape).padding(horizontal = 10.dp, vertical = 4.dp))
 }
 @Composable private fun Value(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) { Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(value, style = MaterialTheme.typography.bodyLarge) }
@@ -731,7 +756,7 @@ private fun csvValue(value: String): String {
                 catch (e: Exception) { if (generation == revision) error = e.message ?: "No se pudo consultar el equipo" }
                 finally { busy = false }
             }
-        }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White) else Icon(Icons.Outlined.Search, null); Spacer(Modifier.width(8.dp)); Text(if (busy) "Consultando..." else "Detectar equipo") }
+        }, modifier = Modifier.fillMaxWidth()) { if (busy) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = LocalContentColor.current) else Icon(Icons.Outlined.Search, null); Spacer(Modifier.width(8.dp)); Text(if (busy) "Consultando..." else "Detectar equipo") }
         error?.let { Notice(it, true) }
         result?.let { found ->
             Value("Respuesta", "${found.target} · ${found.httpStatus}")
@@ -764,7 +789,7 @@ private fun csvValue(value: String): String {
         item { ReadStatus(state) { vm.load("/pons", true) } }
         if (state.body?.optJSONArray("items").objects().isEmpty() && !state.loading) item { EmptyState("Sin puertos con ONU registradas") }
         items(state.body?.optJSONArray("items").objects(), key = { it.text("key") }) { port ->
-            OutlinedCard(onClick = { selectedJson = port.toString() }, colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface)) {
+            OutlinedCard(onClick = { selectedJson = port.toString() }, colors = CardDefaults.outlinedCardColors(containerColor = com.ispmax.mobile.ui.ispCardColor())) {
                 Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Outlined.Hub, null, tint = IspGreen); Spacer(Modifier.width(10.dp)); Text("PON ${port.text("key")}", Modifier.weight(1f), fontWeight = FontWeight.Bold); Text("${port.text("total")} ONU") }
                     LinearProgressIndicator(progress = { port.optInt("online").toFloat() / port.optInt("total").coerceAtLeast(1) }, modifier = Modifier.fillMaxWidth().height(8.dp), color = IspGreen, trackColor = Color(0xFFFBE6E8))

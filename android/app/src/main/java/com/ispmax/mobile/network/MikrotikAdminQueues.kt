@@ -156,7 +156,7 @@ private fun MtClientRow(ui: MtUiState, actions: MtActions, row: JSONObject, canM
     val disabled = row.mtBool("isDisabled")
     val name = client.mtStr("name") ?: row.mtStr("queueName") ?: "-"
     val synced = row.mtStr("syncState") == "synced"
-    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (!synced) Color(0xFFFFFBF3) else MaterialTheme.colorScheme.surface)) {
+    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (!synced) com.ispmax.mobile.ui.IspTint.warning else com.ispmax.mobile.ui.ispCardColor())) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (canManage) {
@@ -329,7 +329,7 @@ private fun MtUnknownRow(ui: MtUiState, actions: MtActions, device: JSONObject, 
     val risk = device.mtStr("risk")
     val riskColor = when (risk) { "high" -> IspRed; "medium" -> IspAmber; else -> IspBlue }
     val hasQueue = device.mtStr("queueId") != null
-    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (risk == "high") Color(0xFFFFF5F4) else MaterialTheme.colorScheme.surface)) {
+    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (risk == "high") com.ispmax.mobile.ui.IspTint.danger else com.ispmax.mobile.ui.ispCardColor())) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 device.mtStr("ip")?.let { MtIpChip(it, actions) }
@@ -421,7 +421,7 @@ internal fun MtQueueEditorDialog(vm: MainViewModel, draft: MtQueueDraft, actions
                             } finally { saving = false }
                         }
                     }, enabled = !saving, modifier = Modifier.weight(1f).heightIn(min = 52.dp)) {
-                        if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White) else Icon(Icons.Outlined.Save, null)
+                        if (saving) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = LocalContentColor.current) else Icon(Icons.Outlined.Save, null)
                         Spacer(Modifier.width(8.dp)); Text(if (saving) "Guardando..." else "Guardar cambios")
                     }
                 }

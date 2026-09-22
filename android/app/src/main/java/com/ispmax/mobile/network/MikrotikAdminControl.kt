@@ -186,7 +186,7 @@ internal fun MtFirewallTab(vm: MainViewModel, pages: Map<String, PageState>, ui:
         items(rules) { rule ->
             val disabled = rule.mtBool("disabled"); val dynamic = rule.mtBool("dynamic"); val invalid = rule.mtBool("invalid")
             val label = if (dynamic) "Dinámica" else if (invalid) "Inválida" else if (disabled) "Deshabilitada" else "Activa"
-            OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (invalid) Color(0xFFFFFBF3) else MaterialTheme.colorScheme.surface)) {
+            OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (invalid) com.ispmax.mobile.ui.IspTint.warning else com.ispmax.mobile.ui.ispCardColor())) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -299,7 +299,7 @@ internal fun MtIpamTab(vm: MainViewModel, pages: Map<String, PageState>, ui: MtU
                     val utilization = net.mtNum("utilization")
                     val recommended = net.optJSONArray("recommended")?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
                     OutlinedCard(onClick = { ui.ipamNetwork = if (active) null else cidr; ui.ipamPage = 1 }, modifier = Modifier.width(220.dp),
-                        colors = CardDefaults.outlinedCardColors(containerColor = if (active) Color(0xFFEEF6F1) else MaterialTheme.colorScheme.surface),
+                        colors = CardDefaults.outlinedCardColors(containerColor = if (active) com.ispmax.mobile.ui.IspTint.success else com.ispmax.mobile.ui.ispCardColor()),
                         border = if (active) CardDefaults.outlinedCardBorder().copy(width = 2.dp) else CardDefaults.outlinedCardBorder()) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(cidr, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
@@ -345,7 +345,7 @@ private fun MtIpamRow(row: JSONObject, ui: MtUiState, actions: MtActions, canMan
     val client = row.optJSONObject("client")
     val ip = row.mtStr("ip").orEmpty()
     val stateColor = if (row.mtBool("disabled") || conflict) IspRed else if (available || row.mtStr("status") == "bound") IspGreen else GREY
-    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (conflict) Color(0xFFFFF5F4) else if (available) Color(0xFFF3FBF7) else MaterialTheme.colorScheme.surface)) {
+    OutlinedCard(Modifier.fillMaxWidth(), colors = CardDefaults.outlinedCardColors(containerColor = if (conflict) com.ispmax.mobile.ui.IspTint.danger else if (available) com.ispmax.mobile.ui.IspTint.success else com.ispmax.mobile.ui.ispCardColor())) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (!available) MtIpChip(ip, actions) else Text(ip, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
@@ -399,7 +399,7 @@ private fun MtIpGrid(ipam: JSONObject?, network: String?, actions: MtActions, on
                 val isActive = active?.id == block.id
                 val ratio = if (block.hosts > 0) block.used.toFloat() / block.hosts else 0f
                 OutlinedCard(onClick = { selected = block.id; touched = null }, modifier = Modifier.width(150.dp),
-                    colors = CardDefaults.outlinedCardColors(containerColor = if (isActive) Color(0xFFEEF6F1) else MaterialTheme.colorScheme.surface)) {
+                    colors = CardDefaults.outlinedCardColors(containerColor = if (isActive) com.ispmax.mobile.ui.IspTint.success else com.ispmax.mobile.ui.ispCardColor())) {
                     Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(block.label, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
                         LinearProgressIndicator(progress = { ratio }, modifier = Modifier.fillMaxWidth(), color = if (ratio >= .9f) IspRed else IspGreen)

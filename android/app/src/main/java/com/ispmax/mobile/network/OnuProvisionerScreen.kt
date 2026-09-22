@@ -95,7 +95,7 @@ fun OnuProvisionerScreen(vm: MainViewModel, pages: Map<String, PageState>, onLoc
         items(controller.operationalAgents, key = { "op-" + it.optString("id") }) { item ->
             val selected = item.optString("id") == controller.selectedAgentId
             OutlinedCard(onClick = { controller.selectAgent(item.optString("id")) }, modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.outlinedCardColors(containerColor = if (selected) IspGreen.copy(alpha = .08f) else MaterialTheme.colorScheme.surface)) {
+                colors = CardDefaults.outlinedCardColors(containerColor = if (selected) IspGreen.copy(alpha = .08f) else com.ispmax.mobile.ui.ispCardColor())) {
                 ListItem(colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                     leadingContent = { RadioButton(selected = selected, onClick = { controller.selectAgent(item.optString("id")) }) },
                     headlineContent = { Text(item.optString("displayName"), fontWeight = FontWeight.SemiBold) },

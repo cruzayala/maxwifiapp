@@ -377,8 +377,8 @@ internal fun OltOpticalTrend(readings: List<JSONObject>) {
         fun x(index: Int) = if (sorted.size == 1) size.width / 2 else padX + index.toFloat() / (sorted.size - 1) * (size.width - padX * 2)
         fun y(value: Double) = (padY + (top - value) / (top - bottom) * (size.height - padY * 2)).toFloat()
         val weakY = y(OLT_RX_WEAK); val criticalY = y(OLT_RX_CRITICAL)
-        drawRect(Color(0xFFFFF6E8), Offset(0f, weakY), Size(size.width, criticalY - weakY))
-        drawRect(Color(0xFFFFF0EF), Offset(0f, criticalY), Size(size.width, size.height - criticalY))
+        drawRect(com.ispmax.mobile.ui.IspTint.warning, Offset(0f, weakY), Size(size.width, criticalY - weakY))
+        drawRect(com.ispmax.mobile.ui.IspTint.danger, Offset(0f, criticalY), Size(size.width, size.height - criticalY))
         drawLine(IspAmber, Offset(0f, weakY), Offset(size.width, weakY), 1.dp.toPx())
         drawLine(IspRed, Offset(0f, criticalY), Offset(size.width, criticalY), 1.dp.toPx())
         val points = sorted.mapIndexedNotNull { index, reading -> if (reading.optBoolean("online") && reading.oltNum("rxPowerDbm") != null) Offset(x(index), y(reading.oltNum("rxPowerDbm")!!)) to reading.oltNum("rxPowerDbm")!! else null }
