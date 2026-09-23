@@ -1,9 +1,9 @@
 {
-    "version":  "0.16.1-preview",
-    "publishedAt":  "2026-09-22T17:50:00.7481029Z",
-    "sha256":  "19f53b565f7351a5e033c036622b0126b785ec9e42c11a5bd1332b67275a4cf7",
-    "versionCode":  20,
-    "fileName":  "ISP-Max-Android-0.16.1-preview.apk",
+    "version":  "0.16.2-preview",
+    "publishedAt":  "2026-09-23T00:57:53.9431374Z",
+    "sha256":  "b72a27a58accdb7ef08d53de96cc3a1feae501edaf61670c68d05a9618e16ce6",
+    "versionCode":  21,
+    "fileName":  "ISP-Max-Android-0.16.2-preview.apk",
     "status":  "preview",
-    "sizeBytes":  47737905
+    "sizeBytes":  47672180
 }
