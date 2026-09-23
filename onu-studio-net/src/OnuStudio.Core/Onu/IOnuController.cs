@@ -19,7 +19,7 @@ public static class OnuControllerFactory
     public static IOnuController Create(DeviceSettings device, string backupDir, int? adapterIndex = null) => device.Model switch
     {
         _ when AgentRuntime.IsDemo => new Demo.DemoOnuController(device),
-        "EG8141A5" => new HuaweiEg8141A5(device, backupDir),
+        _ when OnuModels.IsHuawei(device.Model) => new HuaweiEg8141A5(device, backupDir),
         "F670L" => new ZteF670L(device, backupDir, adapterIndex),
         _ => throw new OnuProvisioningException($"Modelo no compatible: {device.Model}", "ONU_MODEL_UNSUPPORTED", retryable: false),
     };

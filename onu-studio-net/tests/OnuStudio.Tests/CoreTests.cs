@@ -282,6 +282,60 @@ public class HuaweiWanTests
     }
 }
 
+public class Hs8545M5Tests
+{
+    [Fact]
+    public void ElCatalogoAceptaLaHs8545M5ComoHuaweiEnCertificacion()
+    {
+        var model = OnuModels.Find("hs8545m5");
+        Assert.NotNull(model);
+        Assert.Equal("HS8545M5", model!.Model);
+        Assert.True(OnuModels.IsHuawei("HS8545M5"));
+        Assert.False(model.WriteCertified);
+        Assert.False(OnuModels.IsSupported("HG9999X"));
+    }
+
+    [Fact]
+    public void LaValidacionAceptaYNormalizaElModelo()
+    {
+        var device = new DeviceSettings { Host = "192.168.100.1", Model = "hs8545m5", Username = "telecomadmin" };
+        Assert.True(device.Validate().IsValid);
+        Assert.Equal("HS8545M5", device.Model);
+    }
+
+    [Fact]
+    public void LaDeteccionSugiereElModeloQueMuestraElPanel()
+    {
+        var withName = new OnuStudio.Core.Net.DiscoveredDevice { Model = "HS8545M5", Fingerprint = "huawei-webui" };
+        var withoutName = new OnuStudio.Core.Net.DiscoveredDevice { Model = "Modelo no identificado", Fingerprint = "huawei-webui" };
+        Assert.Equal("HS8545M5", withName.SuggestedModel);
+        Assert.Equal("EG8141A5", withoutName.SuggestedModel);
+    }
+
+    [Fact]
+    public void ElOrigenCidrSeConvierteEnElRangoQuePideElEquipo()
+    {
+        Assert.Equal(("192.168.16.1", "192.168.16.1"), HuaweiEg8141A5.SourceRange("192.168.16.1/32"));
+        Assert.Equal(("10.99.0.0", "10.99.0.255"), HuaweiEg8141A5.SourceRange("10.99.0.0/24"));
+    }
+
+    [Fact]
+    public void LasReglasDeAccesoPrecisoSeLeenYLaPrioridadSiguienteEsLaLibre()
+    {
+        var rows = new[]
+        {
+            "Priority Port name Source IP address Application Protocol Port Mode",
+            "1 LAN/ALL -- HTTP,ICMP ALL -- Permit",
+            "7 WAN/1_TR069_INTERNET_R_VID_101 192.168.16.1-192.168.16.1 HTTP ALL -- Permit",
+            "-- -- -- -- -- -- -- --",
+        };
+        var rules = HuaweiEg8141A5.PreciseAclRows(rows);
+        Assert.Equal(2, rules.Count);
+        Assert.Equal(8, HuaweiEg8141A5.NextPreciseAclPriority(rules));
+        Assert.Equal(1, HuaweiEg8141A5.NextPreciseAclPriority(Array.Empty<string>()));
+    }
+}
+
 public class GenieAcsTests
 {
     [Fact]

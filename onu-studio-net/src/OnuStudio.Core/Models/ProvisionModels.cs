@@ -35,7 +35,7 @@ public sealed class ValidationResult
 public sealed class DeviceSettings
 {
     public string Host { get; set; } = "192.168.100.1";
-    /// <summary>EG8141A5 (Huawei/Novatech) o F670L (ZTE).</summary>
+    /// <summary>Un modelo de <see cref="Onu.OnuModels"/>: EG8141A5, HS8545M5 (Huawei) o F670L (ZTE).</summary>
     public string Model { get; set; } = "EG8141A5";
     public string Username { get; set; } = "telecomadmin";
     public string? Password { get; set; }
@@ -46,7 +46,8 @@ public sealed class DeviceSettings
     {
         var result = new ValidationResult();
         result.Require(!string.IsNullOrWhiteSpace(Host), "Indica la IP de gestion de la ONU");
-        result.Require(Model is "EG8141A5" or "F670L", $"Modelo no compatible: {Model}");
+        result.Require(Onu.OnuModels.IsSupported(Model), $"Modelo no compatible: {Model}");
+        if (Onu.OnuModels.Canonical(Model) is { } canonical) Model = canonical;
         var user = (Username ?? string.Empty).Trim();
         result.Require(user.Length is > 0 and <= 64, "El usuario de la ONU no es valido");
         return result;

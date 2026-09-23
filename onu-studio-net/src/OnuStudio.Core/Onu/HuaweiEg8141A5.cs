@@ -7,7 +7,10 @@ using OnuStudio.Core.Models;
 namespace OnuStudio.Core.Onu;
 
 /// <summary>
-/// Controlador de la Huawei / Novatech EG8141A5. Trabaja sobre el panel web de la ONU
+/// Controlador de las ONU Huawei con panel web V5R019: EG8141A5 (Huawei / Novatech) y
+/// HS8545M5. Ambas comparten WAN, WiFi, LAN, TR-069 y respaldo; el acceso remoto se
+/// configura en "WAN Access Control" (EG8141A5) o en "Precise Device Access Control"
+/// (HS8545M5), segun el menu que muestre el equipo. Trabaja sobre el panel web de la ONU
 /// con el mismo recorrido que el agente anterior: respaldo, cambio, verificacion.
 /// </summary>
 public sealed class HuaweiEg8141A5 : IOnuController
@@ -228,7 +231,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         }
 
         var title = (await page.TitleAsync().ConfigureAwait(false)).Trim();
-        return string.IsNullOrWhiteSpace(title) ? "EG8141A5" : title;
+        return string.IsNullOrWhiteSpace(title) ? _device.Model : title;
     }
 
     private sealed record LoginStatus(bool Failed, int LoginTimes, int LockLeft, int Limit);
@@ -334,6 +337,18 @@ public sealed class HuaweiEg8141A5 : IOnuController
 
     private async Task OpenAdvancedAsync(IPage page)
     {
+        var menu = page.Locator("#name_addconfig");
+        if (await menu.CountAsync().ConfigureAwait(false) == 1 && await menu.IsVisibleAsync().ConfigureAwait(false))
+        {
+            await menu.ClickAsync().ConfigureAwait(false);
+            await page.Locator("#menuIframe").WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Attached,
+                Timeout = 6000,
+            }).ConfigureAwait(false);
+            return;
+        }
+
         var advanced = page.GetByText("Advanced Configuration", new PageGetByTextOptions { Exact = true });
         if (await advanced.CountAsync().ConfigureAwait(false) == 1 && await advanced.IsVisibleAsync().ConfigureAwait(false))
         {
@@ -988,6 +1003,9 @@ public sealed class HuaweiEg8141A5 : IOnuController
 
     private async Task<JsonObject> ConfigureRemoteAccessAsync(IPage page, ProvisionRequest request)
     {
+        if (await UsesPreciseAclAsync(page).ConfigureAwait(false))
+            return await ConfigurePreciseAccessAsync(page, request).ConfigureAwait(false);
+
         var frame = await OpenAclAsync(page).ConfigureAwait(false);
         var name = _configuredWanName ?? WanConnectionName(request);
         var desired = request.RemoteAccess;
@@ -1039,6 +1057,154 @@ public sealed class HuaweiEg8141A5 : IOnuController
         return new JsonObject { ["wan"] = name, ["protocol"] = "HTTP", ["source"] = desired.Source, ["enabled"] = desired.Enabled };
     }
 
+    // ─────────────────────────── Control de acceso preciso (HS8545M5) ───────────────────────────
+
+    /// <summary>
+    /// true cuando el equipo no tiene "WAN Access Control" y en su lugar usa "Precise Device
+    /// Access Control" (reglas con prioridad, puerto, origen, aplicaciones y permitir/prohibir).
+    /// </summary>
+    private static async Task<bool> UsesPreciseAclAsync(IPage page) =>
+        await page.Locator("#wanacl").CountAsync().ConfigureAwait(false) == 0 &&
+        await page.Locator("#portacl").CountAsync().ConfigureAwait(false) > 0;
+
+    private async Task<FrameScope> OpenPreciseAclAsync(IPage page)
+    {
+        await OpenAdvancedAsync(page).ConfigureAwait(false);
+        await ClickMenuAsync(page, new[] { "#name_securityconfig", "#securityconfig" }, "Security").ConfigureAwait(false);
+        await ClickMenuAsync(page, new[] { "#portacl" }, "Precise Device Access Control").ConfigureAwait(false);
+        var frame = await MenuFrameAsync(page).ConfigureAwait(false);
+        await frame.Locator("#portaclwhite").WaitForAsync(new LocatorWaitForOptions
+        {
+            State = WaitForSelectorState.Visible,
+            Timeout = 6000,
+        }).ConfigureAwait(false);
+        return frame;
+    }
+
+    /// <summary>Filas de reglas de la tabla: empiezan con la prioridad y terminan en Permit/Prohibit.</summary>
+    internal static List<string> PreciseAclRows(IEnumerable<string> rows) => rows
+        .Select(row => Regex.Replace(row, @"\s+", " ").Trim())
+        .Where(row => Regex.IsMatch(row, @"^\d{1,4}\b") && Regex.IsMatch(row, @"\b(Permit|Prohibit)\b", RegexOptions.IgnoreCase))
+        .ToList();
+
+    internal static int NextPreciseAclPriority(IEnumerable<string> rules) =>
+        rules.Select(row => int.Parse(Regex.Match(row, @"^\d{1,4}").Value)).DefaultIfEmpty(0).Max() + 1;
+
+    /// <summary>Rango de origen que pide el equipo a partir del CIDR configurado.</summary>
+    internal static (string Start, string End) SourceRange(string cidr)
+    {
+        var (network, prefix) = Ipv4.ParseCidr(cidr);
+        return (network.ToString(), Ipv4.BroadcastAddress(network, prefix).ToString());
+    }
+
+    private static bool IsPermitRule(string row, string port, string protocol, string? source = null) =>
+        row.Contains(port, StringComparison.OrdinalIgnoreCase) &&
+        row.Contains(protocol, StringComparison.OrdinalIgnoreCase) &&
+        row.Contains("Permit", StringComparison.OrdinalIgnoreCase) &&
+        (source is null || row.Contains(source, StringComparison.Ordinal));
+
+    private async Task<JsonObject> ConfigurePreciseAccessAsync(IPage page, ProvisionRequest request)
+    {
+        var desired = request.RemoteAccess;
+        var name = _configuredWanName ?? WanConnectionName(request);
+        var (start, end) = SourceRange(desired.Source);
+
+        var frame = await OpenPreciseAclAsync(page).ConfigureAwait(false);
+        var rules = PreciseAclRows(await frame.Locator("tr").AllInnerTextsAsync().ConfigureAwait(false));
+
+        // Primero LAN y WiFi: al activar el control solo se permite lo que tenga regla, y el
+        // tecnico (y este mismo agente) administran la ONU por LAN.
+        var lanProtocols = new[] { "HTTP", "ICMP" };
+        if (!rules.Any(row => IsPermitRule(row, "LAN", "HTTP")))
+            rules = await AddPreciseRuleAsync(page, NextPreciseAclPriority(rules), "0", "#LAN1", null, null, lanProtocols).ConfigureAwait(false);
+        if (!rules.Any(row => IsPermitRule(row, "SSID", "HTTP")))
+            rules = await AddPreciseRuleAsync(page, NextPreciseAclPriority(rules), "1", "#SSID1", null, null, lanProtocols).ConfigureAwait(false);
+
+        var wanProtocols = new List<string>();
+        if (desired.Http) wanProtocols.Add("HTTP");
+        if (desired.Telnet) wanProtocols.Add("TELNET");
+        if (desired.Ssh) wanProtocols.Add("SSH");
+        if (desired.Ftp) wanProtocols.Add("FTP");
+        if (desired.Icmp) wanProtocols.Add("ICMP");
+        if (!rules.Any(row => IsPermitRule(row, "WAN", "HTTP", start) || IsPermitRule(row, name, "HTTP", start)))
+            rules = await AddPreciseRuleAsync(page, NextPreciseAclPriority(rules), "2", null, name, (start, end), wanProtocols).ConfigureAwait(false);
+
+        frame = await OpenPreciseAclAsync(page).ConfigureAwait(false);
+        if (await OnuControls.IsCheckedAsync(frame, "#portaclwhite").ConfigureAwait(false) != desired.Enabled)
+        {
+            _dialogs.Clear();
+            await frame.Locator("#portaclwhite").ClickAsync(new LocatorClickOptions { Timeout = 4000 }).ConfigureAwait(false);
+            await Task.Delay(1200).ConfigureAwait(false);
+            RaiseForDialogError("control de acceso");
+        }
+
+        if (!await PreciseAccessAppliedAsync(page, request).ConfigureAwait(false))
+            throw new OnuProvisioningException("La ONU no confirmo la regla HTTP restringida en el control de acceso preciso");
+
+        return new JsonObject
+        {
+            ["wan"] = name, ["protocol"] = "HTTP", ["source"] = desired.Source, ["enabled"] = desired.Enabled,
+            ["variant"] = "precise", ["rules"] = ToJsonArray(rules),
+        };
+    }
+
+    private async Task<List<string>> AddPreciseRuleAsync(IPage page, int priority, string portType, string? portSelector,
+        string? wanName, (string Start, string End)? source, IReadOnlyCollection<string> protocols)
+    {
+        var frame = await OpenPreciseAclAsync(page).ConfigureAwait(false);
+        await frame.Locator("#Newbutton").ClickAsync(new LocatorClickOptions { Timeout = 4000 }).ConfigureAwait(false);
+        await frame.Locator("#priority").WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 4000 }).ConfigureAwait(false);
+
+        await OnuControls.SetCheckedAsync(frame, "#radionewacl1", true).ConfigureAwait(false);
+        await OnuControls.FillAsync(frame, "#priority", priority.ToString()).ConfigureAwait(false);
+        await OnuControls.SelectAsync(frame, "#PortType", portType, required: true).ConfigureAwait(false);
+        await Task.Delay(300).ConfigureAwait(false);
+
+        if (portSelector is not null)
+            await OnuControls.SetCheckedAsync(frame, portSelector, true, required: true).ConfigureAwait(false);
+        if (wanName is not null)
+        {
+            var options = await frame.Locator("#WanNameList option").EvaluateAllAsync<WanOption[]>(
+                "options => options.map(option => ({ value: option.value, label: option.textContent.trim() }))").ConfigureAwait(false);
+            var match = options.FirstOrDefault(option => option.Label == wanName)
+                ?? throw new OnuProvisioningException("El control de acceso no encontro la WAN configurada");
+            await OnuControls.SelectAsync(frame, "#WanNameList", match.Value, required: true).ConfigureAwait(false);
+        }
+        if (source is { } range)
+        {
+            await OnuControls.FillAsync(frame, "#wanipStart", range.Start).ConfigureAwait(false);
+            await OnuControls.FillAsync(frame, "#wanipEnd", range.End).ConfigureAwait(false);
+        }
+
+        var catalog = new[] { "TELNET", "HTTP", "SSH", "FTP", "ICMP", "SAMBA" };
+        for (var index = 0; index < catalog.Length; index++)
+            await OnuControls.SetCheckedAsync(frame, $"#Protocol{index + 1}", protocols.Contains(catalog[index])).ConfigureAwait(false);
+        await OnuControls.SetCheckedAsync(frame, "#mode1", true, required: true).ConfigureAwait(false);
+
+        _dialogs.Clear();
+        await frame.Locator("#btnApply_ex").ClickAsync(new LocatorClickOptions { Timeout = 4000 }).ConfigureAwait(false);
+        await Task.Delay(1000).ConfigureAwait(false);
+        RaiseForDialogError("control de acceso");
+
+        var refreshed = await OpenPreciseAclAsync(page).ConfigureAwait(false);
+        var rules = PreciseAclRows(await refreshed.Locator("tr").AllInnerTextsAsync().ConfigureAwait(false));
+        if (!rules.Any(row => Regex.IsMatch(row, $@"^{priority}\b")))
+            throw new OnuProvisioningException($"La ONU no guardo la regla de acceso con prioridad {priority}");
+        return rules;
+    }
+
+    private async Task<bool> PreciseAccessAppliedAsync(IPage page, ProvisionRequest request)
+    {
+        var frame = await OpenPreciseAclAsync(page).ConfigureAwait(false);
+        var enabled = await OnuControls.IsCheckedAsync(frame, "#portaclwhite").ConfigureAwait(false);
+        if (enabled != request.RemoteAccess.Enabled) return false;
+        var (start, _) = SourceRange(request.RemoteAccess.Source);
+        var name = _configuredWanName ?? WanConnectionName(request);
+        var rules = PreciseAclRows(await frame.Locator("tr").AllInnerTextsAsync().ConfigureAwait(false));
+        return rules.Any(row => IsPermitRule(row, "WAN", "HTTP", start) || IsPermitRule(row, name, "HTTP", start))
+            && rules.Any(row => IsPermitRule(row, "LAN", "HTTP"));
+    }
+
     private sealed class WanOption
     {
         public string Value { get; set; } = string.Empty;
@@ -1074,7 +1240,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
             }, new PageRunAndWaitForDownloadOptions { Timeout = 8000 }).ConfigureAwait(false);
 
             var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var target = Path.Combine(_backupDir, $"EG8141A5-{_device.Host}-{stamp}-{suffix}.xml");
+            var target = Path.Combine(_backupDir, $"{_device.Model}-{_device.Host}-{stamp}-{suffix}.xml");
             await download.SaveAsAsync(target).ConfigureAwait(false);
             return target;
         }
@@ -1179,12 +1345,20 @@ public sealed class HuaweiEg8141A5 : IOnuController
                 $"Verificacion WiFi fallo: ssid={wifiValues.Ssid}, encendido={wifiValues.Enabled}, equipos={wifiValues.MaxClients}, " +
                 $"visible={wifiValues.Broadcast}, wmm={wifiValues.Wmm}, seguridad={wifiValues.Authentication}/{wifiValues.Encryption}, wps={wifiValues.Wps}");
 
-        var aclFrame = await OpenAclAsync(page).ConfigureAwait(false);
-        var aclRows = ActualAclRows(await aclFrame.Locator("tr").AllInnerTextsAsync().ConfigureAwait(false));
-        var aclOk = aclRows.Any(row =>
-            row.Contains(name) && row.Contains("HTTP") && row.Contains(request.RemoteAccess.Source) &&
-            (!request.RemoteAccess.Enabled || row.Contains("Enable")));
-        if (!aclOk) throw new OnuProvisioningException("La regla HTTP restringida no aparece en la tabla WAN ACL");
+        if (await UsesPreciseAclAsync(page).ConfigureAwait(false))
+        {
+            if (!await PreciseAccessAppliedAsync(page, request).ConfigureAwait(false))
+                throw new OnuProvisioningException("La regla HTTP restringida no aparece en el control de acceso preciso");
+        }
+        else
+        {
+            var aclFrame = await OpenAclAsync(page).ConfigureAwait(false);
+            var aclRows = ActualAclRows(await aclFrame.Locator("tr").AllInnerTextsAsync().ConfigureAwait(false));
+            var aclOk = aclRows.Any(row =>
+                row.Contains(name) && row.Contains("HTTP") && row.Contains(request.RemoteAccess.Source) &&
+                (!request.RemoteAccess.Enabled || row.Contains("Enable")));
+            if (!aclOk) throw new OnuProvisioningException("La regla HTTP restringida no aparece en la tabla WAN ACL");
+        }
 
         return new JsonObject { ["wan"] = true, ["tr069"] = tr069Ok, ["wifi"] = true, ["remote_access"] = true };
     }

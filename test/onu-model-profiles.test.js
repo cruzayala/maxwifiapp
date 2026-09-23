@@ -9,7 +9,7 @@ const {
 } = require('../lib/onu-model-profiles');
 
 test('ships independent Huawei and ZTE hardware profiles', () => {
-  assert.equal(BUILTIN_ONU_MODEL_PROFILES.length, 2);
+  assert.deepEqual(BUILTIN_ONU_MODEL_PROFILES.map((item) => item.model), ['EG8141A5', 'HS8545M5', 'F670L']);
   const huawei = BUILTIN_ONU_MODEL_PROFILES.find((item) => item.model === 'EG8141A5');
   const zte = BUILTIN_ONU_MODEL_PROFILES.find((item) => item.model === 'F670L');
   assert.equal(huawei.oltOnuType, 'HG8546M');
@@ -59,7 +59,7 @@ test('built-in profile seed is idempotent', async () => {
       create: async ({ data }) => { rows.set(data.profileKey, data); return data; },
     },
   };
-  assert.deepEqual(await seedOnuModelProfiles(prisma), { created: 2, existing: 0 });
-  assert.deepEqual(await seedOnuModelProfiles(prisma), { created: 0, existing: 2 });
-  assert.equal(rows.size, 2);
+  assert.deepEqual(await seedOnuModelProfiles(prisma), { created: 3, existing: 0 });
+  assert.deepEqual(await seedOnuModelProfiles(prisma), { created: 0, existing: 3 });
+  assert.equal(rows.size, 3);
 });

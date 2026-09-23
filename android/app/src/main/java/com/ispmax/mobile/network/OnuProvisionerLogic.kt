@@ -74,7 +74,10 @@ internal fun onuTaskDuration(task: JSONObject): String {
     return "%02d:%02d".format(seconds / 60, seconds % 60)
 }
 internal fun onuBytes(value: Long?): String = if (value == null || value == 0L) "" else "${Math.round(value / 1024.0 / 1024.0)} MB"
-internal fun onuNormalizeModel(model: String?) = if (model.orEmpty().uppercase().contains("F670")) "F670L" else "EG8141A5"
+internal fun onuNormalizeModel(model: String?): String {
+    val value = model.orEmpty().uppercase()
+    return if (value.contains("F670")) "F670L" else if (value.contains("HS8545")) "HS8545M5" else "EG8141A5"
+}
 internal fun onuSsidFromName(name: String?): String {
     val base = Normalizer.normalize(name?.ifBlank { null } ?: "ISP Max", Normalizer.Form.NFD).replace(Regex("[\\u0300-\\u036f]"), "")
     return base.replace(Regex("[^A-Za-z0-9 _-]"), "").trim().take(32).ifBlank { "ISP Max" }

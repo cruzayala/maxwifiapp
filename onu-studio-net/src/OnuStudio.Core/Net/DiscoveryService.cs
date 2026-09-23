@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
+using OnuStudio.Core.Onu;
 using OnuStudio.Core.Storage;
 
 namespace OnuStudio.Core.Net;
@@ -23,11 +24,17 @@ public sealed class DiscoveredDevice
     public string? IdentityError { get; set; }
 
     /// <summary>Modelo soportado que corresponde a la huella detectada, si lo hay.</summary>
-    public string? SuggestedModel => Fingerprint switch
+    /// <remarks>
+    /// Varios Huawei (por ejemplo la HS8545M5 de Powertech) no dicen el modelo antes de
+    /// iniciar sesion; en ese caso se sugiere la EG8141A5 y la lectura del equipo corrige
+    /// el modelo con el nombre real que muestra el panel.
+    /// </remarks>
+    public string? SuggestedModel => OnuModels.Canonical(Model) ?? Fingerprint switch
     {
         "huawei-webui" => "EG8141A5",
         "zte-webui" => "F670L",
         _ => Model.StartsWith("EG", StringComparison.OrdinalIgnoreCase) ? "EG8141A5"
+            : Model.StartsWith("HS", StringComparison.OrdinalIgnoreCase) ? "HS8545M5"
             : Model.StartsWith("F6", StringComparison.OrdinalIgnoreCase) ? "F670L"
             : null,
     };
@@ -60,6 +67,7 @@ public sealed class DiscoveryService : IDisposable
         new("ProductName\\s*=\\s*['\"]([^'\"]+)", RegexOptions.IgnoreCase),
         new("\\b(EG\\d{4}[A-Z0-9-]*)\\b", RegexOptions.IgnoreCase),
         new("\\b(HG\\d{4}[A-Z0-9-]*)\\b", RegexOptions.IgnoreCase),
+        new("\\b(HS\\d{4}[A-Z0-9-]*)\\b", RegexOptions.IgnoreCase),
         new("\\b(F6\\d{2}[A-Z0-9-]*)\\b", RegexOptions.IgnoreCase),
         new("\\b(AN\\d{3,5}[A-Z0-9-]*)\\b", RegexOptions.IgnoreCase),
     };
@@ -291,7 +299,7 @@ public sealed class DiscoveryService : IDisposable
         server ??= string.Empty;
         var vendorText = $"{lowered} {server.ToLowerInvariant()}";
 
-        var vendor = vendorText.Contains("huawei") || (model?.StartsWith("EG") ?? false) || (model?.StartsWith("HG") ?? false)
+        var vendor = vendorText.Contains("huawei") || (model?.StartsWith("EG") ?? false) || (model?.StartsWith("HG") ?? false) || (model?.StartsWith("HS") ?? false)
             ? "Huawei / Novatech"
             : vendorText.Contains("zte") || (model?.StartsWith("F6") ?? false)
                 ? "ZTE"

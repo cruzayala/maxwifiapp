@@ -93,11 +93,9 @@ public sealed class OnuCloudWorker : IAsyncDisposable
         return new
         {
             actions = new[] { "discover", "check", "provision" },
-            supportedDevices = new[]
-            {
-                new { model = "EG8141A5", vendor = "Huawei / Novatech", writeCertified = true },
-                new { model = "F670L", vendor = "ZTE", writeCertified = true },
-            },
+            supportedDevices = OnuModels.All
+                .Select(item => new { model = item.Model, vendor = item.Vendor, writeCertified = item.WriteCertified })
+                .ToArray(),
             adapters,
             networkRanges = _store.NetworkRanges(),
             recommendedLocalNetwork = new

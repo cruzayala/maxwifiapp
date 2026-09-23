@@ -46,9 +46,9 @@ public sealed partial class WizardViewModel
         }
     }
 
-    public string[] Models { get; } = { "EG8141A5", "F670L" };
+    public IReadOnlyList<string> Models { get; } = OnuModels.Names;
 
-    public string ModelLabel => DeviceModel == "F670L" ? "ZTE F670L" : "Huawei / Novatech EG8141A5";
+    public string ModelLabel => OnuModels.Label(DeviceModel);
 
     private string _localAddress = "192.168.100.10";
     public string LocalAddress
@@ -242,6 +242,12 @@ public sealed partial class WizardViewModel
             {
                 Inventory = finished.Result["inventory"] as JsonObject;
                 ReadInventorySummary(finished.Result);
+                // El panel dice el modelo real al entrar: si es otro Huawei compatible, se usa ese.
+                if (OnuModels.Canonical(finished.Result["model"]?.ToString()) is { } detected && detected != DeviceModel)
+                {
+                    DeviceModel = detected;
+                    _toast($"Modelo detectado en el equipo: {OnuModels.Label(detected)}.", "info");
+                }
                 DeviceReady = true;
                 _toast("ONU leida correctamente.", "ok");
             }

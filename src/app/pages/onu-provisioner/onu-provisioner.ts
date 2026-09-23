@@ -866,7 +866,10 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
     if (queryIp) this.wanIp = queryIp; if (queryVlan) this.vlan = queryVlan; if (querySsid) this.wifiSsid = querySsid;
   }
 
-  private normalizeModel(model: string) { return String(model || '').toUpperCase().includes('F670') ? 'F670L' : 'EG8141A5'; }
+  private normalizeModel(model: string) {
+    const value = String(model || '').toUpperCase();
+    return value.includes('F670') ? 'F670L' : value.includes('HS8545') ? 'HS8545M5' : 'EG8141A5';
+  }
   private ssidFromName(name: string) {
     return String(name || 'ISP Max').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 32) || 'ISP Max';
   }
