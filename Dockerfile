@@ -40,4 +40,11 @@ RUN npm ci --omit=dev
 
 # SQLite en Railway: DATABASE_URL apunta al volumen persistente montado en /data
 EXPOSE 7400
-CMD ["npm", "run", "start:prod"]
+
+# La maquina de Railway reporta 32 GB y Node dejaria crecer el heap hasta ~4 GB antes
+# de limpiar a fondo (picos de 800 MB). Con este tope limpia antes y se mantiene bajo.
+ENV NODE_OPTIONS="--max-old-space-size=512"
+
+# `exec` deja a node como proceso principal: sin npm esperando (65 MB menos) y las
+# senales de apagado llegan directo al servidor.
+CMD ["sh", "-c", "npx prisma db push --skip-generate && exec node server.js"]
