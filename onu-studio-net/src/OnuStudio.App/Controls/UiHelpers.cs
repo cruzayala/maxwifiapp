@@ -86,14 +86,25 @@ public sealed class EqualsToBoolConverter : IValueConverter
 /// WPF no deja enlazar la clave de un PasswordBox por seguridad. Esta propiedad
 /// adjunta hace el puente sin dejar la clave en el arbol visual.
 /// </summary>
+/// <remarks>
+/// Lo que escribe el tecnico se escucha con un manejador de clase registrado para todos
+/// los PasswordBox. Antes el manejador se enganchaba solo cuando el valor enlazado
+/// cambiaba; como la clave empieza vacia igual que el valor por defecto, nunca se
+/// enganchaba y la app mandaba la clave vacia (ISP Max respondia 400).
+/// </remarks>
 public static class PasswordBoxAssistant
 {
     public static readonly DependencyProperty BoundPasswordProperty = DependencyProperty.RegisterAttached(
         "BoundPassword", typeof(string), typeof(PasswordBoxAssistant),
-        new FrameworkPropertyMetadata(string.Empty, OnBoundPasswordChanged));
+        new FrameworkPropertyMetadata(string.Empty, FrameworkPropertyMetadataOptions.BindsTwoWayByDefault, OnBoundPasswordChanged));
 
     private static readonly DependencyProperty UpdatingProperty = DependencyProperty.RegisterAttached(
         "Updating", typeof(bool), typeof(PasswordBoxAssistant), new PropertyMetadata(false));
+
+    static PasswordBoxAssistant()
+    {
+        EventManager.RegisterClassHandler(typeof(PasswordBox), PasswordBox.PasswordChangedEvent, new RoutedEventHandler(OnPasswordChanged));
+    }
 
     public static string GetBoundPassword(DependencyObject element) => (string)element.GetValue(BoundPasswordProperty);
 
@@ -101,20 +112,16 @@ public static class PasswordBoxAssistant
 
     private static void OnBoundPasswordChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
-        if (sender is not PasswordBox box) return;
-
-        box.PasswordChanged -= OnPasswordChanged;
-        if (!(bool)box.GetValue(UpdatingProperty))
-        {
-            var value = args.NewValue as string ?? string.Empty;
-            if (box.Password != value) box.Password = value;
-        }
-        box.PasswordChanged += OnPasswordChanged;
+        if (sender is not PasswordBox box || (bool)box.GetValue(UpdatingProperty)) return;
+        var value = args.NewValue as string ?? string.Empty;
+        if (box.Password != value) box.Password = value;
     }
 
     private static void OnPasswordChanged(object sender, RoutedEventArgs args)
     {
         if (sender is not PasswordBox box) return;
+        // Solo los PasswordBox que usan esta propiedad adjunta.
+        if (BindingOperations.GetBindingExpression(box, BoundPasswordProperty) is null) return;
         box.SetValue(UpdatingProperty, true);
         SetBoundPassword(box, box.Password);
         box.SetValue(UpdatingProperty, false);

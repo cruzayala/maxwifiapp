@@ -52,6 +52,12 @@ public sealed partial class WizardViewModel
 
     private async Task LoginAsync()
     {
+        if (string.IsNullOrWhiteSpace(CloudUsername) || string.IsNullOrEmpty(CloudPassword))
+        {
+            _toast("Escribe tu usuario y tu clave de ISP Max.", "error");
+            return;
+        }
+
         IsBusy = true;
         BusyMessage = "Conectando con ISP Max…";
         try
