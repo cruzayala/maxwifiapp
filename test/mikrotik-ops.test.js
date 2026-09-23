@@ -121,7 +121,7 @@ test('IPAM report detects duplicate IPs and MAC movement across addresses', () =
   assert.equal(report.rows.find((row) => row.ip === '192.168.10.5').classification, 'available');
 });
 
-test('IPAM only suggests addresses absent from clients, queues, leases, ARP, router and DHCP pools', () => {
+test('IPAM only suggests addresses absent from clients, queues, leases, ARP and the router', () => {
   const report = buildIpamReport({
     cidrs: ['192.168.16.0/28'],
     clients: [{ idServicio: 9, nombre: 'Cliente', ip: '192.168.16.2' }],
@@ -133,10 +133,16 @@ test('IPAM only suggests addresses absent from clients, queues, leases, ARP, rou
   });
   assert.equal(report.rows.find((row) => row.ip === '192.168.16.1').classification, 'router');
   assert.equal(report.rows.find((row) => row.ip === '192.168.16.3').classification, 'queue_only');
-  assert.equal(report.rows.find((row) => row.ip === '192.168.16.10').classification, 'pool_reserved');
+  // Dentro del pool DHCP pero sin ARP, MAC, cola ni cliente: libre, con sondeo ARP al reservar.
+  const inPool = report.rows.find((row) => row.ip === '192.168.16.10');
+  assert.equal(inPool.classification, 'available');
+  assert.equal(inPool.availabilityConfidence, 'probe_required');
+  assert.equal(inPool.interface, 'vlan101');
   assert.equal(report.rows.find((row) => row.ip === '192.168.16.6').classification, 'available');
-  assert.ok(report.networks[0].recommended.includes('192.168.16.6'));
-  assert.equal(report.stats.available, 6);
+  assert.equal(report.rows.find((row) => row.ip === '192.168.16.6').availabilityConfidence, 'verified');
+  // Se recomiendan primero las libres fuera del pool.
+  assert.deepEqual(report.networks[0].recommended, ['192.168.16.6', '192.168.16.7', '192.168.16.8', '192.168.16.9', '192.168.16.13']);
+  assert.equal(report.stats.available, 9);
 });
 
 test('IPAM does not treat incomplete ARP probes without a MAC as occupied addresses', () => {
