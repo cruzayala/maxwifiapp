@@ -285,6 +285,11 @@ public sealed class HuaweiEg8141A5 : IOnuController
                     continue;
                 }
 
+                // HS8545M5: el mismo menu se llama "Advanced" (id name_addconfig).
+                var addConfig = page.Locator("#name_addconfig");
+                if (await addConfig.CountAsync().ConfigureAwait(false) == 1 && await addConfig.IsVisibleAsync().ConfigureAwait(false))
+                    return;
+
                 var body = await SafeBodyTextAsync(page).ConfigureAwait(false);
                 if (body.Contains("Incorrect User Name/Password"))
                     throw new OnuProvisioningException("Usuario o contrasena incorrectos; la ONU puede bloquearse tras 3 intentos");
