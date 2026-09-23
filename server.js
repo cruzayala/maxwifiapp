@@ -336,6 +336,7 @@ function userHasRole(session, allowedRoles) {
 }
 
 const { mobileBridgeSession } = require('./lib/mobile-bridge');
+const dbMaintenance = require('./lib/db-maintenance');
 
 async function authMiddleware(req, res, next) {
   // Endpoints publicos (no requieren login)
@@ -10725,6 +10726,18 @@ opsRouter.use(requireAnyRole(['tecnico']));
 opsRouter.get('/status', asyncHandler(async (req, res) => {
   res.json(await collectOpsStatus());
 }));
+// Mantenimiento de la base: WAL + poda de historial cada 15 dias (lib/db-maintenance.js).
+opsRouter.get('/maintenance', requireRole(['admin']), asyncHandler(async (_req, res) => {
+  res.json(await dbMaintenance.maintenanceStatus(prisma));
+}));
+
+opsRouter.post('/maintenance/run', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const result = await dbMaintenance.runMaintenance(prisma, { log: console.log });
+  await dbMaintenance.saveResult(prisma, result);
+  await logActivity(req, { action: 'db_maintenance', entityType: 'database', entityName: 'SQLite', details: result });
+  res.json(result);
+}));
+
 opsRouter.post('/repair-captive', requireRole(['admin']), asyncHandler(async (req, res) => {
   const c = await getMtConnection();
   const rules = await ensureClientBlockCaptiveRules(c);
@@ -12447,6 +12460,7 @@ const server = app.listen(PORT, () => {
   startOltSyncLoop();
   startNocLoop();
   startNetworkAuditLoop();
+  dbMaintenance.startMaintenanceLoop(prisma);
   ensureTemplatesSeeded().catch((e) => console.error('[templates] seed error:', e.message));
   ensureSuperAdmin().catch((e) => console.error('[auth] seed error:', e.message));
   ensureOnuModelProfilesSeeded().catch((e) => console.error('[onu-models] seed error:', e.message));
