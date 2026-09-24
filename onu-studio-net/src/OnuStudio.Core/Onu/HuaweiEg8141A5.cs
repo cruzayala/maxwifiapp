@@ -17,17 +17,40 @@ public sealed class HuaweiEg8141A5 : IOnuController
 {
     private readonly DeviceSettings _device;
     private readonly string _backupDir;
-    private readonly string _baseUrl;
+    private readonly int? _adapterIndex;
+    private string _baseUrl;
     private readonly List<string> _dialogs = new();
 
     private string? _configuredWanName;
     private string? _configuredWanService;
 
-    public HuaweiEg8141A5(DeviceSettings device, string backupDir)
+    public HuaweiEg8141A5(DeviceSettings device, string backupDir, int? adapterIndex = null)
     {
         _device = device;
         _backupDir = backupDir;
+        _adapterIndex = adapterIndex;
         _baseUrl = $"http://{device.Host}";
+    }
+
+    /// <summary>
+    /// Si la ONU rechaza IPv4 en la LAN (por ejemplo, con la lista blanca de acceso
+    /// activa) solo responde por IPv6 link-local, que el navegador no sabe abrir: el
+    /// panel se publica en 127.0.0.1 mientras dura el trabajo.
+    /// </summary>
+    private LinkLocalHttpBridge? OpenBridge()
+    {
+        if (!_device.Host.Contains(':'))
+        {
+            _baseUrl = $"http://{_device.Host}";
+            return null;
+        }
+        var scope = _device.Host.Split('%') is [_, var suffix] && int.TryParse(suffix, out var parsed) ? parsed : 0;
+        var adapter = _adapterIndex is > 0 ? _adapterIndex.Value : scope;
+        if (adapter <= 0)
+            throw new OnuProvisioningException("La ONU por IPv6 requiere seleccionar la tarjeta Ethernet", "HUAWEI_ADAPTER_REQUIRED");
+        var bridge = new LinkLocalHttpBridge(_device.Host, adapter);
+        _baseUrl = bridge.Url;
+        return bridge;
     }
 
     // ─────────────────────────── Operaciones publicas ───────────────────────────
@@ -37,6 +60,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         emit("login", "running", "Abriendo la administracion de la ONU");
         await BrowserLauncher.EnsureInstalledAsync(message => emit("login", "running", message), cancellationToken).ConfigureAwait(false);
 
+        using var bridge = OpenBridge();
         using var playwright = await Playwright.CreateAsync().ConfigureAwait(false);
         var browser = await BrowserLauncher.LaunchAsync(playwright).ConfigureAwait(false);
         var context = await browser.NewContextAsync(new BrowserNewContextOptions { AcceptDownloads = true }).ConfigureAwait(false);
@@ -78,6 +102,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         Directory.CreateDirectory(_backupDir);
         await BrowserLauncher.EnsureInstalledAsync(message => emit("login", "running", message), cancellationToken).ConfigureAwait(false);
 
+        using var bridge = OpenBridge();
         using var playwright = await Playwright.CreateAsync().ConfigureAwait(false);
         var browser = await BrowserLauncher.LaunchAsync(playwright).ConfigureAwait(false);
         var context = await browser.NewContextAsync(new BrowserNewContextOptions { AcceptDownloads = true }).ConfigureAwait(false);
