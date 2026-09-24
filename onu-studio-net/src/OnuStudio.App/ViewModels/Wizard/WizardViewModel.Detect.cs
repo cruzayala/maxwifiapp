@@ -46,6 +46,11 @@ public sealed partial class WizardViewModel
         }
     }
 
+    // Modelo confirmado al leer la ONU. La deteccion automatica corre cada pocos segundos
+    // y, para los Huawei que no dicen el modelo antes de entrar, solo lo adivina: no
+    // puede pisar el que ya confirmo la lectura.
+    private string? _confirmedModel;
+
     public IReadOnlyList<string> Models { get; } = OnuModels.Names;
 
     public string ModelLabel => OnuModels.Label(DeviceModel);
@@ -164,6 +169,17 @@ public sealed partial class WizardViewModel
         SelectedAdapter ??= adapters.FirstOrDefault(item => item.Supported && item.IsUp) ?? adapters.FirstOrDefault();
     }
 
+    /// <summary>
+    /// Modelo tras una deteccion automatica: la sugerencia solo aplica si la lectura
+    /// aun no confirmo el modelo, o si la ONU anuncia otro modelo (es otro equipo).
+    /// </summary>
+    public static (string Model, string? Confirmed) ModelAfterDiscovery(
+        string current, string? confirmed, string? announced, string? suggested)
+    {
+        if (confirmed is not null && announced is not null && announced != confirmed) confirmed = null;
+        return (confirmed is null && suggested is not null ? suggested : current, confirmed);
+    }
+
     private void ApplyDiscovery(DiscoveryState state)
     {
         if (state.Detected && state.Device is not null)
@@ -173,7 +189,8 @@ public sealed partial class WizardViewModel
             DiscoveryDetail = $"{device.Model} · {device.Host} · {device.AdapterName} · {device.LatencyMs} ms";
             DiscoveryTone = "ok";
             DeviceHost = device.Host;
-            if (device.SuggestedModel is { } suggested) DeviceModel = suggested;
+            (DeviceModel, _confirmedModel) = ModelAfterDiscovery(
+                DeviceModel, _confirmedModel, OnuModels.Canonical(device.Model), device.SuggestedModel);
             if (device.AdapterIndex is { } index)
             {
                 var adapter = Adapters.FirstOrDefault(item => item.Index == index);
@@ -197,6 +214,8 @@ public sealed partial class WizardViewModel
             };
             DiscoveryDetail = state.NextAction;
             DiscoveryTone = state.Status == "error" ? "error" : "info";
+            // Si se desconecta el cable puede llegar otra ONU: hay que volver a leerla.
+            if (state.Status == "cable_disconnected") _confirmedModel = null;
         }
     }
 
@@ -248,6 +267,7 @@ public sealed partial class WizardViewModel
                     DeviceModel = detected;
                     _toast($"Modelo detectado en el equipo: {OnuModels.Label(detected)}.", "info");
                 }
+                _confirmedModel = DeviceModel;
                 DeviceReady = true;
                 _toast("ONU leida correctamente.", "ok");
             }

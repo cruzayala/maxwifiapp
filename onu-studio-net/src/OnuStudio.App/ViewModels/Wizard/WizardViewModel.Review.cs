@@ -230,6 +230,7 @@ public sealed partial class WizardViewModel
 
         DeviceHost = request.Device.Host;
         DeviceModel = request.Device.Model;
+        _confirmedModel = null;
         DeviceUser = request.Device.Username;
         DevicePassword = string.Empty;
         LocalAddress = request.LocalNetwork.Address;
@@ -307,6 +308,7 @@ public sealed partial class WizardViewModel
         Wifi.Ssid = string.Empty;
         Wifi.Password = string.Empty;
         DeviceReady = false;
+        _confirmedModel = null;
         Inventory = null;
         Serial = string.Empty;
         NotifyWan();
