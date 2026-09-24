@@ -2,25 +2,25 @@
 # El CLI solo respeta .gitignore y este archivo, no .dockerignore.
 # scripts/ se sube entero: npm run build usa build-invoice-renderer.js y el CLI no
 # respeta las excepciones con '!'.
-node_modules
-dist
-.angular
-.git
-.vscode
+/node_modules
+/dist
+/.angular
+/.git
+/.vscode
 *.md
 .env
 .env.*
 !.env.example
-outputs
-output
-wa-auth
-.claude
-.playwright-cli
-recibo-inteligente-android
-onu-provisioner
-newcookies.txt
-android
+/outputs
+/output
+/wa-auth
+/.claude
+/.playwright-cli
+/recibo-inteligente-android
+/onu-provisioner
+/newcookies.txt
+/android
 *.log
 *.out
 *.db
-onu-studio-net
+/onu-studio-net
