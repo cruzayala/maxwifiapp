@@ -1,5 +1,7 @@
 # Lo que railway up no debe subir: espejo de .dockerignore (la imagen no lo usa).
 # El CLI solo respeta .gitignore y este archivo, no .dockerignore.
+# scripts/ se sube entero: npm run build usa build-invoice-renderer.js y el CLI no
+# respeta las excepciones con '!'.
 node_modules
 dist
 .angular
@@ -17,8 +19,6 @@ wa-auth
 recibo-inteligente-android
 onu-provisioner
 newcookies.txt
-scripts/*
-!scripts/build-invoice-renderer.js
 android
 *.log
 *.out
