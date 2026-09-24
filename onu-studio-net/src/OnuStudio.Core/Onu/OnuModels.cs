@@ -23,7 +23,9 @@ public static class OnuModels
     public static IReadOnlyList<OnuModel> All { get; } = new[]
     {
         new OnuModel("EG8141A5", "Huawei / Novatech", HuaweiV5, WriteCertified: true),
-        new OnuModel("HS8545M5", "Huawei", HuaweiV5, WriteCertified: false),
+        // Certificada en campo el 24/09/2026: dos instalaciones completas verificadas (WAN,
+        // TR-069, WiFi, control de acceso preciso, guardado).
+        new OnuModel("HS8545M5", "Huawei", HuaweiV5, WriteCertified: true),
         new OnuModel("F670L", "ZTE", ZteV7, WriteCertified: true),
     };
 

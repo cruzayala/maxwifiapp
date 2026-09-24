@@ -1,0 +1,26 @@
+# Lo que railway up no debe subir: espejo de .dockerignore (la imagen no lo usa).
+# El CLI solo respeta .gitignore y este archivo, no .dockerignore.
+node_modules
+dist
+.angular
+.git
+.vscode
+*.md
+.env
+.env.*
+!.env.example
+outputs
+output
+wa-auth
+.claude
+.playwright-cli
+recibo-inteligente-android
+onu-provisioner
+newcookies.txt
+scripts/*
+!scripts/build-invoice-renderer.js
+android
+*.log
+*.out
+*.db
+onu-studio-net

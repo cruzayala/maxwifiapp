@@ -285,13 +285,13 @@ public class HuaweiWanTests
 public class Hs8545M5Tests
 {
     [Fact]
-    public void ElCatalogoAceptaLaHs8545M5ComoHuaweiEnCertificacion()
+    public void ElCatalogoAceptaLaHs8545M5ComoHuaweiCertificada()
     {
         var model = OnuModels.Find("hs8545m5");
         Assert.NotNull(model);
         Assert.Equal("HS8545M5", model!.Model);
         Assert.True(OnuModels.IsHuawei("HS8545M5"));
-        Assert.False(model.WriteCertified);
+        Assert.True(model.WriteCertified);
         Assert.False(OnuModels.IsSupported("HG9999X"));
     }
 
