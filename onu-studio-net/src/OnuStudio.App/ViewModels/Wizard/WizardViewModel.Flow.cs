@@ -21,6 +21,7 @@ public sealed partial class WizardViewModel
         nameof(ClientName), nameof(SelectedZone), nameof(SelectedPlan), nameof(SelectedIp),
         nameof(WifiSsid), nameof(WifiPassword), nameof(IsBusy), nameof(Finished), nameof(Step),
         nameof(InternetError), nameof(ServiceMode), nameof(WanIp), nameof(WanVlan),
+        nameof(Failed), nameof(ReadError), nameof(ExpressMode),
     };
 
     private static readonly string[] FlowProperties =
@@ -31,7 +32,11 @@ public sealed partial class WizardViewModel
         nameof(HasWifiPassword), nameof(ShowProgressSection), nameof(ReviewReady),
         nameof(SubStepCount), nameof(SubStepDots), nameof(SubStepLabel), nameof(HasSubSteps),
         nameof(StepAnswers), nameof(HasStepAnswers), nameof(CanGoNext), nameof(CanGoBack), nameof(NextLabel),
-        nameof(ShowProvisionButton),
+        nameof(ShowProvisionButton), nameof(ShowNextButton), nameof(ShowInstallButton), nameof(ShowRetryInstall),
+        nameof(CanInstall), nameof(InstallBlocker), nameof(IsReading), nameof(ShowReadResult),
+        nameof(ExpressReadTitle), nameof(ExpressReadHint), nameof(ExpressInstallTitle), nameof(ExpressInstallHint),
+        nameof(HasExpressMatches), nameof(ExpressClientNote), nameof(StepTitle), nameof(StepHint),
+        nameof(ShowDiscoveryCard), nameof(ExpressIpText), nameof(ExpressDeliverySummary),
     };
 
     private DispatcherTimer? _advanceTimer;
@@ -51,6 +56,9 @@ public sealed partial class WizardViewModel
         Notify(FlowProperties);
         NextCommand.RaiseCanExecuteChanged();
         BackCommand.RaiseCanExecuteChanged();
+        InstallCommand.RaiseCanExecuteChanged();
+        RetryInstallCommand.RaiseCanExecuteChanged();
+        ToggleModeCommand.RaiseCanExecuteChanged();
     }
 
     // ─────────── Tarjeta actual dentro del paso ───────────
@@ -73,7 +81,7 @@ public sealed partial class WizardViewModel
         private set => SetProperty(ref _slideFrom, value);
     }
 
-    public int SubStepCount => Step switch
+    public int SubStepCount => ExpressMode ? 1 : Step switch
     {
         1 => 2,
         2 => CloudConnected ? 5 : 1,
@@ -130,6 +138,17 @@ public sealed partial class WizardViewModel
         get
         {
             var parts = new List<string>();
+            if (ExpressMode)
+            {
+                if (Step >= 2 && DeviceReady) parts.Add(HasSerial ? $"{ModelLabel} · {Serial}" : ModelLabel);
+                if (Step == 3)
+                {
+                    parts.Add(ClientName);
+                    if (!string.IsNullOrWhiteSpace(Wan.IpAddress)) parts.Add(Wan.IpAddress);
+                    if (HasSsid) parts.Add($"WiFi {WifiSsid}");
+                }
+                return string.Join("   ›   ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
+            }
             switch (Step)
             {
                 case 1:
@@ -232,7 +251,7 @@ public sealed partial class WizardViewModel
     private bool _provisionStarted;
     public bool ShowProgressSection => _provisionStarted || IsBusy || Finished;
     public bool ReviewReady => Step == 5;
-    public bool ShowProvisionButton => Step == 5 && !Finished;
+    public bool ShowProvisionButton => !ExpressMode && Step == 5 && !Finished;
 
     private void MarkProvisionStarted(bool started)
     {

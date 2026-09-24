@@ -129,11 +129,17 @@
                     </DockPanel>
                 </Border>
 
-                <wizard:DetectStepView Visibility="{Binding IsStep1, Converter={StaticResource BoolToVisibility}}" />
-                <wizard:ClientStepView Visibility="{Binding IsStep2, Converter={StaticResource BoolToVisibility}}" />
-                <wizard:InternetStepView Visibility="{Binding IsStep3, Converter={StaticResource BoolToVisibility}}" />
-                <wizard:WifiStepView Visibility="{Binding IsStep4, Converter={StaticResource BoolToVisibility}}" />
-                <wizard:ReviewStepView Visibility="{Binding IsStep5, Converter={StaticResource BoolToVisibility}}" />
+                <!-- Modo rapido (el habitual): tres tarjetas -->
+                <wizard:ExpressStepView Visibility="{Binding ExpressMode, Converter={StaticResource BoolToVisibility}}" />
+
+                <!-- Asistente completo de cinco pasos -->
+                <StackPanel Visibility="{Binding ExpressMode, Converter={StaticResource InverseBoolToVisibility}}">
+                    <wizard:DetectStepView Visibility="{Binding IsStep1, Converter={StaticResource BoolToVisibility}}" />
+                    <wizard:ClientStepView Visibility="{Binding IsStep2, Converter={StaticResource BoolToVisibility}}" />
+                    <wizard:InternetStepView Visibility="{Binding IsStep3, Converter={StaticResource BoolToVisibility}}" />
+                    <wizard:WifiStepView Visibility="{Binding IsStep4, Converter={StaticResource BoolToVisibility}}" />
+                    <wizard:ReviewStepView Visibility="{Binding IsStep5, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
             </StackPanel>
         </ScrollViewer>
 
@@ -141,8 +147,11 @@
         <Border Grid.Row="2" Background="{StaticResource Surface}" BorderBrush="{StaticResource Line}"
                 BorderThickness="0,1,0,0" Padding="32,16">
             <Grid>
-                <Button Content="Atras" Style="{StaticResource GhostButton}" HorizontalAlignment="Left"
-                        Command="{Binding BackCommand}" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button Content="Atras" Style="{StaticResource GhostButton}" Command="{Binding BackCommand}" />
+                    <Button Content="{Binding ModeToggleLabel}" Style="{StaticResource LinkButton}" Margin="12,0,0,0"
+                            VerticalAlignment="Center" Command="{Binding ToggleModeCommand}" />
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <controls:Spinner Foreground="{StaticResource Accent}" VerticalAlignment="Center" Margin="0,0,10,0"
                                       Visibility="{Binding IsBusy, Converter={StaticResource BoolToVisibility}}" />
@@ -151,7 +160,13 @@
                                Visibility="{Binding BusyMessage, Converter={StaticResource TextToVisibility}}" />
                     <Button Content="{Binding NextLabel}" Style="{StaticResource PrimaryButton}"
                             Command="{Binding NextCommand}"
-                            Visibility="{Binding IsStep5, Converter={StaticResource InverseBoolToVisibility}}" />
+                            Visibility="{Binding ShowNextButton, Converter={StaticResource BoolToVisibility}}" />
+                    <Button Content="Instalar la ONU" Style="{StaticResource SuccessButton}" MinHeight="48" FontSize="15"
+                            MinWidth="200" Command="{Binding InstallCommand}"
+                            Visibility="{Binding ShowInstallButton, Converter={StaticResource BoolToVisibility}}" />
+                    <Button Content="Reintentar la instalacion" Style="{StaticResource PrimaryButton}" MinHeight="48" FontSize="15"
+                            Command="{Binding RetryInstallCommand}"
+                            Visibility="{Binding ShowRetryInstall, Converter={StaticResource BoolToVisibility}}" />
                     <Button Content="Aprovisionar la ONU" Style="{StaticResource SuccessButton}"
                             Command="{Binding ProvisionCommand}"
                             Visibility="{Binding ShowProvisionButton, Converter={StaticResource BoolToVisibility}}" />

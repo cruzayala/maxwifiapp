@@ -171,7 +171,8 @@ public sealed partial class WizardViewModel
             if (!SetProperty(ref _clientName, value)) return;
             Notify(nameof(CanReserve));
             ReserveCommand.RaiseCanExecuteChanged();
-            if (string.IsNullOrWhiteSpace(Wifi.Ssid)) Wifi.Ssid = SuggestSsid(value);
+            if (ExpressMode) RefreshAutoSsid();
+            else if (string.IsNullOrWhiteSpace(Wifi.Ssid)) Wifi.Ssid = SuggestSsid(value);
         }
     }
 
@@ -284,6 +285,8 @@ public sealed partial class WizardViewModel
                 var name = zone["nombre"]?.ToString() ?? zone["name"]?.ToString() ?? $"Zona {id}";
                 if (id > 0) Zones.Add(new NamedOption(id, name));
             }
+            if (SelectedZone is null && _host.Settings.LastZoneId is { } lastZone)
+                SelectedZone = Zones.FirstOrDefault(zone => zone.Id == lastZone);
 
             Plans.Clear();
             foreach (var node in catalog["plans"] as JsonArray ?? new JsonArray())
@@ -334,8 +337,11 @@ public sealed partial class WizardViewModel
         UploadMbps = Math.Round(mbps, 2);
     }
 
-    /// <summary>Reserva la IP y abre el expediente en ISP Max. La ONU aun no se toca.</summary>
-    private async Task ReserveAndOpenJobAsync()
+    /// <summary>
+    /// Reserva la IP y abre el expediente en ISP Max. La ONU aun no se toca. Devuelve
+    /// false si algo fallo (el aviso ya se mostro).
+    /// </summary>
+    private async Task<bool> ReserveAndOpenJobAsync()
     {
         IsBusy = true;
         BusyMessage = "Reservando la IP y preparando el expediente…";
@@ -392,10 +398,12 @@ public sealed partial class WizardViewModel
             _toast("IP reservada y expediente listo.", "ok");
             Notify(nameof(CanGoNext));
             NextCommand.RaiseCanExecuteChanged();
+            return true;
         }
         catch (Exception exception)
         {
             _toast(exception.Message, "error");
+            return false;
         }
         finally
         {

@@ -139,12 +139,15 @@ public sealed partial class WizardViewModel
         private set => SetProperty(ref _failed, value);
     }
 
-    private async Task RunProvisionAsync()
+    /// <param name="resetTimeline">false cuando la linea de tiempo ya trae los pasos previos (modo rapido).</param>
+    private async Task RunProvisionAsync(bool resetTimeline = true)
     {
         var request = BuildProvisionRequest();
         var validation = request.Validate();
         if (!validation.IsValid)
         {
+            Failed = true;
+            ProgressLabel = validation.Message;
             _toast(validation.Message, "error");
             return;
         }
@@ -153,7 +156,7 @@ public sealed partial class WizardViewModel
         IsBusy = true;
         Finished = false;
         Failed = false;
-        Timeline.Clear();
+        if (resetTimeline) Timeline.Clear();
         Progress = 0;
         ProgressLabel = "Preparando…";
         BusyMessage = "Configurando la ONU. No desconectes el cable.";
@@ -162,6 +165,7 @@ public sealed partial class WizardViewModel
         {
             var job = _host.Provisioning.CreateProvisionJob(request);
             _activeJobId = job.Id;
+            _appliedEvents = 0;
             await Task.Run(() => _host.Provisioning.ExecuteProvisionAsync(job.Id, request)).ConfigureAwait(true);
 
             var finished = _host.Jobs.Get(job.Id);
@@ -197,6 +201,10 @@ public sealed partial class WizardViewModel
         }
     }
 
+    // Cuantos eventos del trabajo activo ya estan en la linea de tiempo. No sirve el
+    // largo de la lista: en modo rapido ya trae los pasos de la nube antes del trabajo.
+    private int _appliedEvents;
+
     private void ApplyJob(JobState job)
     {
         if (job.Id != _activeJobId) return;
@@ -204,7 +212,7 @@ public sealed partial class WizardViewModel
         Progress = job.ProgressPercent;
         ProgressLabel = job.StageLabel;
 
-        for (var index = Timeline.Count; index < job.Events.Count; index++)
+        for (var index = _appliedEvents; index < job.Events.Count; index++)
         {
             var entry = job.Events[index];
             Timeline.Add(new TimelineEntry
@@ -214,6 +222,7 @@ public sealed partial class WizardViewModel
                 Status = entry.Status,
             });
         }
+        _appliedEvents = job.Events.Count;
     }
 
     /// <summary>
@@ -275,6 +284,7 @@ public sealed partial class WizardViewModel
         Finished = false;
         Failed = false;
         Timeline.Clear();
+        ResetExpress();
         NotifyWan();
         Notify(nameof(WifiSsid), nameof(WifiPassword), nameof(WifiMaxClients), nameof(WanNat),
             nameof(BindSsid1), nameof(Lan1), nameof(Lan2), nameof(Lan3), nameof(Lan4),
@@ -311,6 +321,7 @@ public sealed partial class WizardViewModel
         _confirmedModel = null;
         Inventory = null;
         Serial = string.Empty;
+        ResetExpress();
         NotifyWan();
         Notify(nameof(WifiSsid), nameof(WifiPassword), nameof(CanGoNext));
         _ = Task.Run(() => _host.Discovery.Scan());

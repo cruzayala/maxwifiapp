@@ -193,6 +193,19 @@ public sealed class Spinner : Control
         Unloaded += (_, _) => Animate(false);
     }
 
+    /// <summary>Grosor del arco; los anillos grandes de carga lo llevan mas ancho.</summary>
+    public static readonly DependencyProperty ThicknessProperty = DependencyProperty.Register(
+        nameof(Thickness), typeof(double), typeof(Spinner), new PropertyMetadata(2.4, (sender, args) =>
+        {
+            if (sender is Spinner { _arc: { } arc }) arc.StrokeThickness = (double)args.NewValue;
+        }));
+
+    public double Thickness
+    {
+        get => (double)GetValue(ThicknessProperty);
+        set => SetValue(ThicknessProperty, value);
+    }
+
     protected override Visual GetVisualChild(int index) => _arc ??= BuildArc();
     protected override int VisualChildrenCount => 1;
 
@@ -202,7 +215,7 @@ public sealed class Spinner : Control
     {
         var arc = new Ellipse
         {
-            StrokeThickness = 2.4,
+            StrokeThickness = Thickness,
             StrokeDashArray = new DoubleCollection { 8, 5 },
             StrokeDashCap = PenLineCap.Round,
             RenderTransformOrigin = new Point(0.5, 0.5),

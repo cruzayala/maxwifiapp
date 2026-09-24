@@ -201,6 +201,7 @@ public sealed partial class WizardViewModel
                 }
                 if (adapter is not null) SelectedAdapter = adapter;
             }
+            TryAutoRead(device);
         }
         else
         {
@@ -215,7 +216,11 @@ public sealed partial class WizardViewModel
             DiscoveryDetail = state.NextAction;
             DiscoveryTone = state.Status == "error" ? "error" : "info";
             // Si se desconecta el cable puede llegar otra ONU: hay que volver a leerla.
-            if (state.Status == "cable_disconnected") _confirmedModel = null;
+            if (state.Status == "cable_disconnected")
+            {
+                _confirmedModel = null;
+                OnCableDisconnected();
+            }
         }
     }
 
@@ -240,9 +245,13 @@ public sealed partial class WizardViewModel
     private async Task RunCheckAsync()
     {
         var request = BuildCheckRequest();
+        ReadError = string.Empty;
+        // Una lectura a mano cuenta como la automatica de esta ONU: no se repite sola.
+        _autoReadKey = $"{request.Device.Host}|{SelectedAdapter?.Index}";
         var validation = request.Validate();
         if (!validation.IsValid)
         {
+            ReadError = validation.Message;
             _toast(validation.Message, "error");
             return;
         }
@@ -253,6 +262,7 @@ public sealed partial class WizardViewModel
         {
             var job = _host.Jobs.Create("check", request.SafeCopy(), request.Device.Host);
             _activeJobId = job.Id;
+            _appliedEvents = 0;
             Timeline.Clear();
             await Task.Run(() => _host.Provisioning.ExecuteCheckAsync(job.Id, request)).ConfigureAwait(true);
 
@@ -270,16 +280,19 @@ public sealed partial class WizardViewModel
                 _confirmedModel = DeviceModel;
                 DeviceReady = true;
                 _toast("ONU leida correctamente.", "ok");
+                if (ExpressMode) ScheduleExpressAdvance();
             }
             else
             {
                 DeviceReady = false;
-                _toast(finished?.Error ?? "No se pudo leer la ONU.", "error");
+                ReadError = finished?.Error ?? "No se pudo leer la ONU.";
+                _toast(ReadError, "error");
             }
         }
         catch (Exception exception)
         {
             DeviceReady = false;
+            ReadError = exception.Message;
             _toast(exception.Message, "error");
         }
         finally

@@ -52,18 +52,7 @@ public sealed partial class WizardViewModel : ObservableObject
         host.Jobs.JobChanged += job => OnUi(() => ApplyJob(job));
         host.Session.Changed += _ => OnUi(() => Notify(nameof(CloudConnected), nameof(CloudSummary)));
 
-        Steps = new ObservableCollection<StepChip>
-        {
-            new(1, "1 · Conectar"),
-            new(2, "2 · Cliente"),
-            new(3, "3 · Internet"),
-            new(4, "4 · WiFi"),
-            new(5, "5 · Revisar"),
-        };
-        UpdateStepChips();
-
-        RefreshAdapters();
-        ApplyDiscovery(host.Discovery.Current);
+        Steps = new ObservableCollection<StepChip>();
 
         CheckCommand = new AsyncCommand(RunCheckAsync, () => CanCheck);
         // La busqueda toca la red: va fuera del hilo de la ventana para no congelarla.
@@ -75,7 +64,7 @@ public sealed partial class WizardViewModel : ObservableObject
         {
             if (parameter is CloudClientSummary client) SelectClient(client);
         });
-        ReserveCommand = new AsyncCommand(ReserveAndOpenJobAsync, () => CanReserve);
+        ReserveCommand = new AsyncCommand(() => ReserveAndOpenJobAsync(), () => CanReserve);
         PickIpCommand = new RelayCommand(parameter =>
         {
             if (parameter is CloudIpRow row) SelectedIp = row;
@@ -83,10 +72,23 @@ public sealed partial class WizardViewModel : ObservableObject
         GenerateWifiCommand = new RelayCommand(GenerateWifi);
         NextCommand = new RelayCommand(GoNext, () => CanGoNext);
         BackCommand = new RelayCommand(GoBack, () => CanGoBack);
-        ProvisionCommand = new AsyncCommand(RunProvisionAsync, () => CanProvision);
+        ProvisionCommand = new AsyncCommand(() => RunProvisionAsync(), () => CanProvision);
         RestartCommand = new RelayCommand(ResetForNextClient);
         RefreshIpsCommand = new AsyncCommand(LoadIpCatalogAsync);
+        ToggleModeCommand = new RelayCommand(ToggleMode, () => !IsBusy);
+        InstallCommand = new AsyncCommand(RunExpressInstallAsync, () => CanInstall);
+        RetryInstallCommand = new AsyncCommand(RunExpressInstallAsync, () => ShowRetryInstall);
+        ExpressSelectClientCommand = new RelayCommand(parameter =>
+        {
+            if (parameter is CloudClientSummary client) SelectExpressClient(client);
+        });
+        ExpressNewClientCommand = new RelayCommand(ClearExpressClient);
+        InitExpress();
         InitFlow();
+
+        // La deteccion puede disparar la lectura automatica: va despues de crear los comandos.
+        RefreshAdapters();
+        ApplyDiscovery(host.Discovery.Current);
     }
 
     // ─────────────────────────── Comandos ───────────────────────────
@@ -105,6 +107,11 @@ public sealed partial class WizardViewModel : ObservableObject
     public AsyncCommand ProvisionCommand { get; }
     public RelayCommand RestartCommand { get; }
     public AsyncCommand RefreshIpsCommand { get; }
+    public RelayCommand ToggleModeCommand { get; }
+    public AsyncCommand InstallCommand { get; }
+    public AsyncCommand RetryInstallCommand { get; }
+    public RelayCommand ExpressSelectClientCommand { get; }
+    public RelayCommand ExpressNewClientCommand { get; }
 
     // ─────────────────────────── Paso actual ───────────────────────────
 
@@ -137,7 +144,12 @@ public sealed partial class WizardViewModel : ObservableObject
     public bool IsStep4 => Step == 4;
     public bool IsStep5 => Step == 5;
 
-    public string StepTitle => Step switch
+    public string StepTitle => ExpressMode ? Step switch
+    {
+        1 => "1. Leyendo la ONU",
+        2 => "2. Cliente",
+        _ => "3. Instalando",
+    } : Step switch
     {
         1 => "1. Conecta la ONU",
         2 => "2. Cliente e IP",
@@ -146,7 +158,12 @@ public sealed partial class WizardViewModel : ObservableObject
         _ => "5. Revisar y aplicar",
     };
 
-    public string StepHint => Step switch
+    public string StepHint => ExpressMode ? Step switch
+    {
+        1 => "Conecta el cable. La busco, entro y leo el serial sola.",
+        2 => "Escribe el nombre y elige el plan. La IP, el WiFi y la clave los pongo yo.",
+        _ => "Reservo la IP, abro el expediente y configuro la ONU. No desconectes el cable.",
+    } : Step switch
     {
         1 => "Conecta el cable Ethernet a la ONU. La busco sola y leo su informacion.",
         2 => "Elige el cliente y la IP que va a usar. Se reserva en ISP Max antes de tocar la ONU.",
@@ -155,7 +172,7 @@ public sealed partial class WizardViewModel : ObservableObject
         _ => "Revisa el resumen. Nada se cambia en la ONU hasta que pulses Aprovisionar.",
     };
 
-    public string NextLabel => SubStep < SubStepCount ? "Continuar" : Step switch
+    public string NextLabel => ExpressMode ? "Continuar con el cliente" : SubStep < SubStepCount ? "Continuar" : Step switch
     {
         1 => "Continuar con el cliente",
         2 => "Continuar con internet",
@@ -168,6 +185,14 @@ public sealed partial class WizardViewModel : ObservableObject
     {
         if (!CanGoNext) return;
         SlideFrom = 56;
+        if (ExpressMode)
+        {
+            // En modo rapido solo se avanza a mano del paso 1 al 2; instalar tiene su boton.
+            if (Step != 1) return;
+            Step = 2;
+            EnterExpressClientStage();
+            return;
+        }
         if (SubStep < SubStepCount)
         {
             SubStep++;
@@ -196,6 +221,12 @@ public sealed partial class WizardViewModel : ObservableObject
     private void GoBack()
     {
         SlideFrom = -56;
+        if (ExpressMode)
+        {
+            if (Step == 3) Failed = false;
+            Step = Math.Max(1, Step - 1);
+            return;
+        }
         if (SubStep > 1)
         {
             SubStep--;
@@ -206,9 +237,13 @@ public sealed partial class WizardViewModel : ObservableObject
         SubStep = SubStepCount;
     }
 
-    public bool CanGoBack => (Step > 1 || SubStep > 1) && !IsBusy;
+    public bool CanGoBack => ExpressMode
+        ? Step > 1 && !IsBusy && !Finished
+        : (Step > 1 || SubStep > 1) && !IsBusy;
 
-    public bool CanGoNext => SubStep < SubStepCount ? SubStepDone && !IsBusy : Step switch
+    public bool CanGoNext => ExpressMode
+        ? Step == 1 && DeviceReady && !IsBusy
+        : SubStep < SubStepCount ? SubStepDone && !IsBusy : Step switch
     {
         1 => DeviceReady && !IsBusy,
         2 => !string.IsNullOrWhiteSpace(_cloudJobId) && !IsBusy,

@@ -27,6 +27,8 @@ public sealed class AgentSettings
     /// <summary>El navegador de automatizacion trabaja sin ventana salvo para diagnosticar.</summary>
     public bool Headless { get; set; } = true;
     public bool StartWithWindows { get; set; }
+    /// <summary>Zona del ultimo cliente instalado; el modo rapido la propone para el siguiente.</summary>
+    public int? LastZoneId { get; set; }
 
     public bool HasHuaweiPassword => !string.IsNullOrEmpty(HuaweiPassword);
     public bool HasZtePassword => !string.IsNullOrEmpty(ZtePassword);
