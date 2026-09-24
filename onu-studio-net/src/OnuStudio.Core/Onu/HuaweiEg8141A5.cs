@@ -407,6 +407,40 @@ public sealed class HuaweiEg8141A5 : IOnuController
         throw new OnuProvisioningException("No se pudo abrir el panel interno de configuracion");
     }
 
+    /// <summary>
+    /// Espera un campo del panel interno. Despues de guardar un cambio (TR-069, WiFi) la
+    /// ONU tarda en volver a servir paginas y el marco queda en blanco: se recarga el
+    /// marco hasta que el campo aparezca o se agote el tiempo.
+    /// </summary>
+    private static async Task<FrameScope> MenuFieldAsync(IPage page, Func<FrameScope, ILocator> field,
+        WaitForSelectorState state = WaitForSelectorState.Attached, int seconds = 45)
+    {
+        var deadline = Stopwatch.StartNew();
+        while (true)
+        {
+            var frame = await MenuFrameAsync(page).ConfigureAwait(false);
+            try
+            {
+                await field(frame).WaitForAsync(new LocatorWaitForOptions { State = state, Timeout = 8000 }).ConfigureAwait(false);
+                return frame;
+            }
+            catch (Exception exception) when (
+                (exception is TimeoutException || exception is PlaywrightException && IsTransientNavigationError(exception))
+                && deadline.Elapsed < TimeSpan.FromSeconds(seconds))
+            {
+                await page.EvaluateAsync("""
+                    () => {
+                        const f = document.getElementById('menuIframe');
+                        if (!f) return;
+                        const src = (f.getAttribute('src') || '').replace(/[?&]_r=\d+/, '');
+                        f.src = src + (src.includes('?') ? '&' : '?') + '_r=' + Date.now();
+                    }
+                    """).ConfigureAwait(false);
+                await Task.Delay(500).ConfigureAwait(false);
+            }
+        }
+    }
+
     private static async Task ClickMenuAsync(IPage page, IReadOnlyList<string> selectors, string text)
     {
         foreach (var selector in selectors)
@@ -809,13 +843,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
     {
         await OpenAdvancedAsync(page).ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#name_wanconfig", "#wanconfig" }, "WAN Configuration").ConfigureAwait(false);
-        var frame = await MenuFrameAsync(page).ConfigureAwait(false);
-        await frame.GetByText("WAN Configuration").WaitForAsync(new LocatorWaitForOptions
-        {
-            State = WaitForSelectorState.Visible,
-            Timeout = 6000,
-        }).ConfigureAwait(false);
-        return frame;
+        return await MenuFieldAsync(page, frame => frame.GetByText("WAN Configuration"), WaitForSelectorState.Visible).ConfigureAwait(false);
     }
 
     private async Task<JsonObject> ConfigureWanAsync(IPage page, ProvisionRequest request)
@@ -971,14 +999,20 @@ public sealed class HuaweiEg8141A5 : IOnuController
 
     // ─────────────────────────── WiFi ───────────────────────────
 
+    private static ILocator WifiFormReady(FrameScope scope) =>
+        scope.Locator("#wlSsid:visible, #wlEnbl:visible, #wlEnable:visible").First;
+
     private async Task<JsonObject> ConfigureWifiAsync(IPage page, ProvisionRequest request)
     {
         await ClickMenuAsync(page, new[] { "#name_wlanconfig", "#wlanconfig" }, "WLAN").ConfigureAwait(false);
-        var frame = await MenuFrameAsync(page).ConfigureAwait(false);
-        await frame.Locator("#wlSsid").WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 6000 }).ConfigureAwait(false);
+        // El formulario existe pero oculto y vacio mientras la pagina termina de cargar: se
+        // espera a que se vea el SSID o, si el WiFi esta apagado, su interruptor.
+        var frame = await MenuFieldAsync(page, WifiFormReady, WaitForSelectorState.Visible).ConfigureAwait(false);
 
         await OnuControls.SetCheckedAsync(frame, "#wlEnbl", request.Wifi.Enabled).ConfigureAwait(false);
         await OnuControls.SetCheckedAsync(frame, "#wlEnable", request.Wifi.Enabled).ConfigureAwait(false);
+        if (request.Wifi.Enabled)
+            await frame.Locator("#wlSsid").WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Visible, Timeout = 8000 }).ConfigureAwait(false);
         await OnuControls.FillAsync(frame, "#wlSsid", request.Wifi.Ssid).ConfigureAwait(false);
         await OnuControls.FillAsync(frame, "#X_HW_AssociateNum", request.Wifi.MaxClients.ToString()).ConfigureAwait(false);
         // El firmware llama al control wlHide, pero lo que envia es SSIDAdvertisementEnabled:
@@ -1014,13 +1048,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         await OpenAdvancedAsync(page).ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#name_securityconfig", "#securityconfig" }, "Security Configuration").ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#wanacl" }, "WAN Access Control Configuration").ConfigureAwait(false);
-        var frame = await MenuFrameAsync(page).ConfigureAwait(false);
-        await frame.GetByText("WAN Access Control Configuration").WaitForAsync(new LocatorWaitForOptions
-        {
-            State = WaitForSelectorState.Visible,
-            Timeout = 6000,
-        }).ConfigureAwait(false);
-        return frame;
+        return await MenuFieldAsync(page, frame => frame.GetByText("WAN Access Control Configuration"), WaitForSelectorState.Visible).ConfigureAwait(false);
     }
 
     internal static List<string> ActualAclRows(IEnumerable<string> rows) => rows
@@ -1102,13 +1130,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         await OpenAdvancedAsync(page).ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#name_securityconfig", "#securityconfig" }, "Security").ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#portacl" }, "Precise Device Access Control").ConfigureAwait(false);
-        var frame = await MenuFrameAsync(page).ConfigureAwait(false);
-        await frame.Locator("#portaclwhite").WaitForAsync(new LocatorWaitForOptions
-        {
-            State = WaitForSelectorState.Visible,
-            Timeout = 6000,
-        }).ConfigureAwait(false);
-        return frame;
+        return await MenuFieldAsync(page, frame => frame.Locator("#portaclwhite"), WaitForSelectorState.Visible).ConfigureAwait(false);
     }
 
     /// <summary>Filas de reglas de la tabla: empiezan con la prioridad y terminan en Permit/Prohibit.</summary>
@@ -1133,6 +1155,18 @@ public sealed class HuaweiEg8141A5 : IOnuController
         row.Contains("Permit", StringComparison.OrdinalIgnoreCase) &&
         (source is null || row.Contains(source, StringComparison.Ordinal));
 
+    /// <summary>
+    /// Regla HTTP permitida desde el origen para la WAN. La tabla recorta los nombres
+    /// largos ("1_TR069_INTE......"): un prefijo recortado del nombre tambien cuenta.
+    /// </summary>
+    internal static bool IsWanPermitRule(string row, string wanName, string sourceStart)
+    {
+        if (!IsPermitRule(row, "HTTP", "HTTP", sourceStart)) return false;
+        if (row.Contains("WAN", StringComparison.OrdinalIgnoreCase) || row.Contains(wanName, StringComparison.OrdinalIgnoreCase)) return true;
+        return Regex.Matches(row, @"(\S{6,}?)\.{3,}").Any(match =>
+            wanName.StartsWith(match.Groups[1].Value, StringComparison.OrdinalIgnoreCase));
+    }
+
     private async Task<JsonObject> ConfigurePreciseAccessAsync(IPage page, ProvisionRequest request)
     {
         var desired = request.RemoteAccess;
@@ -1156,7 +1190,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         if (desired.Ssh) wanProtocols.Add("SSH");
         if (desired.Ftp) wanProtocols.Add("FTP");
         if (desired.Icmp) wanProtocols.Add("ICMP");
-        if (!rules.Any(row => IsPermitRule(row, "WAN", "HTTP", start) || IsPermitRule(row, name, "HTTP", start)))
+        if (!rules.Any(row => IsWanPermitRule(row, name, start)))
             rules = await AddPreciseRuleAsync(page, NextPreciseAclPriority(rules), "2", null, name, (start, end), wanProtocols).ConfigureAwait(false);
 
         frame = await OpenPreciseAclAsync(page).ConfigureAwait(false);
@@ -1231,7 +1265,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         var (start, _) = SourceRange(request.RemoteAccess.Source);
         var name = _configuredWanName ?? WanConnectionName(request);
         var rules = PreciseAclRows(await frame.Locator("tr").AllInnerTextsAsync().ConfigureAwait(false));
-        return rules.Any(row => IsPermitRule(row, "WAN", "HTTP", start) || IsPermitRule(row, name, "HTTP", start))
+        return rules.Any(row => IsWanPermitRule(row, name, start))
             && rules.Any(row => IsPermitRule(row, "LAN", "HTTP"));
     }
 
@@ -1248,7 +1282,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         await OpenAdvancedAsync(page).ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#name_maintaininfo" }, "Maintenance Diagnosis").ConfigureAwait(false);
         await ClickMenuAsync(page, new[] { "#cfgconfig" }, "Configuration File Management").ConfigureAwait(false);
-        var frame = await MenuFrameAsync(page).ConfigureAwait(false);
+        var frame = await MenuFieldAsync(page, scope => scope.GetByRole(AriaRole.Button, "Save"), WaitForSelectorState.Visible).ConfigureAwait(false);
         _dialogs.Clear();
         await frame.GetByRole(AriaRole.Button, "Save").ClickAsync().ConfigureAwait(false);
         await Task.Delay(800).ConfigureAwait(false);
@@ -1343,8 +1377,7 @@ public sealed class HuaweiEg8141A5 : IOnuController
         var tr069Ok = !request.Tr069.Enabled || await VerifyTr069Async(page, request).ConfigureAwait(false);
 
         await ClickMenuAsync(page, new[] { "#name_wlanconfig", "#wlanconfig" }, "WLAN").ConfigureAwait(false);
-        var wifiFrame = await MenuFrameAsync(page).ConfigureAwait(false);
-        await wifiFrame.Locator("#wlSsid").WaitForAsync(new LocatorWaitForOptions { State = WaitForSelectorState.Attached, Timeout = 5000 }).ConfigureAwait(false);
+        var wifiFrame = await MenuFieldAsync(page, WifiFormReady, WaitForSelectorState.Visible).ConfigureAwait(false);
 
         var enabled = await wifiFrame.Locator("#wlEnbl").CountAsync().ConfigureAwait(false) == 1
             ? await OnuControls.IsCheckedAsync(wifiFrame, "#wlEnbl").ConfigureAwait(false)

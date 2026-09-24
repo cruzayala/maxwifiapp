@@ -334,6 +334,17 @@ public class Hs8545M5Tests
         Assert.Equal(8, HuaweiEg8141A5.NextPreciseAclPriority(rules));
         Assert.Equal(1, HuaweiEg8141A5.NextPreciseAclPriority(Array.Empty<string>()));
     }
+
+    [Fact]
+    public void LaReglaWanSeReconoceAunqueLaTablaRecorteElNombre()
+    {
+        // Fila tal cual la muestra la HS8545M5 real.
+        var row = "3 1_TR069_INTE...... 192.168.16.1-192.168...... HTTP -- -- Permit";
+        Assert.True(HuaweiEg8141A5.IsWanPermitRule(row, "1_TR069_INTERNET_R_VID_101", "192.168.16.1"));
+        Assert.False(HuaweiEg8141A5.IsWanPermitRule(row, "2_INTERNET_R_VID_120", "192.168.16.1"));
+        Assert.False(HuaweiEg8141A5.IsWanPermitRule(row, "1_TR069_INTERNET_R_VID_101", "10.0.0.1"));
+        Assert.False(HuaweiEg8141A5.IsWanPermitRule("1 ALL LANs -- HTTP,ICMP -- -- Permit", "1_TR069_INTERNET_R_VID_101", "192.168.16.1"));
+    }
 }
 
 public class GenieAcsTests
