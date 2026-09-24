@@ -105,7 +105,7 @@ public sealed class ProvisioningService
         var label = change.Changed ? "agregada" : "ya configurada";
         report("network", "success", $"IP {change.Address}/{change.PrefixLength} {label} en {change.Adapter.Name}");
 
-        var probe = NetworkTools.ProbeHttp(device.Host, adapterIndex: local.AdapterIndex);
+        var probe = ProbeOnu(device, local.AdapterIndex, report);
         if (!probe.Reachable) throw new NetworkException($"La ONU {device.Host} no responde por HTTP");
         report("reachability", "success", $"ONU accesible en {device.Host} ({probe.LatencyMs} ms)");
 
@@ -128,6 +128,29 @@ public sealed class ProvisioningService
         };
     }
 
+    public const string LinkLocalOnuHost = "fe80::1";
+
+    /// <summary>
+    /// Prueba el puerto HTTP de la ONU. Si la ONU rechaza IPv4 en la LAN (por ejemplo,
+    /// con la lista blanca de acceso activa) sigue respondiendo por IPv6 link-local en la
+    /// misma tarjeta: en ese caso el trabajo continua por esa direccion.
+    /// </summary>
+    public static HttpProbe ProbeOnu(DeviceSettings device, int adapterIndex, ProgressCallback report,
+        Func<string, int, HttpProbe>? probe = null)
+    {
+        probe ??= (host, adapter) => NetworkTools.ProbeHttp(host, adapterIndex: adapter);
+        var direct = probe(device.Host, adapterIndex);
+        if (direct.Reachable || adapterIndex <= 0 || device.Host.Contains(':')) return direct;
+
+        var linkLocal = $"{LinkLocalOnuHost}%{adapterIndex}";
+        var fallback = probe(linkLocal, adapterIndex);
+        if (!fallback.Reachable) return direct;
+
+        report("reachability", "warning", $"La ONU rechaza IPv4 en {device.Host}; se usa su direccion IPv6 local");
+        device.Host = linkLocal;
+        return fallback;
+    }
+
     // ─────────────────────────── Comprobacion ───────────────────────────
 
     public async Task ExecuteCheckAsync(string jobId, ConnectionCheckRequest rawRequest, CancellationToken cancellationToken = default)
@@ -142,7 +165,8 @@ public sealed class ProvisioningService
                 {
                     ["probe"] = new JsonObject
                     {
-                        ["reachable"] = NetworkTools.ProbeHttp(request.Device.Host, adapterIndex: request.LocalNetwork.AdapterIndex).Reachable,
+                        ["reachable"] = ProbeOnu(request.Device, request.LocalNetwork.AdapterIndex,
+                            (step, status, message) => _jobs.Event(jobId, step, status, message)).Reachable,
                     },
                 };
 
