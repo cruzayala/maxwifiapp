@@ -12,7 +12,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\onu-studio.ico</ApplicationIcon>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
-    <Version>2.2.4</Version>
+    <Version>2.2.5</Version>
     <Product>ONU Studio | ISP Max</Product>
     <Company>ISP Max</Company>
   </PropertyGroup>

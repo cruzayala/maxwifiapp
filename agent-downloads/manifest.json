@@ -1,8 +1,8 @@
 {
-    "version":  "2.2.4",
-    "fileName":  "ONU-Studio-ISP-Max-v2.2.4.exe",
-    "sha256":  "79d46b10d695c379e7748efb4f63c684b311740fd45359b4b3ca70a3cb4d906e",
-    "size":  111083004,
+    "version":  "2.2.5",
+    "fileName":  "ONU-Studio-ISP-Max-v2.2.5.exe",
+    "sha256":  "63ae92c49178c83fb968f6ea46f4325b3fd9148cbd2619193afbf4b9353f55ce",
+    "size":  111083030,
     "browserRuntime":  "Microsoft Edge de Windows (ya viene instalado)",
-    "releasedAt":  "2026-09-24T01:20:16.6717728Z"
+    "releasedAt":  "2026-09-24T05:56:09.3838861Z"
 }

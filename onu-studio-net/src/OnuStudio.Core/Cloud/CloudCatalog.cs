@@ -45,7 +45,9 @@ public sealed class CloudIpRow
     public int RangePriority { get; set; }
     public bool Recommended { get; set; }
 
-    public bool IsFree => string.Equals(Status, "free", StringComparison.OrdinalIgnoreCase);
+    // ISP Max marca las libres como "available"; el modo de prueba usa "free".
+    public bool IsFree => string.Equals(Status, "available", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "free", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class CloudCatalogResult
