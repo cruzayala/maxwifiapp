@@ -1113,47 +1113,59 @@ export class ClientDetailComponent implements OnInit {
   saveProfile() {
     const c = this.client();
     if (!c) return;
+    const name = this.editName.replace(/\s+/g, ' ').trim();
     this.saving.set(true);
 
-    // 1. Update nombre via PATCH servicio (siempre funciona)
-    this.api.updateServiceName(c.id_servicio, this.editName).subscribe({
-      next: () => {
-        // 2. Update datos personales via PUT perfil
-        const profileData: any = {
-          nombre: this.editName.split(' ')[0] || this.editName,
-          apellidos: this.editName.split(' ').slice(1).join(' ') || '-',
-          telefono: this.editPhone || '0000000000',
-          cedula: this.editCedula || '-',
-          email: this.editEmail || 'na@na.com',
-          direccion: this.editDireccion || '-',
-          localidad: this.editCiudad || '-',
-          ciudad: this.editCiudad || '-',
-        };
+    const saveProfileData = (renamed: string | null) => {
+      const profileData: any = {
+        nombre: name.split(' ')[0] || name,
+        apellidos: name.split(' ').slice(1).join(' ') || '-',
+        telefono: this.editPhone || '0000000000',
+        cedula: this.editCedula || '-',
+        email: this.editEmail || 'na@na.com',
+        direccion: this.editDireccion || '-',
+        localidad: this.editCiudad || '-',
+        ciudad: this.editCiudad || '-',
+      };
+      this.api.updateProfile(c.id_servicio, profileData).subscribe({
+        next: () => this.onProfileSaved(name, renamed),
+        error: () => this.onProfileSaved(name, renamed), // PUT da 500 pero guarda los datos
+      });
+    };
 
-        this.api.updateProfile(c.id_servicio, profileData).subscribe({
-          next: () => this.onProfileSaved(),
-          error: () => this.onProfileSaved() // PUT da 500 pero guarda los datos
-        });
-      },
+    // 1. El nombre va primero y en los tres lados: WispHub, la cola del MikroTik e ISP Max.
+    if (name === (c.nombre || '').trim()) {
+      saveProfileData(null);
+      return;
+    }
+    this.api.renameClient(c.id_servicio, name).subscribe({
+      next: (result) => saveProfileData(result.mikrotik === 'renamed'
+        ? 'Nombre cambiado en WispHub, MikroTik e ISP Max'
+        : result.mikrotik === 'no_queue'
+        ? 'Nombre cambiado en WispHub e ISP Max (el cliente no tiene cola en el MikroTik)'
+        : 'Nombre cambiado en WispHub e ISP Max'),
       error: (e) => {
         this.saving.set(false);
-        this.toast.error('No se pudo guardar: ' + (e.error?.detail || 'WispHub no respondió. Intente de nuevo.'));
-      }
+        this.toast.error('No se pudo cambiar el nombre: ' + (e.error?.error || 'ISP Max no respondió. Intente de nuevo.'));
+      },
     });
   }
 
-  private async onProfileSaved() {
+  private async onProfileSaved(name: string, renamed: string | null) {
     this.saving.set(false);
     this.editingProfile.set(false);
-    this.toast.success('Datos del cliente actualizados');
+    this.toast.success(renamed ? `${renamed}. Datos del cliente actualizados.` : 'Datos del cliente actualizados');
 
-    // Refresh from API
+    // El nombre del cliente es el del servicio; el resto de datos se relee del perfil.
     const c = this.client()!;
+    const withName = { ...c, nombre: name };
+    this.client.set(withName);
+    this.clientName.set(name);
+    this.db.saveClients([withName]);
     this.api.getClientProfile(c.id_servicio).subscribe({
       next: (profile) => {
-        const updated = { ...c, nombre: profile.nombre + (profile.apellidos ? ' ' + profile.apellidos : ''), telefono: profile.telefono, cedula: profile.cedula, email: profile.email, direccion: profile.direccion, ciudad: profile.ciudad };
+        const updated = { ...withName, telefono: profile.telefono, cedula: profile.cedula, email: profile.email, direccion: profile.direccion, ciudad: profile.ciudad };
         this.client.set(updated);
-        this.clientName.set(updated.nombre);
         this.db.saveClients([updated]); // update local cache
       }
     });

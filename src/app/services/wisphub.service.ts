@@ -5,6 +5,16 @@ import { environment } from '../../environments/environment';
 import { TicketResponse } from '../models/ticket.model';
 import { PlanResponse, ZoneResponse } from '../models/plan.model';
 
+export interface ClientRenameResult {
+  ok: boolean;
+  idServicio: number;
+  before: string;
+  name: string;
+  wisphub: 'renamed' | 'unchanged';
+  mikrotik: 'renamed' | 'unchanged' | 'no_queue';
+  queueName: string | null;
+}
+
 export interface ClientProvisioningRequest {
   jobId?: string;
   zoneId: number;
@@ -43,9 +53,9 @@ export class WisphubService {
     return this.http.get(`${this.api}/clientes/${idServicio}/perfil/`);
   }
 
-  /** Editar nombre del servicio (tambien actualiza nombre en perfil) */
-  updateServiceName(idServicio: number, nombre: string): Observable<any> {
-    return this.http.patch(`${this.api}/clientes/${idServicio}/`, { usuario_rb: nombre });
+  /** Cambia el nombre del cliente en WispHub, en su cola del MikroTik y en ISP Max, y lo verifica. */
+  renameClient(idServicio: number, name: string): Observable<ClientRenameResult> {
+    return this.http.patch<ClientRenameResult>(`/clients-actions/${idServicio}/name`, { name });
   }
 
   /** Editar datos del servicio: IP, plan, zona, MAC, WiFi, etc */

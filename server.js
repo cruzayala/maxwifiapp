@@ -16,7 +16,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const { createProxyMiddleware } = require('http-proxy-middleware');
+const { createProxyMiddleware, fixRequestBody } = require('http-proxy-middleware');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -1221,9 +1221,12 @@ if (API_KEY) {
     pathRewrite: { '^/': '/api/' },
     headers: { 'Authorization': `Api-Key ${API_KEY}` },
     on: {
-      proxyReq: (proxyReq) => {
+      proxyReq: (proxyReq, req) => {
         proxyReq.setHeader('Authorization', `Api-Key ${API_KEY}`);
         proxyReq.setHeader('Accept', 'application/json');
+        // express.json() ya leyo el cuerpo: sin esto el proxy reenvia PATCH/PUT vacios,
+        // WispHub se queda esperando los datos y la web recibe 504 a los 60 s.
+        fixRequestBody(proxyReq, req);
       },
     },
   }));
@@ -3683,18 +3686,82 @@ async function awaitWisphubWrite(pathName, method, body, subject) {
   return response;
 }
 
-function externalProfilePayload(snapshot) {
-  const parts = snapshot.profile.displayName.trim().split(/\s+/);
+/**
+ * Perfil de WispHub con los cambios pedidos. El nombre de la persona (nombre/apellidos)
+ * se conserva tal como esta; solo si esta vacio se toma del nombre del servicio, porque
+ * WispHub lo exige al guardar el perfil.
+ */
+function externalProfilePayload(beforeRaw, idServicio, changes = {}) {
+  const current = { ...externalSnapshot(beforeRaw, idServicio).profile, ...changes };
+  const person = beforeRaw?.profile || {};
+  let nombre = String(person.nombre || '').trim();
+  let apellidos = String(person.apellidos || '').trim();
+  if (!nombre) {
+    const parts = current.displayName.trim().split(/\s+/);
+    nombre = parts[0] || '-';
+    apellidos = apellidos || parts.slice(1).join(' ');
+  }
   return {
-    nombre: parts[0],
-    apellidos: parts.slice(1).join(' '),
-    telefono: snapshot.profile.phone,
-    cedula: snapshot.profile.nationalId,
-    email: snapshot.profile.email,
-    direccion: snapshot.profile.address,
-    localidad: snapshot.profile.city,
-    ciudad: snapshot.profile.city,
+    nombre,
+    apellidos,
+    telefono: current.phone,
+    cedula: current.nationalId,
+    email: current.email,
+    direccion: current.address,
+    localidad: current.city,
+    ciudad: current.city,
   };
+}
+
+// ─── Renombrar un cliente: WispHub (usuario_rb) + cola del MikroTik + ISP Max ───
+const { renameClientService } = require('./lib/client-rename');
+const clientRenamesInProgress = new Set();
+
+function clientRenameDeps(actor) {
+  const queueRow = (row) => (row ? { id: row['.id'], name: row.name } : null);
+  return {
+    readService: (id) => wisphubApiRequest(`clientes/${id}/`, { timeoutMs: 20_000 }),
+    writeServiceName: (id, name) => awaitWisphubWrite(`clientes/${id}/`, 'PATCH', { usuario_rb: name }, 'el nombre del servicio'),
+    findQueue: async (ip) => {
+      const connection = await getMtConnection();
+      return queueRow((await mtWrite(connection, 10_000, '/queue/simple/print', `?target=${ip}/32`))[0]);
+    },
+    queueNameTaken: async (name, exceptId) => {
+      const connection = await getMtConnection();
+      const rows = await mtWrite(connection, 10_000, '/queue/simple/print', `?name=${name}`);
+      return rows.some((row) => row['.id'] !== exceptId);
+    },
+    renameQueue: (id, name) => mtSerialize(async () => {
+      const connection = await getMtConnection();
+      await mtWrite(connection, 10_000, '/queue/simple/set', `=.id=${id}`, `=name=${name}`);
+      mtInvalidate('queues');
+      mtInvalidate('clients-live');
+      mtInvalidate('unknown-devices');
+    }),
+    saveLocal: async (id, name) => {
+      const before = await prisma.client.findUnique({ where: { idServicio: id }, select: { nombre: true } });
+      await prisma.client.updateMany({ where: { idServicio: id }, data: { nombre: name } });
+      await prisma.activity.create({
+        data: {
+          action: 'client_renamed', entityType: 'client', entityId: String(id), entityName: name,
+          details: JSON.stringify({ actor, before: before?.nombre ?? null, after: name, targets: ['wisphub', 'mikrotik', 'isp_max'] }),
+        },
+      });
+    },
+  };
+}
+
+/** Un solo cambio de nombre a la vez por cliente, venga de la web o del celular. */
+async function renameClient(idServicio, name, actor) {
+  if (clientRenamesInProgress.has(idServicio)) {
+    throw Object.assign(new Error('Ya se esta cambiando el nombre de este cliente'), { statusCode: 409 });
+  }
+  clientRenamesInProgress.add(idServicio);
+  try {
+    return await renameClientService({ idServicio, name, deps: clientRenameDeps(actor) });
+  } finally {
+    clientRenamesInProgress.delete(idServicio);
+  }
 }
 
 async function writeAndConfirmWisphub(pathName, method, body, subject, read, confirmed) {
@@ -3710,40 +3777,17 @@ async function writeAndConfirmWisphub(pathName, method, body, subject, read, con
   throw Object.assign(new Error(`WispHub no confirmo ${subject}`), { statusCode: 502 });
 }
 
-async function updateExternalWisphubClient({ idServicio, section, changes, before }) {
+async function updateExternalWisphubClient({ idServicio, section, changes, before, actor }) {
   const read = () => readExternalWisphubClient(idServicio);
-  const beforeSnapshot = externalSnapshot(before, idServicio);
   if (section === 'profile') {
-    const desired = JSON.parse(JSON.stringify(beforeSnapshot));
-    Object.assign(desired.profile, changes);
-    const desiredProfile = externalProfilePayload(desired);
-    await writeAndConfirmWisphub(
-      `clientes/${idServicio}/perfil/`, 'PUT', desiredProfile, 'la edicion del perfil', read,
-      (raw) => Object.entries(changes).every(([field, value]) => externalSnapshot(raw, idServicio).profile[field] === value),
-    );
-    if (Object.hasOwn(changes, 'displayName')) {
-      try {
-        await writeAndConfirmWisphub(
-          `clientes/${idServicio}/`, 'PATCH', { usuario_rb: changes.displayName }, 'el nombre del servicio', read,
-          (raw) => String(raw.detail?.nombre || raw.detail?.servicio || '').trim() === changes.displayName,
-        );
-      } catch (error) {
-        let rolledBack = false;
-        try {
-          await writeAndConfirmWisphub(
-            `clientes/${idServicio}/perfil/`, 'PUT', externalProfilePayload(beforeSnapshot), 'la restauracion del perfil', read,
-            (raw) => externalSnapshot(raw, idServicio).profile.displayName === beforeSnapshot.profile.displayName,
-          );
-          rolledBack = true;
-        } catch {}
-        throw Object.assign(new Error(rolledBack
-          ? 'No se cambio el nombre del servicio; el perfil fue restaurado'
-          : 'WispHub aplico el perfil parcialmente y requiere revision'), {
-          statusCode: 502,
-          code: rolledBack ? 'WISPHUB_ROLLED_BACK' : 'WISPHUB_PARTIAL_UPDATE',
-          cause: error,
-        });
-      }
+    const { displayName, ...personal } = changes;
+    // Primero el nombre (WispHub + MikroTik + ISP Max): si falla, el perfil no se toca.
+    if (displayName !== undefined) await renameClient(idServicio, displayName, actor || 'celular');
+    if (Object.keys(personal).length) {
+      await writeAndConfirmWisphub(
+        `clientes/${idServicio}/perfil/`, 'PUT', externalProfilePayload(before, idServicio, personal), 'la edicion del perfil', read,
+        (raw) => Object.entries(personal).every(([field, value]) => externalSnapshot(raw, idServicio).profile[field] === value),
+      );
     }
     return read();
   }
@@ -8350,6 +8394,15 @@ clientActionsRouter.patch('/:id/alias', asyncHandler(async (req, res) => {
   const data = validateAlias(req.body);
   const updated = await prisma.$transaction(tx => changeAlias(tx, { id: idServicio, data, actor: req.session.username }));
   res.json(updated);
+}));
+
+// PATCH nombre real del cliente: WispHub (usuario_rb), cola del MikroTik e ISP Max.
+clientActionsRouter.patch('/:id/name', requireAnyRole(['tecnico']), asyncHandler(async (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Cliente inválido' });
+  const idServicio = Number(req.params.id);
+  const local = await prisma.client.findUnique({ where: { idServicio }, select: { idServicio: true } });
+  if (!local) return res.status(404).json({ error: 'Cliente no encontrado' });
+  res.json(await renameClient(idServicio, req.body?.name, req.session.username));
 }));
 
 // GET aliases (todos los clientes con alias custom)
