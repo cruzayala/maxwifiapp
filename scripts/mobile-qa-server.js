@@ -53,7 +53,11 @@ async function startQa(port = 0, billingAdapter, provisioningAdapter, mobileInte
     [303, { detail: { id_servicio: 303, nombre: 'Farmacia del Parque', ip: '192.0.2.12' }, profile: { nombre: 'Farmacia', apellidos: 'del Parque' } }],
   ]);
   const qaExternalClient = {
-    read: async (id) => JSON.parse(JSON.stringify(externalClients.get(id))),
+    // Igual que WispHub: un servicio borrado responde 404 "No encontrado.".
+    read: async (id) => {
+      if (!externalClients.has(id)) throw Object.assign(new Error('No encontrado.'), { statusCode: 404 });
+      return JSON.parse(JSON.stringify(externalClients.get(id)));
+    },
     update: async ({ idServicio, section, changes }) => {
       const row = externalClients.get(idServicio);
       if (section === 'profile') {

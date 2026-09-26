@@ -66,6 +66,13 @@ test('a queue left with an old name gets fixed even if WispHub already had the n
   assert.deepEqual(state.calls, ['mikrotik:Ana Gomez', 'local:Ana Gomez']);
 });
 
+test('a client deleted in WispHub is reported clearly and nothing is touched', async () => {
+  const { state, deps } = fakeWorld();
+  deps.readService = async () => { throw Object.assign(new Error('No encontrado.'), { statusCode: 404 }); };
+  await assert.rejects(renameClientService({ idServicio: 850, name: 'Juan Perez', deps }), { code: 'CLIENT_NOT_IN_WISPHUB', status: 404, message: /ya no existe en WispHub/ });
+  assert.deepEqual(state.calls, []);
+});
+
 test('names are validated before any call', () => {
   assert.throws(() => normalizeClientName(' '), /al menos 2/);
   assert.throws(() => normalizeClientName('x'.repeat(101)), /100/);

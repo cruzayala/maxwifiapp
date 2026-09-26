@@ -80,6 +80,24 @@ test('client record edits are local, versioned, idempotent and shared with web s
   assert.equal(JSON.stringify((await api('/clients/301/history', { token })).data).includes('8095550011'), false);
 });
 
+test('a client deleted in WispHub explains itself instead of a generic error', async () => {
+  const { accessToken: token } = await login('admin');
+  const saved = qa.externalClients.get(303);
+  qa.externalClients.delete(303);
+  try {
+    const read = await api('/clients/303/external', { token });
+    assert.equal(read.status, 404);
+    assert.equal(read.data.code, 'CLIENT_NOT_IN_WISPHUB');
+    assert.match(read.data.error, /ya no existe en WispHub/);
+    const write = await api('/clients/303/external', { token, method: 'PATCH', key: crypto.randomUUID(), version: 'a'.repeat(64), body: { section: 'profile', changes: { displayName: 'Nuevo nombre' } } });
+    assert.equal(write.status, 404);
+    assert.equal(write.data.code, 'CLIENT_NOT_IN_WISPHUB');
+    assert.equal((await qa.prisma.client.findUnique({ where: { idServicio: 303 } })).nombre, 'Farmacia del Parque');
+  } finally {
+    qa.externalClients.set(303, saved);
+  }
+});
+
 test('external client edits are live, versioned, idempotent, verified and never expose WiFi passwords', async () => {
   const { accessToken: token } = await login('admin');
   const initial = await api('/clients/301/external', { token });
