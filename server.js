@@ -5679,6 +5679,98 @@ async function runOltSync({ forceInventory = false } = {}) {
   }
 }
 
+// ─── Asociacion automatica ONU -> cliente por MAC (OLT) + ARP (MikroTik) ───
+// Cada ONU sin cliente se lee con un comando liviano y se asocia sola cuando la
+// evidencia lleva a un unico cliente (reglas en lib/olt-mac-autolink.js).
+const { planMacAutoLinks } = require('./lib/olt-mac-autolink');
+const OLT_AUTOLINK_INTERVAL_MS = Number(process.env.OLT_AUTOLINK_INTERVAL_MS ?? 30 * 60_000);
+let oltAutoLinkInProgress = null;
+let oltAutoLinkLast = null;
+
+/** Guarda las asociaciones del plan; nunca pisa una ONU ni un cliente ya asociados. */
+async function applyMacAutoLinks(links, actor) {
+  const applied = [];
+  if (!links.length) return applied;
+  const mappedAt = new Date();
+  await prisma.$transaction(async (tx) => {
+    const taken = new Set((await tx.oltOnu.findMany({
+      where: { clientIdServicio: { not: null } }, select: { clientIdServicio: true },
+    })).map((row) => row.clientIdServicio));
+    for (const link of links) {
+      if (taken.has(link.client.idServicio)) continue;
+      const result = await tx.oltOnu.updateMany({
+        where: { onuIndex: link.onuIndex, clientIdServicio: null },
+        data: { clientIdServicio: link.client.idServicio, mappingSource: 'mac_auto', mappedAt, mappedBy: actor },
+      });
+      if (result.count === 1) { taken.add(link.client.idServicio); applied.push(link); }
+    }
+  });
+  if (applied.length) {
+    await prisma.activity.create({ data: {
+      action: 'olt_onu_auto_linked', entityType: 'olt', entityName: 'Asociacion automatica por MAC',
+      details: JSON.stringify({ actor, applied: applied.length, links: applied.map((link) => ({ onuIndex: link.onuIndex, idServicio: link.client.idServicio, mac: link.mac, ip: link.ip })) }),
+    } }).catch(() => {});
+  }
+  return applied;
+}
+
+async function macAutoLinkContext() {
+  const [clients, linked] = await Promise.all([
+    prisma.client.findMany({ select: { idServicio: true, nombre: true, ip: true, mtMacAddress: true, macCpe: true } }),
+    prisma.oltOnu.findMany({ where: { clientIdServicio: { not: null } }, select: { clientIdServicio: true } }),
+  ]);
+  return { clients, linkedClientIds: linked.map((row) => row.clientIdServicio) };
+}
+
+async function runOnuMacAutoLink({ actor = 'auto:mac' } = {}) {
+  if (oltAutoLinkInProgress) return oltAutoLinkInProgress;
+  oltAutoLinkInProgress = (async () => {
+    const startedAt = Date.now();
+    const status = { startedAt: new Date(startedAt).toISOString(), finishedAt: null, checked: 0, linked: 0, skipped: {}, links: [], error: null };
+    const olt = createOltClient();
+    try {
+      if (oltMutationInProgress) throw new Error('Hay una operacion en la OLT; se reintenta en la proxima vuelta');
+      if (oltSyncInProgress) await oltSyncInProgress.catch(() => {});
+      const candidates = await prisma.oltOnu.findMany({
+        where: { clientIdServicio: null, online: true }, select: { onuIndex: true },
+        orderBy: [{ rack: 'asc' }, { shelf: 'asc' }, { pon: 'asc' }, { onuId: 'asc' }],
+      });
+      const onuMacs = [];
+      for (const { onuIndex } of candidates) {
+        if (oltMutationInProgress) break; // una autorizacion tiene prioridad sobre esta lectura
+        try {
+          onuMacs.push({ onuIndex, macs: (await olt.fetchOnuMacTable(onuIndex)).map((row) => row.macAddress) });
+        } catch {
+          status.skipped.read_error = (status.skipped.read_error || 0) + 1;
+        }
+      }
+      status.checked = onuMacs.length;
+      const connection = await getMtConnection();
+      const arpRows = await mtWrite(connection, 15_000, '/ip/arp/print');
+      const plan = planMacAutoLinks({ onuMacs, arpRows, ...(await macAutoLinkContext()) });
+      for (const row of plan.skipped) status.skipped[row.reason] = (status.skipped[row.reason] || 0) + 1;
+      const applied = await applyMacAutoLinks(plan.links, actor);
+      status.linked = applied.length;
+      status.links = applied.map((link) => ({ onuIndex: link.onuIndex, idServicio: link.client.idServicio, nombre: link.client.nombre, ip: link.ip }));
+      if (applied.length) console.log(`[olt-autolink] ${applied.length} ONU asociadas por MAC de ${status.checked} revisadas`);
+    } catch (error) {
+      status.error = error.message;
+      console.error('[olt-autolink]', error.message);
+    } finally {
+      olt.close();
+      status.finishedAt = new Date().toISOString();
+      status.durationMs = Date.now() - startedAt;
+      oltAutoLinkLast = status;
+    }
+    return status;
+  })();
+  try {
+    return await oltAutoLinkInProgress;
+  } finally {
+    oltAutoLinkInProgress = null;
+  }
+}
+
 function startOltSyncLoop() {
   const configured = createOltClient().isConfigured();
   if (!OLT_ENABLED || !configured) {
@@ -5689,6 +5781,11 @@ function startOltSyncLoop() {
   console.log(`[olt] sync enabled every ${OLT_SYNC_INTERVAL_MS}ms`);
   setTimeout(() => runOltSync({ forceInventory: true }).catch(() => {}), 1000);
   oltSyncTimer = setInterval(() => runOltSync().catch(() => {}), OLT_SYNC_INTERVAL_MS);
+  if (OLT_AUTOLINK_INTERVAL_MS > 0) {
+    console.log(`[olt-autolink] asociacion por MAC cada ${Math.round(OLT_AUTOLINK_INTERVAL_MS / 60_000)} min`);
+    setTimeout(() => runOnuMacAutoLink().catch(() => {}), 3 * 60_000);
+    setInterval(() => runOnuMacAutoLink().catch(() => {}), Math.max(5 * 60_000, OLT_AUTOLINK_INTERVAL_MS));
+  }
   if (OLT_AUTO_AUTHORIZE_AGENT) {
     console.log('[olt-auto] enabled for validated ONU Studio jobs');
     setTimeout(() => runOltAgentAutoAuthorization().catch((error) => console.error('[olt-auto]', error.message)), 5000);
@@ -5863,6 +5960,7 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/service-diagnostics', asyncHandler(a
   }
 
   let mikrotik = { connected: false, queue: null, arp: null, ping: null, error: null };
+  let autoLinkedClient = null;
   let downstream = {
     source: 'none', totalMacs: access.macTable.length, identifiedClients: 0, unknownDevices: 0,
     clients: [], limitation: access.limitation || null,
@@ -5939,6 +6037,19 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/service-diagnostics', asyncHandler(a
         });
       }
       const identifiedIds = new Set(downstreamRows.map((row) => row.client?.idServicio).filter(Number.isInteger));
+      // Lo que esta lectura encontro queda guardado: la ONU no vuelve a aparecer sin cliente.
+      if (onu.clientIdServicio == null && access.macTable.length) {
+        try {
+          const linkedClientIds = (await prisma.oltOnu.findMany({ where: { clientIdServicio: { not: null } }, select: { clientIdServicio: true } })).map((row) => row.clientIdServicio);
+          const plan = planMacAutoLinks({
+            onuMacs: [{ onuIndex, macs: access.macTable.map((row) => row.macAddress) }], arpRows: arp, clients: networkClients, linkedClientIds,
+          });
+          const [link] = await applyMacAutoLinks(plan.links, `diagnostico:${req.session?.username || 'web'}`);
+          if (link) autoLinkedClient = link.client;
+        } catch (error) {
+          console.error('[olt-autolink] diagnostico:', error.message);
+        }
+      }
       downstream = {
         source: access.mode === 'bridge' ? 'olt-fdb-mikrotik' : (access.mode === 'router' ? 'subscriber-wan' : 'best-effort'),
         totalMacs: access.macTable.length,
@@ -5985,6 +6096,7 @@ oltRouter.get('/onus/:rack/:shelf/:pon/:onu/service-diagnostics', asyncHandler(a
   res.json({
     onuIndex, capturedAt: new Date().toISOString(), ready,
     score: Math.round((passed / checks.length) * 100), checks, client: linkedClient, mikrotik, agentInventory, access, downstream,
+    autoLinkedClient,
     recommendation: ready ? 'Servicio listo para entrega' : checks.filter((check) => check.required && !check.ok).map((check) => check.label),
   });
 }));
@@ -6252,6 +6364,22 @@ async function createOltAssociationPreview() {
   ]);
   return buildOltAssociationPlan(onus, clients);
 }
+
+oltRouter.get('/reconciliation/mac-autolink', asyncHandler(async (_req, res) => {
+  res.json({
+    enabled: OLT_AUTOLINK_INTERVAL_MS > 0,
+    intervalMs: OLT_AUTOLINK_INTERVAL_MS,
+    running: Boolean(oltAutoLinkInProgress),
+    last: oltAutoLinkLast,
+  });
+}));
+
+// Lee ahora todas las ONUs sin cliente. Tarda unos minutos: se lanza y se consulta con GET.
+oltRouter.post('/reconciliation/mac-autolink/run', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const running = Boolean(oltAutoLinkInProgress);
+  if (!running) runOnuMacAutoLink({ actor: `auto:mac:${req.session.username}` }).catch(() => {});
+  res.status(202).json({ started: !running, running: true, last: oltAutoLinkLast });
+}));
 
 oltRouter.get('/reconciliation/associations/preview', asyncHandler(async (_req, res) => {
   res.json(await createOltAssociationPreview());

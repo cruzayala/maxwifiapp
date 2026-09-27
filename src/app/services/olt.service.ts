@@ -172,7 +172,7 @@ export interface OltOnu {
   onlineDuration?: string | null;
   lastOfflineCause?: string | null;
   clientIdServicio?: number | null;
-  mappingSource?: 'serial' | 'manual' | null;
+  mappingSource?: 'serial' | 'manual' | 'mac_auto' | null;
   mappedAt?: string | null;
   mappedBy?: string | null;
   client?: OltClientSummary | null;
@@ -353,10 +353,27 @@ export interface OltOpticalReading {
   capturedAt: string;
 }
 
+export interface OltMacAutoLinkStatus {
+  enabled: boolean;
+  intervalMs: number;
+  running: boolean;
+  last: {
+    startedAt: string;
+    finishedAt: string | null;
+    checked: number;
+    linked: number;
+    skipped: Record<string, number>;
+    links: Array<{ onuIndex: string; idServicio: number; nombre: string; ip: string | null }>;
+    error: string | null;
+  } | null;
+}
+
 export interface OltServiceDiagnostic {
   onuIndex: string;
   capturedAt: string;
   ready: boolean;
+  /** Cliente que esta lectura encontro por MAC y dejo asociado a la ONU. */
+  autoLinkedClient?: { idServicio: number; nombre: string; ip: string | null } | null;
   score: number;
   checks: Array<{ key: string; label: string; ok: boolean; required: boolean; detail: string }>;
   recommendation: string | string[];
@@ -791,6 +808,8 @@ export class OltService {
   }
   getReconciliation() { return this.http.get<OltReconciliation>('/olt-api/reconciliation'); }
   getAssociationPreview() { return this.http.get<OltAssociationPreview>('/olt-api/reconciliation/associations/preview'); }
+  getMacAutoLinkStatus() { return this.http.get<OltMacAutoLinkStatus>('/olt-api/reconciliation/mac-autolink'); }
+  runMacAutoLink() { return this.http.post<{ started: boolean; running: boolean }>('/olt-api/reconciliation/mac-autolink/run', {}); }
   applyAssociationPreview(confirmation: string) {
     return this.http.post<{ ok: boolean; applied: number; skipped: unknown[]; preview: OltAssociationPreview }>(
       '/olt-api/reconciliation/associations/apply', { confirmation },

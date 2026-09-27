@@ -472,3 +472,8 @@ a.secondary-action, .client-link { text-decoration: none; }.client-link { color:
 .view-switch button.active { border-color: #cbdce2; background: #fff; color: #1f6b72; box-shadow: 0 1px 3px rgba(20, 33, 45, .08); }
 .view-switch button:focus-visible { outline: 2px solid #0b6b52; outline-offset: 1px; }
 @media (max-width: 640px) { .view-switch-label { display: none; } .view-switch button { flex: 1 1 auto; justify-content: center; } }
+
+.autolink-note { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.autolink-note > svg { flex: 0 0 auto; }
+.autolink-note > span { flex: 1 1 260px; }
+.autolink-note .empty-refresh { margin-top: 0; }

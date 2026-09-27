@@ -32,7 +32,7 @@ import { forkJoin } from 'rxjs';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { AuthService } from '../../services/auth.service';
 import {
-  OltActivity, OltAlarm, OltAssociationPreview, OltClientSummary, OltOnu, OltOnuPage, OltOpticalReading, OltPon,
+  OltActivity, OltAlarm, OltAssociationPreview, OltClientSummary, OltMacAutoLinkStatus, OltOnu, OltOnuPage, OltOpticalReading, OltPon,
   OltOperationPreview, OltPlanSyncPreview, OltProvisioningCatalog, OltProvisioningPayload, OltProvisioningPreview, OltProvisioningProfile, OltProvisioningResult,
   OltReconciliation, OltService, OltServiceDiagnostic, OltSignalAlert, OltSplitter, OltStatus, OltUnconfiguredOnu,
   ProvisioningCancellationPreview, ProvisioningIpAddress, ProvisioningIpCatalog, ProvisioningIpReservation, ProvisioningJob,
@@ -165,6 +165,9 @@ export class OltComponent implements OnInit, OnDestroy {
   readonly associationPreview = signal<OltAssociationPreview | null>(null);
   readonly associationLoading = signal(false);
   readonly associationSaving = signal(false);
+  /** Asociacion automatica por MAC: la hace el servidor solo cada 30 min. */
+  readonly macAutoLink = signal<OltMacAutoLinkStatus | null>(null);
+  private macAutoLinkPoll?: ReturnType<typeof setInterval>;
   readonly activity = signal<OltActivity[]>([]);
   readonly selectedOnu = signal<OltOnu | null>(null);
   readonly selectedMapOnu = signal<OltOnu | null>(null);
@@ -347,6 +350,7 @@ export class OltComponent implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.refreshTimer) clearInterval(this.refreshTimer);
+    clearInterval(this.macAutoLinkPoll);
     if (this.searchTimer) clearTimeout(this.searchTimer);
     if (this.clientSearchTimer) clearTimeout(this.clientSearchTimer);
     if (this.provisioningClientSearchTimer) clearTimeout(this.provisioningClientSearchTimer);
@@ -355,6 +359,7 @@ export class OltComponent implements OnInit, OnDestroy {
 
   loadAll(silent = false) {
     if (!silent) this.loading.set(true);
+    this.olt.getMacAutoLinkStatus().subscribe({ next: (status) => this.macAutoLink.set(status), error: () => {} });
     forkJoin({
       status: this.olt.getStatus(),
       pons: this.olt.getPons(),
@@ -1213,7 +1218,15 @@ export class OltComponent implements OnInit, OnDestroy {
     if (!onu || this.diagnosticLoading()) return;
     this.diagnosticLoading.set(true);
     this.olt.getServiceDiagnostics(onu).subscribe({
-      next: (diagnostic) => { this.serviceDiagnostic.set(diagnostic); this.diagnosticLoading.set(false); },
+      next: (diagnostic) => {
+        this.serviceDiagnostic.set(diagnostic);
+        this.diagnosticLoading.set(false);
+        const linked = diagnostic.autoLinkedClient;
+        if (linked) {
+          this.toast.success(`ONU asociada a ${linked.nombre}: la red confirmó su IP ${linked.ip || ''}`.trim());
+          this.loadAll(true);
+        }
+      },
       error: (error: { error?: { error?: string } }) => {
         this.diagnosticLoading.set(false);
         this.toast.error(error.error?.error || 'No se pudo verificar el servicio completo');
@@ -1316,6 +1329,40 @@ export class OltComponent implements OnInit, OnDestroy {
         this.toast.error(error.error?.error || 'No se pudieron guardar las asociaciones');
       },
     });
+  }
+
+  /** Lee ahora las ONUs sin cliente y asocia las que la red identifica. Tarda unos minutos. */
+  runMacAutoLink() {
+    if (this.macAutoLink()?.running) return;
+    this.olt.runMacAutoLink().subscribe({
+      next: () => {
+        this.macAutoLink.update((status) => status ? { ...status, running: true } : status);
+        this.toast.success('Leyendo las ONUs sin cliente en la OLT. Tarda unos minutos.');
+        clearInterval(this.macAutoLinkPoll);
+        this.macAutoLinkPoll = setInterval(() => this.olt.getMacAutoLinkStatus().subscribe({
+          next: (status) => {
+            this.macAutoLink.set(status);
+            if (status.running) return;
+            clearInterval(this.macAutoLinkPoll);
+            if (status.last?.error) this.toast.error(`Asociación automática: ${status.last.error}`);
+            else this.toast.success(`${status.last?.linked || 0} ONU asociadas por la red de ${status.last?.checked || 0} revisadas`);
+            this.loadAll(true);
+          },
+          error: () => clearInterval(this.macAutoLinkPoll),
+        }), 10_000);
+      },
+      error: (error: { error?: { error?: string } }) => this.toast.error(error.error?.error || 'No se pudo iniciar la asociación automática'),
+    });
+  }
+
+  macAutoLinkSummary(): string {
+    const status = this.macAutoLink();
+    if (!status?.enabled) return '';
+    if (status.running) return 'Asociación automática en curso…';
+    const last = status.last;
+    if (!last?.finishedAt) return `Asociación automática cada ${Math.round(status.intervalMs / 60_000)} min`;
+    if (last.error) return `Asociación automática: ${last.error}`;
+    return `Asociación automática ${this.timeAgo(last.finishedAt)}: ${last.linked} asociadas de ${last.checked} revisadas`;
   }
 
   associationConflictLabel(reason: string) {

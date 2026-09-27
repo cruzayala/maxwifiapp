@@ -210,7 +210,7 @@
             }
             <article class="service-diagnostic">
               <div class="drawer-section-title"><div><strong>Datos OLT</strong><span>Inventario y asociación actual.</span></div></div>
-              <dl class="detail-list"><div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div><div><dt>Cliente</dt><dd>{{ onu.client?.nombre || onu.name || 'Sin nombre' }}</dd></div><div><dt>IP</dt><dd class="mono">{{ onu.client?.ip || onu.agentInventory?.summary?.wanIp || '--' }}</dd></div><div><dt>Tiempo en línea</dt><dd>{{ onu.onlineDuration || '--' }}</dd></div><div><dt>Asociación</dt><dd>{{ onu.mappingSource === 'manual' ? 'Manual' : (onu.mappingSource === 'serial' ? 'Serial WispHub' : (onu.name ? 'Nombre registrado en OLT' : '--')) }}</dd></div><div><dt>Última lectura</dt><dd>{{ formatDate(onu.lastDetailAt) }}</dd></div></dl>
+              <dl class="detail-list"><div><dt>Modelo</dt><dd>{{ onu.model || '--' }}</dd></div><div><dt>Cliente</dt><dd>{{ onu.client?.nombre || onu.name || 'Sin nombre' }}</dd></div><div><dt>IP</dt><dd class="mono">{{ onu.client?.ip || onu.agentInventory?.summary?.wanIp || '--' }}</dd></div><div><dt>Tiempo en línea</dt><dd>{{ onu.onlineDuration || '--' }}</dd></div><div><dt>Asociación</dt><dd>{{ onu.mappingSource === 'manual' ? 'Manual' : (onu.mappingSource === 'serial' ? 'Serial WispHub' : (onu.mappingSource === 'mac_auto' ? 'Automática por la red (MAC e IP)' + (onu.name ? ' · en la OLT: ' + onu.name : '') : (onu.name ? 'Nombre registrado en OLT' : '--'))) }}</dd></div><div><dt>Última lectura</dt><dd>{{ formatDate(onu.lastDetailAt) }}</dd></div></dl>
             </article>
             @if (auth.hasRole(['admin'])) {
               <article class="service-diagnostic onu-operations">
@@ -276,6 +276,17 @@
         }
         <button class="secondary-action" type="button" (click)="exportInventory()" [disabled]="!inventoryRows().length" title="Descargar en CSV las ONUs de esta vista"><svg lucideDownload size="15" aria-hidden="true"></svg>Exportar CSV</button>
       </div>
+      @if (macAutoLinkSummary()) {
+        <p class="inventory-note autolink-note">
+          <svg lucideLink2 size="14" aria-hidden="true"></svg>
+          <span>{{ macAutoLinkSummary() }}. Cada ONU sin cliente se asocia sola cuando la red confirma a quién le da internet.</span>
+          @if (auth.hasRole(['admin'])) {
+            <button type="button" class="empty-refresh" (click)="runMacAutoLink()" [disabled]="macAutoLink()?.running">
+              <svg lucideRefreshCw size="13" [class.spinning]="macAutoLink()?.running" aria-hidden="true"></svg>{{ macAutoLink()?.running ? 'Asociando…' : 'Asociar ahora' }}
+            </button>
+          }
+        </p>
+      }
       @if (localSignalFilter()) {
         <p class="inventory-note">Mostrando ONUs en línea con señal {{ localSignalFilter() === 'critical' ? 'crítica (-30 dBm o menos)' : 'débil (entre -27 y -30 dBm)' }}, de peor a mejor, calculadas con las {{ mapOnus().length }} ONUs de la última lectura.</p>
       }
