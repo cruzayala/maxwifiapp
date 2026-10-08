@@ -291,3 +291,14 @@ test('OLT client mappings survive state-only syncs and manual links take precede
   assert.equal(resolveClientMapping(automatic, 30, true).clientIdServicio, 30);
   assert.equal(resolveClientMapping(automatic, null, true).clientIdServicio, null);
 });
+
+test('network (MAC) links survive inventory reads unless the serial points elsewhere', () => {
+  const network = { clientIdServicio: 40, mappingSource: 'mac_auto' };
+  assert.deepEqual(resolveClientMapping(network, null, true), {});
+  assert.deepEqual(resolveClientMapping(network, null, false), {});
+  const replaced = resolveClientMapping(network, 41, true);
+  assert.equal(replaced.clientIdServicio, 41);
+  assert.equal(replaced.mappingSource, 'serial');
+  // Una asociacion por serial que ya esta bien no se reescribe en cada lectura.
+  assert.deepEqual(resolveClientMapping({ clientIdServicio: 41, mappingSource: 'serial' }, 41, true), {});
+});
