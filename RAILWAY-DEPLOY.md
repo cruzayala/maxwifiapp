@@ -22,7 +22,7 @@ railway init
 railway up --detach -m "Initial ISP Max deployment"
 ```
 
-Railway usa `Dockerfile`, `railway.json` y `npm run start:prod`.
+Railway usa el `Dockerfile` y la configuracion de `.railway/railway.ts` (compilacion, arranque y `/health`); ver `.railway/README.md`. Los instaladores (APK y ONU Studio) no viajan en el deploy: se suben al volumen con `bash scripts/publish-installers.sh`.
 
 ## SQLite persistente
 

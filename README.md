@@ -50,7 +50,7 @@ La APK firmada se genera con `scripts/build-android-private.ps1` (la firma vive 
 
 ## Despliegue
 
-Producción corre en Railway con el `Dockerfile` y `railway.json`: ver `RAILWAY-DEPLOY.md`.
+Producción corre en Railway con el `Dockerfile` y `.railway/railway.ts`: ver `RAILWAY-DEPLOY.md`.
 
 ```bash
 railway up --service "ISP max" --environment production --detach
