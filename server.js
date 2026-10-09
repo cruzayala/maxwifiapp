@@ -523,6 +523,45 @@ usersRouter.get('/', requireRole(['admin']), asyncHandler(async (req, res) => {
   res.json(users);
 }));
 
+// Sesiones de la app Android: desde la web se ve que celulares tienen sesion abierta y se
+// cierra la de uno perdido o robado (antes solo se podia desde otro celular con la app).
+usersRouter.get('/mobile-sessions', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const now = new Date();
+  const sessions = await prisma.mobileSession.findMany({
+    where: { OR: [{ revokedAt: null, expiresAt: { gt: now } }, { revokedAt: { gt: new Date(now.getTime() - 7 * 86_400_000) } }] },
+    select: { id: true, userId: true, deviceName: true, lastSeenAt: true, createdAt: true, revokedAt: true, expiresAt: true },
+    orderBy: [{ revokedAt: 'asc' }, { lastSeenAt: 'desc' }],
+    take: 200,
+  });
+  const owners = await prisma.user.findMany({ where: { id: { in: [...new Set(sessions.map((row) => row.userId))] } }, select: { id: true, username: true, fullName: true, role: true } });
+  const byId = new Map(owners.map((user) => [user.id, user]));
+  res.json({ items: sessions.map((row) => {
+    const owner = byId.get(row.userId);
+    return {
+      ...row,
+      username: owner?.username || 'Usuario eliminado',
+      fullName: owner?.fullName || null,
+      status: row.revokedAt ? 'revoked' : row.expiresAt <= now ? 'expired' : 'active',
+      canRevoke: !row.revokedAt && (req.session.role === 'super_admin' || owner?.role !== 'super_admin'),
+    };
+  }) });
+}));
+
+usersRouter.delete('/mobile-sessions/:id', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const target = await prisma.mobileSession.findUnique({ where: { id: String(req.params.id) } });
+  if (!target) return res.status(404).json({ error: 'Sesion no encontrada' });
+  const owner = await prisma.user.findUnique({ where: { id: target.userId }, select: { username: true, role: true } });
+  if (owner?.role === 'super_admin' && req.session.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Solo un super administrador puede cerrar esta sesion' });
+  }
+  // La app comprueba la sesion en cada consulta: queda fuera desde la siguiente.
+  const { count } = await prisma.mobileSession.updateMany({ where: { id: target.id, revokedAt: null }, data: { revokedAt: new Date() } });
+  if (count) {
+    await logActivity(req, { action: 'mobile.session.revoke', entityType: 'mobileSession', entityId: target.id, entityName: `${owner?.username || target.userId} · ${target.deviceName || 'celular'}` });
+  }
+  res.json({ success: true, revoked: count > 0 });
+}));
+
 // Crear usuario (super_admin)
 usersRouter.post('/', requireRole(['super_admin']), asyncHandler(async (req, res) => {
   const { username, password, fullName, email, role } = req.body || {};

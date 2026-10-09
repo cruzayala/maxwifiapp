@@ -20,6 +20,16 @@ interface ManagedUser {
 
 type ModalMode = 'create' | 'edit' | 'password' | null;
 
+interface MobileSessionRow {
+  id: string;
+  username: string;
+  fullName: string | null;
+  deviceName: string;
+  lastSeenAt: string;
+  status: 'active' | 'revoked' | 'expired';
+  canRevoke: boolean;
+}
+
 @Component({
   selector: 'app-users',
   standalone: true,
@@ -144,6 +154,46 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
             </div>
           }
         </section>
+
+        <section class="table-panel">
+          <div class="panel-toolbar">
+            <div>
+              <h3>Sesiones en celulares (app Android)</h3>
+              <span class="toolbar-note">Si se pierde o roban un celular, cierra su sesión aquí: la app queda fuera desde su siguiente consulta.</span>
+            </div>
+            <button class="btn btn-secondary" type="button" (click)="loadMobileSessions()" [disabled]="sessionsLoading()">{{ sessionsLoading() ? 'Actualizando…' : 'Actualizar' }}</button>
+          </div>
+          @if (!mobileSessions().length) {
+            <div class="state-panel compact"><p>{{ sessionsLoading() ? 'Cargando sesiones…' : 'No hay celulares con sesión abierta.' }}</p></div>
+          } @else {
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Usuario</th><th>Celular</th><th>Última actividad</th><th>Estado</th><th class="actions-heading">Acción</th></tr>
+                </thead>
+                <tbody>
+                  @for (row of mobileSessions(); track row.id) {
+                    <tr>
+                      <td><div class="user-cell"><div><strong>{{ row.fullName || row.username }}</strong><span>{{ '@' + row.username }}</span></div></div></td>
+                      <td>{{ row.deviceName || 'Sin nombre' }}</td>
+                      <td class="last-login">{{ formatDate(row.lastSeenAt) }}</td>
+                      <td>
+                        <span class="status-badge" [class.active]="row.status === 'active'" [class.inactive]="row.status !== 'active'">
+                          <span class="status-dot"></span>{{ sessionStatusLabel(row) }}
+                        </span>
+                      </td>
+                      <td>
+                        @if (row.canRevoke) {
+                          <button class="btn btn-secondary danger-text" type="button" (click)="revokeMobileSession(row)" [disabled]="revokingSession() === row.id">{{ revokingSession() === row.id ? 'Cerrando…' : 'Cerrar sesión' }}</button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </section>
       }
     </div>
 
@@ -237,6 +287,7 @@ type ModalMode = 'create' | 'edit' | 'password' | null;
     .btn-primary:hover:not(:disabled) { background: #08523f; }
     .btn-secondary { background: #eef2ee; color: #44534b; }
     .btn-secondary:hover { background: #e0e6e1; }
+    .danger-text { color: #b42318; }
     .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 18px; }
     .summary-item { background: white; border: 1px solid #e0e6e1; border-radius: 12px; padding: 17px 19px; }
     .summary-label, .summary-note { display: block; color: #5d6d65; font-size: 12px; }
@@ -281,6 +332,7 @@ export class UsersComponent implements OnInit {
 
   ngOnInit() {
     this.loadUsers();
+    this.loadMobileSessions();
   }
 
   isSuperAdmin() { return this.auth.hasRole(['super_admin']); }
@@ -292,6 +344,31 @@ export class UsersComponent implements OnInit {
     const term = this.searchTerm.trim().toLowerCase();
     if (!term) return this.users();
     return this.users().filter(user => [user.username, user.fullName, user.email, this.roleLabel(user.role)].some(value => String(value || '').toLowerCase().includes(term)));
+  }
+
+  mobileSessions = signal<MobileSessionRow[]>([]);
+  sessionsLoading = signal(false);
+  revokingSession = signal<string | null>(null);
+
+  loadMobileSessions() {
+    this.sessionsLoading.set(true);
+    this.http.get<{ items: MobileSessionRow[] }>('/users/mobile-sessions').subscribe({
+      next: (result) => { this.mobileSessions.set(result.items || []); this.sessionsLoading.set(false); },
+      error: () => { this.mobileSessions.set([]); this.sessionsLoading.set(false); },
+    });
+  }
+
+  sessionStatusLabel(row: MobileSessionRow): string {
+    return row.status === 'active' ? 'Abierta' : row.status === 'revoked' ? 'Cerrada' : 'Vencida';
+  }
+
+  revokeMobileSession(row: MobileSessionRow) {
+    if (!confirm(`¿Cerrar la sesión de ${row.fullName || row.username} en "${row.deviceName || 'su celular'}"?\n\nLa app de ese celular pedirá iniciar sesión de nuevo.`)) return;
+    this.revokingSession.set(row.id);
+    this.http.delete<{ revoked: boolean }>(`/users/mobile-sessions/${encodeURIComponent(row.id)}`).subscribe({
+      next: () => { this.revokingSession.set(null); this.toast.success('Sesión del celular cerrada'); this.loadMobileSessions(); },
+      error: (error) => { this.revokingSession.set(null); this.toast.error(error.error?.error || 'No se pudo cerrar la sesión'); },
+    });
   }
 
   loadUsers() {
