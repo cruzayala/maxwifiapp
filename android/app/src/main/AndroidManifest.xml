@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Instalar la actualizacion publicada por el servidor (Android pide confirmacion siempre). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <application android:label="ISP Max" android:icon="@drawable/ic_ispmax"
         android:allowBackup="false" android:usesCleartextTraffic="false"
         android:dataExtractionRules="@xml/data_extraction_rules"

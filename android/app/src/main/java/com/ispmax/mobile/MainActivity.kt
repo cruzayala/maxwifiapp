@@ -129,7 +129,9 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                     visible.forEach { item -> NavigationBarItem(selected = section == item.key, onClick = { section = item.key; route = ""; clientId = 0 }, icon = { NavigationGlyph(item.icon, item.label, section == item.key) }, label = { Text(item.label, maxLines = 1, fontSize = 11.sp) }) }
                 } }
             ) { padding ->
-                Box(Modifier.padding(padding).fillMaxSize()) {
+                Column(Modifier.padding(padding).fillMaxSize()) {
+                AppUpdateBanner(vm)
+                Box(Modifier.weight(1f).fillMaxWidth()) {
                     val current = if (clientId != 0) "client-$clientId" else route.ifBlank { section }
                     key(app.server, user.optInt("id")) {
                     val screenStates = rememberSaveableStateHolder()
@@ -179,6 +181,7 @@ private val destinations = listOf(Destination("home", "Inicio", Icons.Outlined.S
                     }
                     }
                     }
+                }
                 }
             }
         }
@@ -526,6 +529,8 @@ private val moduleIcons = mapOf("web-settings" to Icons.Outlined.Settings, "web-
         PrimaryScrollableTabRow(tab.coerceAtMost(if (recordsWrite) 5 else 4), edgePadding = 0.dp) { (listOf("Datos", "Servicio", "Equipos", "Notas") + (if (recordsWrite) listOf("Historial") else emptyList()) + listOf("Más")).forEachIndexed { index, label -> Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label, maxLines = 1, fontSize = 13.sp) }) } }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             ReadStatus(state) { vm.load(path, true) }
+            // WispHub ya no tiene este servicio (404): se conserva el historial, pero no se cobra y su IP puede ser de otro cliente.
+            if (client != null && client.text("missingFromWisphubAt", "").isNotBlank()) Notice("Este servicio ya no existe en WispHub. Se conserva su historial, pero no se cobra, las automatizaciones no lo tocan y su IP puede ser ya de otro cliente.", true)
             if (client != null) when (tab) {
                 0 -> {
                     if (externalWrite) Button(onClick = { editExternal = "profile" }, modifier = Modifier.fillMaxWidth()) { Icon(Icons.Outlined.CloudSync, null); Spacer(Modifier.width(8.dp)); Text("Editar datos en WispHub") }

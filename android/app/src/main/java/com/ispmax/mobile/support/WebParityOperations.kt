@@ -32,6 +32,12 @@ fun WebParityOperationsScreen(vm: MainViewModel, pages: Map<String, PageState>, 
     }
 }
 
+/** Hora local (p. ej. "9:10 a. m.") de una fecha ISO del servidor; vacio si no se puede leer. */
+private fun clockTime(iso: String): String = runCatching {
+    val instant = java.time.Instant.parse(iso)
+    java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.forLanguageTag("es-DO")).withZone(java.time.ZoneId.systemDefault()).format(instant)
+}.getOrDefault("--")
+
 /** Sincronizacion general de clientes con WispHub (web: Inicio, Clientes y En vivo). Solo administradores. */
 @Composable
 fun WebParitySyncCard(vm: MainViewModel, pages: Map<String, PageState>, role: String) {
@@ -43,9 +49,15 @@ fun WebParitySyncCard(vm: MainViewModel, pages: Map<String, PageState>, role: St
     WebSection("Sincronizar con WispHub", "Actualiza clientes y facturas guardados. No borra registros.") {
         ReadStatus(pages[path] ?: PageState(loading = true)) { vm.load(path, true) }
         WebValue("Ultima sincronizacion", status?.text("lastSyncAt", "Nunca") ?: "Consultando")
+        // El servidor espacia los intentos mientras WispHub esta caido (Cloudflare 521/524).
+        status?.optJSONObject("wisphub")?.takeIf { it.optString("state") == "down" }?.let { outage ->
+            Notice("WispHub no responde desde las ${clockTime(outage.optString("since"))} (${outage.optInt("consecutiveFailures")} intentos). Los clientes y las facturas pueden estar desactualizados; MikroTik y OLT siguen en vivo. Proximo intento automatico: ${clockTime(outage.optString("nextAttemptAt"))}.", true)
+        }
         status?.optJSONObject("lastSyncResult")?.let { last ->
             Text("Ultimo resultado: ${last.optInt("updated")} clientes actualizados" + (if (last.optInt("errors") > 0) " · ${last.optInt("errors")} con errores" else ""), style = MaterialTheme.typography.bodySmall)
-            last.optJSONObject("sources")?.optJSONObject("wisphub")?.let { source -> if (source.optString("error").isNotBlank()) Notice("WispHub: ${source.optString("error")}", true) }
+            // sources.wisphub es un texto ("ok"/"error"); el detalle viene en sourceErrors.
+            val errors = last.optJSONArray("sourceErrors")
+            if (errors != null) (0 until errors.length()).map { errors.optString(it) }.filter { it.isNotBlank() }.take(3).forEach { Notice(it, true) }
         }
         WebActionFeedback(actions)
         OutlinedButton(onClick = {

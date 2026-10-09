@@ -12,6 +12,9 @@ import java.util.UUID
 
 data class PageState(val body: JSONObject? = null, val loading: Boolean = false, val error: String? = null, val cached: Boolean = false, val savedAt: Long = 0)
 data class AppState(val ready: Boolean = false, val user: JSONObject? = null, val server: String = "", val busy: Boolean = false, val error: String? = null, val capabilities: JSONObject? = null)
+/** Version publicada en el servidor (agent-downloads/android-manifest.json) mas nueva que la instalada. */
+data class AppUpdate(val version: String, val versionCode: Int, val sizeBytes: Long, val sha256: String, val notes: List<String>)
+data class UpdateState(val available: AppUpdate? = null, val downloading: Boolean = false, val progress: Float = 0f, val file: java.io.File? = null, val error: String? = null, val dismissed: Boolean = false)
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = LocalDatabase.open(application)
@@ -23,13 +26,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val jobs = mutableMapOf<String, Job>()
     private val _ipRanges = MutableStateFlow<List<LocalIpRange>>(emptyList())
     val ipRanges = _ipRanges.asStateFlow()
+    private val _update = MutableStateFlow(UpdateState())
+    val update = _update.asStateFlow()
     init {
         viewModelScope.launch {
             try {
                 repo.restore()
                 _app.value = AppState(ready = true, user = repo.user, server = repo.base)
                 ensureIpRanges()
-                if (repo.user != null) capabilities()
+                if (repo.user != null) { capabilities(); checkUpdate() }
             } catch (_: Exception) { _app.value = AppState(ready = true, error = "No se pudo abrir la sesion cifrada. Inicia sesion de nuevo.") }
         }
     }
@@ -42,7 +47,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _pages.value = emptyMap()
                 _app.value = AppState(ready = true, user = repo.user, server = repo.base)
                 capabilities()
+                checkUpdate()
             } catch (error: Exception) { _app.update { it.copy(busy = false, error = error.message ?: "No se pudo conectar") } }
+        }
+    }
+    /** Si hay una version publicada mas nueva, el aviso aparece arriba en todas las pantallas. */
+    private suspend fun checkUpdate() {
+        try {
+            val latest = repo.web("/android-api/latest", "GET")
+            val code = latest.optInt("versionCode")
+            val sha = latest.optString("sha256")
+            if (code > BuildConfig.VERSION_CODE && sha.length == 64) {
+                val notes = latest.optJSONArray("notes")?.let { list -> (0 until list.length()).map { list.optString(it) }.filter { it.isNotBlank() } } ?: emptyList()
+                _update.value = UpdateState(available = AppUpdate(latest.optString("version"), code, latest.optLong("sizeBytes"), sha, notes))
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            // Sin aviso si no se pudo consultar: no es motivo para molestar.
+        }
+    }
+    fun dismissUpdate() { _update.update { it.copy(dismissed = true) } }
+    fun downloadUpdate() {
+        val target = _update.value.available ?: return
+        if (_update.value.downloading) return
+        viewModelScope.launch {
+            _update.update { it.copy(downloading = true, progress = 0f, error = null) }
+            try {
+                val file = java.io.File(getApplication<Application>().cacheDir, "updates/ISP-Max-${target.versionCode}.apk")
+                var shown = -1
+                repo.downloadUpdate(file, target.sha256) { done, total ->
+                    val percent = if (total > 0) (done * 100 / total).toInt() else -1
+                    if (percent != shown) { shown = percent; _update.update { it.copy(progress = percent.coerceAtLeast(0) / 100f) } }
+                }
+                _update.update { it.copy(downloading = false, progress = 1f, file = file) }
+            } catch (error: Exception) {
+                if (error is CancellationException) throw error
+                handleAuth(error)
+                _update.update { it.copy(downloading = false, error = error.message ?: "No se pudo descargar la actualizacion") }
+            }
         }
     }
     private suspend fun capabilities() {

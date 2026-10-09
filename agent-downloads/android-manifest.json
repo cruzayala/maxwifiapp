@@ -1,9 +1,14 @@
 {
-    "version":  "0.16.2-preview",
-    "publishedAt":  "2026-09-23T00:57:53.9431374Z",
-    "sha256":  "b72a27a58accdb7ef08d53de96cc3a1feae501edaf61670c68d05a9618e16ce6",
-    "versionCode":  21,
-    "fileName":  "ISP-Max-Android-0.16.2-preview.apk",
-    "status":  "preview",
-    "sizeBytes":  47672180
+    "version": "0.17.0-preview",
+    "publishedAt": "2026-10-09T04:14:40.8598352Z",
+    "sha256": "54f46dbcf2534eb460b739e2dc4d842be659ed8307b5131450e1540e31e0466a",
+    "versionCode": 22,
+    "fileName": "ISP-Max-Android-0.17.0-preview.apk",
+    "status": "preview",
+    "sizeBytes": 47688648,
+    "notes": [
+        "Avisa cuando hay una version nueva y la instala desde la app",
+        "Sincronizacion: muestra si WispHub esta caido, desde cuando y el proximo intento",
+        "El expediente avisa si el servicio ya no existe en WispHub"
+    ]
 }

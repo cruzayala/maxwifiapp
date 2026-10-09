@@ -7785,6 +7785,22 @@ agentRouter.get('/downloads/windows', asyncHandler(async (_req, res) => {
 
 app.use('/agent-api', agentRouter);
 
+// La app consulta al abrir si hay una version publicada mas nueva que la instalada.
+app.get('/android-api/latest', authMiddleware, asyncHandler(async (_req, res) => {
+  const manifestPath = path.join(__dirname, 'agent-downloads', 'android-manifest.json');
+  if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'La APK aun no esta publicada' });
+  const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
+  res.setHeader('Cache-Control', 'private, no-cache');
+  res.json({
+    version: String(manifest.version || ''),
+    versionCode: Number(manifest.versionCode) || 0,
+    sizeBytes: Number(manifest.sizeBytes) || 0,
+    sha256: String(manifest.sha256 || ''),
+    publishedAt: manifest.publishedAt || null,
+    notes: Array.isArray(manifest.notes) ? manifest.notes.map(String).slice(0, 12) : [],
+  });
+}));
+
 app.get('/android-api/download', authMiddleware, asyncHandler(async (_req, res) => {
   const manifestPath = path.join(__dirname, 'agent-downloads', 'android-manifest.json');
   if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'La APK aun no esta publicada' });

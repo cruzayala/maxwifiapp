@@ -129,6 +129,47 @@ class MobileRepository(private val vault: SessionStore, private val dao: LocalDa
         require(path.startsWith("/") && !path.startsWith("/mobile/")) { "Ruta web invalida" }
         return authorized(WEB_PREFIX + path, method, body)
     }
+    /**
+     * Descarga la APK publicada a [target] y comprueba su SHA-256 contra el manifiesto: una
+     * descarga cortada o alterada nunca llega al instalador de Android.
+     */
+    suspend fun downloadUpdate(target: java.io.File, expectedSha256: String, onProgress: (Long, Long) -> Unit) = withContext(Dispatchers.IO) {
+        // Renueva el token si vencio, con la misma logica que el resto de la app.
+        web("/android-api/latest", "GET")
+        val token = session?.getString("accessToken") ?: throw ApiFailure(401, "SESSION_REVOKED", "Inicia sesion")
+        val client = http.newBuilder().readTimeout(60, TimeUnit.SECONDS).callTimeout(20, TimeUnit.MINUTES).build()
+        val request = Request.Builder().url("$base/android-api/download").header("Authorization", "Bearer $token").build()
+        target.parentFile?.mkdirs()
+        val partial = java.io.File(target.path + ".part")
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw ApiFailure(response.code, "DOWNLOAD_FAILED", "No se pudo descargar la actualizacion (${response.code})")
+            val body = response.body ?: throw ApiFailure(502, "DOWNLOAD_FAILED", "El servidor no envio la actualizacion")
+            val total = body.contentLength()
+            val digest = MessageDigest.getInstance("SHA-256")
+            body.byteStream().use { input ->
+                partial.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var done = 0L
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        digest.update(buffer, 0, read)
+                        done += read
+                        onProgress(done, total)
+                    }
+                }
+            }
+            val sha = digest.digest().joinToString("") { "%02x".format(it) }
+            if (!sha.equals(expectedSha256, ignoreCase = true)) {
+                partial.delete()
+                throw ApiFailure(422, "CHECKSUM_MISMATCH", "La descarga llego incompleta o danada. Intenta de nuevo.")
+            }
+        }
+        target.delete()
+        if (!partial.renameTo(target)) throw IOException("No se pudo guardar la actualizacion")
+        target
+    }
     suspend fun exportRows(path: String): org.json.JSONArray {
         require(path.startsWith("/exports/")) { "Exportacion invalida" }
         val result = authorized(path)
