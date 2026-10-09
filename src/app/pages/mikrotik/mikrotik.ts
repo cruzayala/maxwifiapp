@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit, ViewEncapsulation, computed, inject, signal } from '@angular/core';
+import { whenVisible } from '../../utils/when-visible';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { catchError, finalize, forkJoin, of } from 'rxjs';
@@ -338,12 +339,12 @@ export class MikrotikComponent implements OnInit, OnDestroy {
       this.activeTab.set(requestedTab as MikrotikTab);
     }
     this.refreshAll();
-    this.coreTimer = setInterval(() => {
+    this.coreTimer = setInterval(whenVisible(() => {
       if (!this.unknownLoading() && !this.securityLoading()) this.refreshCore(false);
-    }, 15_000);
-    this.unknownTimer = setInterval(() => {
+    }), 15_000);
+    this.unknownTimer = setInterval(whenVisible(() => {
       if (this.unknown()) this.loadUnknown(false);
-    }, 300_000);
+    }), 300_000);
     // Solo refresca el texto "hace X"; no consulta al servidor.
     this.clockTimer = setInterval(() => this.now.set(Date.now()), 10_000);
   }

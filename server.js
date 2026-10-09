@@ -904,6 +904,17 @@ dbRouter.put('/settings', asyncHandler(async (req, res) => {
 
 // Estado durable del programador de avisos. SQLite evita reenvios aunque cambie
 // el navegador o se reinicie la aplicacion.
+// "Enviar ahora" de Ajustes: el servidor arma la lista, responde cuantos avisos salen y los
+// envia en segundo plano (2 s entre mensajes); el resultado queda en lastReminderRun.
+dbRouter.post('/notification-state/run-now', requireRole(['admin']), asyncHandler(async (req, res) => {
+  if (paymentReminderSending) return res.status(409).json({ error: 'Ya se estan enviando avisos' });
+  if (waStatus !== 'connected' || !waSocket) return res.status(409).json({ error: 'WhatsApp no esta conectado' });
+  const prepared = await preparePaymentReminders();
+  await logActivity(req, { action: 'payment_reminders_manual', entityType: 'whatsapp', details: { planned: prepared.plan.length } });
+  void sendPaymentReminders(prepared, { trigger: 'manual', actor: req.session?.username || 'admin' }).catch((e) => console.error('[reminders] error:', e.message));
+  res.status(202).json({ started: true, planned: prepared.plan.length, skipped: prepared.skipped });
+}));
+
 dbRouter.get('/notification-state', asyncHandler(async (req, res) => {
   const [lastRun, sent] = await Promise.all([
     prisma.appSetting.findUnique({ where: { key: 'notifications.lastRunAt' } }),
@@ -913,7 +924,7 @@ dbRouter.get('/notification-state', asyncHandler(async (req, res) => {
       take: 20_000,
     }),
   ]);
-  res.json({ lastRunAt: lastRun?.value || null, sent });
+  res.json({ lastRunAt: lastRun?.value || null, sent, lastReminderRun: lastPaymentReminderRun, sending: paymentReminderSending, runsOnServer: true });
 }));
 
 dbRouter.post('/notification-state/run', asyncHandler(async (req, res) => {
@@ -11990,6 +12001,8 @@ function consumptionTierFromGb(gb) {
   return 'BAJO';                         // <50 GB/mes → solo redes/email
 }
 
+const { metricsNeedWrite } = require('./lib/client-metrics');
+
 // Calcula score y consumption para un cliente
 function computeClientMetrics(client, blockEventCount, queueBytes30d) {
   const factors = [];
@@ -12085,6 +12098,7 @@ async function recomputeAllMetrics() {
       select: {
         idServicio: true, estadoFacturas: true, estado: true, saldo: true,
         precioPlan: true, crmAction: true, mtQueueName: true, mtQueueLimit: true, ip: true,
+        creditScore: true, creditTier: true, creditFactors: true, consumptionTier: true, consumptionMb30d: true,
       },
     });
 
@@ -12112,17 +12126,22 @@ async function recomputeAllMetrics() {
       // Sin MikroTik: solo calcula score crediticio, no consumption
     }
 
+    const writes = [];
     for (const cl of clients) {
       const blockCount = blockMap.get(cl.idServicio) || 0;
       const bytes30d = cl.ip ? queueBytesMap.get(cl.ip) ?? null : null;
       const metrics = computeClientMetrics(cl, blockCount, bytes30d);
+      if (metricsNeedWrite(cl, metrics)) writes.push({ idServicio: cl.idServicio, metrics });
+    }
+    // Solo lo que cambio, y en lotes: una confirmacion de SQLite cada 100 clientes.
+    for (let start = 0; start < writes.length; start += 100) {
+      const batch = writes.slice(start, start + 100);
       try {
-        await prisma.client.update({
-          where: { idServicio: cl.idServicio },
-          data: metrics,
-        });
-        updated++;
-      } catch {}
+        await prisma.$transaction(batch.map(({ idServicio, metrics }) => prisma.client.update({ where: { idServicio }, data: metrics })));
+        updated += batch.length;
+      } catch (error) {
+        console.error('[metrics] lote no guardado:', error.message);
+      }
     }
     console.log(`[metrics] tick: ${updated}/${clients.length} clients updated in ${Date.now() - startedAt}ms`);
   } catch (e) {
@@ -12601,6 +12620,9 @@ async function sendWhatsappNotification(idServicio, phone, message, type, client
 async function runNotifCheck() {
   if (!NOTIF_ENABLED) return { ran: false, reason: 'NOTIF_ENABLED=false' };
   if (waStatus !== 'connected') return { ran: false, reason: `WhatsApp ${waStatus}` };
+  // Con los avisos de Ajustes > Notificaciones encendidos, este motor no escribe: serian
+  // dos mensajes de cobro distintos al mismo cliente el mismo dia.
+  if ((await paymentReminderConfig()).enabled) return { ran: false, reason: 'reemplazado por Ajustes > Notificaciones' };
 
   const startedAt = new Date();
   const owing = await clientsWithPendingInvoice();
@@ -12654,6 +12676,88 @@ async function runNotifCheck() {
   lastNotifRun = result;
   console.log(`[notif] tick: sent=${stats.sent} skipped=${stats.skipped} errors=${stats.errors}`);
   return result;
+}
+
+// ─── AVISOS DE COBRO POR WHATSAPP (Ajustes > Notificaciones; ver lib/payment-reminders.js) ───
+const { planPaymentReminders, readConfig: readReminderConfig } = require('./lib/payment-reminders');
+const REMINDER_SETTING_KEYS = ['autoNotifEnabled', 'autoNotifReminderDays', 'autoNotifOverdueEnabled', 'autoNotifOverdueInterval',
+  'autoNotifScheduleHour', 'autoNotifReminderMsg', 'autoNotifOverdueMsg', 'companyName'];
+let paymentReminderTimer = null;
+let paymentReminderSending = false;
+let lastPaymentReminderRun = null;
+
+async function paymentReminderConfig() {
+  const rows = await prisma.appSetting.findMany({ where: { key: { in: REMINDER_SETTING_KEYS } } });
+  return readReminderConfig(Object.fromEntries(rows.map((row) => [row.key, row.value])));
+}
+
+/** Que avisos tocan hoy, sin enviar nada. */
+async function preparePaymentReminders() {
+  const config = await paymentReminderConfig();
+  const [clients, owing, sentRows] = await Promise.all([
+    prisma.client.findMany({
+      where: { telefono: { not: null }, fechaCorte: { not: null } },
+      select: { idServicio: true, nombre: true, aliasNombre: true, telefono: true, aliasTelefono: true, estado: true, fechaCorte: true, precioPlan: true, planInternetName: true, missingFromWisphubAt: true },
+    }),
+    clientsWithPendingInvoice(),
+    prisma.notificationSentLog.findMany({
+      where: { sentAt: { gte: new Date(Date.now() - 120 * 86_400_000) } },
+      select: { phone: true, type: true, sentAt: true },
+      orderBy: { sentAt: 'asc' },
+    }),
+  ]);
+  const lastSent = new Map();
+  for (const row of sentRows) lastSent.set(`${row.type}_${String(row.phone).replace(/\D/g, '')}`, row.sentAt);
+  return { config, ...planPaymentReminders({ clients, owing, lastSent, config, parseCut: parseFechaCorte }) };
+}
+
+/** Envia los avisos de a uno (2 s entre mensajes) y anota cada envio para no repetirlo. */
+async function sendPaymentReminders({ plan, skipped }, { trigger, actor }) {
+  paymentReminderSending = true;
+  const startedAt = new Date();
+  let sent = 0;
+  let errors = 0;
+  try {
+    const value = startedAt.toISOString();
+    await prisma.appSetting.upsert({ where: { key: 'notifications.lastRunAt' }, update: { value }, create: { key: 'notifications.lastRunAt', value } });
+    for (const item of plan) {
+      if (waStatus !== 'connected' || !waSocket) { errors += plan.length - sent - errors; break; }
+      const result = await sendWhatsappNotification(item.idServicio, item.phone, item.message, item.type, item.clientName);
+      if (result.ok) {
+        sent++;
+        await prisma.notificationSentLog.create({ data: { phone: item.phone, type: item.type, idServicio: item.idServicio } }).catch(() => {});
+      } else {
+        errors++;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  } finally {
+    paymentReminderSending = false;
+    lastPaymentReminderRun = { at: startedAt.toISOString(), endedAt: new Date().toISOString(), trigger, actor, planned: plan.length, sent, errors, skipped };
+    console.log('[reminders]', JSON.stringify(lastPaymentReminderRun));
+  }
+  return lastPaymentReminderRun;
+}
+
+async function runPaymentReminders({ trigger = 'scheduled', actor = 'system' } = {}) {
+  if (paymentReminderSending) return { ran: false, reason: 'Ya se estan enviando avisos' };
+  if (waStatus !== 'connected' || !waSocket) return { ran: false, reason: 'WhatsApp no esta conectado' };
+  return sendPaymentReminders(await preparePaymentReminders(), { trigger, actor });
+}
+
+function startPaymentReminderLoop() {
+  if (paymentReminderTimer) return;
+  const runner = createDailyRunner({
+    name: 'payment-reminders',
+    hour: async () => (await paymentReminderConfig()).scheduleHour,
+    // Sin WhatsApp no se marca el dia: si se conecta dentro de la hora, todavia salen.
+    enabled: async () => (await paymentReminderConfig()).enabled && waStatus === 'connected',
+    run: () => runPaymentReminders({ trigger: 'scheduled' }),
+    store: automationStore,
+    log: console.log,
+  });
+  paymentReminderTimer = setInterval(() => runner.tick().catch((e) => console.error('[reminders] error:', e.message)), AUTOMATION_TICK_MS);
+  console.log(`[reminders] avisos de cobro de Ajustes en el servidor (${BUSINESS_TIME_ZONE})`);
 }
 
 function startNotifLoop() {
@@ -12866,6 +12970,7 @@ const server = app.listen(PORT, () => {
   if (MT_HOST && API_KEY) startAutoBlockLoop();
   startNotifLoop();
   startPaymentWarningLoop();
+  startPaymentReminderLoop();
   startSurveyReminderLoop();
   startMetricsLoop();
   startOltSyncLoop();
@@ -12906,6 +13011,7 @@ async function shutdown() {
   if (networkAuditTimer) clearInterval(networkAuditTimer);
   if (syncTimer) clearInterval(syncTimer);
   if (billingReconcileTimer) clearInterval(billingReconcileTimer);
+  if (paymentReminderTimer) clearInterval(paymentReminderTimer);
   if (invoiceReconcileTimer) clearInterval(invoiceReconcileTimer);
   server.close(async () => {
     await prisma.$disconnect();

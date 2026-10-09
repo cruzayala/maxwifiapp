@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { whenVisible, isHidden } from '../../utils/when-visible';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -362,7 +363,7 @@ export class LiveComponent implements OnInit, OnDestroy {
 
     this.refresh(true);
     this.refreshSupportingData();
-    this.supportTimer = setInterval(() => this.refreshSupportingData(), 15000);
+    this.supportTimer = setInterval(whenVisible(() => this.refreshSupportingData()), 15000);
     this.clockTimer = setInterval(() => this.nowTick.set(Date.now()), 1000);
   }
 
@@ -765,7 +766,8 @@ export class LiveComponent implements OnInit, OnDestroy {
     this.stopRefreshTimer();
     const delay = this.effectiveRefreshMs();
     this.nextRefreshAt.set(Date.now() + delay);
-    this.refreshTimer = setTimeout(() => this.refresh(), delay);
+    // Con la pestaña oculta no se consulta al MikroTik: se vuelve a esperar.
+    this.refreshTimer = setTimeout(() => isHidden() ? this.startRefreshTimer() : this.refresh(), delay);
   }
 
   private stopRefreshTimer(): void {

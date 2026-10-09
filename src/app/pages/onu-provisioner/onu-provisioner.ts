@@ -1,4 +1,5 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
+import { whenVisible } from '../../utils/when-visible';
 import { NgTemplateOutlet } from '@angular/common';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
@@ -244,7 +245,7 @@ export class OnuProvisionerComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.loadDashboard(false);
-    this.timer = setInterval(() => this.loadDashboard(true), 4000);
+    this.timer = setInterval(whenVisible(() => this.loadDashboard(true)), 4000);
   }
 
   ngOnDestroy() { if (this.timer) clearInterval(this.timer); }

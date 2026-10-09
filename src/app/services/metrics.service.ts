@@ -1,4 +1,5 @@
 import { Injectable, inject, signal } from '@angular/core';
+import { whenVisible } from '../utils/when-visible';
 import { HttpClient } from '@angular/common/http';
 import { ClientMetric } from '../models/metrics.model';
 
@@ -30,7 +31,7 @@ export class MetricsService {
   startAutoRefresh(intervalMs = 30000): void {
     if (this.timer) return;
     this.loadAll();
-    this.timer = setInterval(() => this.loadAll(), intervalMs);
+    this.timer = setInterval(whenVisible(() => this.loadAll()), intervalMs);
   }
 
   stopAutoRefresh(): void {

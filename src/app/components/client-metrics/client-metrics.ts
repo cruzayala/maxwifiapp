@@ -1,4 +1,5 @@
 import { Component, inject, input, signal, OnInit, OnDestroy, computed } from '@angular/core';
+import { whenVisible } from '../../utils/when-visible';
 import { HttpClient } from '@angular/common/http';
 import { DecimalPipe } from '@angular/common';
 import { LucideGauge, LucideTriangleAlert } from '@lucide/angular';
@@ -156,7 +157,7 @@ export class ClientMetricsComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.load();
-    this.timer = setInterval(() => this.load(), this.refreshIntervalMs());
+    this.timer = setInterval(whenVisible(() => this.load()), this.refreshIntervalMs());
   }
 
   ngOnDestroy() {

@@ -185,7 +185,7 @@ import {
             </label>
             <div>
               <strong>Envío automático {{ config.autoNotifEnabled() ? 'activado' : 'apagado' }}</strong>
-              <div class="sub-text">El sistema revisa cada 30 minutos si debe enviar mensajes. Se guarda al tocar el interruptor.</div>
+              <div class="sub-text">Los envía el servidor a la hora indicada (hora de Santo Domingo), aunque nadie tenga ISP Max abierto. Solo a clientes activos con una factura pendiente de verdad en WispHub. Se guarda al tocar el interruptor.</div>
             </div>
           </div>
 

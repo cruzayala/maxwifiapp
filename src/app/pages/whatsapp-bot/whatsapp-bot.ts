@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { whenVisible } from '../../utils/when-visible';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
@@ -347,11 +348,11 @@ export class WhatsappBotComponent implements OnInit, OnDestroy {
   ngOnInit() {
     this.loadStatus();
     this.loadConversations();
-    this.refreshInterval = setInterval(() => {
+    this.refreshInterval = setInterval(whenVisible(() => {
       this.loadStatus();
       this.loadConversations();
       if (this.selectedPhone()) this.loadMessages(this.selectedPhone()!);
-    }, 15000);
+    }), 15000);
   }
 
   ngOnDestroy() {

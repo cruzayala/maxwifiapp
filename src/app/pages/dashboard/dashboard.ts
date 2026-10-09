@@ -1,4 +1,5 @@
 import { DecimalPipe } from '@angular/common';
+import { whenVisible } from '../../utils/when-visible';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -166,7 +167,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   async ngOnInit(): Promise<void> {
     await this.load(true);
-    this.refreshTimer = setInterval(() => this.load(false), 60_000);
+    this.refreshTimer = setInterval(whenVisible(() => this.load(false)), 60_000);
   }
 
   ngOnDestroy(): void {

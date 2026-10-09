@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, computed, inject, signal } from '@angular/core';
+import { whenVisible } from '../../utils/when-visible';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { HttpClient } from '@angular/common/http';
 import { LocalDbService } from '../../services/local-db.service';
@@ -381,7 +382,7 @@ export class WhatsappComponent implements OnInit, OnDestroy {
     this.bulkMessage = `Estimado cliente de ${company}, le recordamos que su factura de internet se encuentra pendiente de pago. Por favor regularice su cuenta para evitar la suspensión del servicio. Gracias.`;
 
     this.checkStatus();
-    this.pollTimer = setInterval(() => this.checkStatus(), 5000);
+    this.pollTimer = setInterval(whenVisible(() => this.checkStatus()), 5000);
   }
 
   ngOnDestroy() {

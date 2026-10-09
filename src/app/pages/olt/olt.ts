@@ -1,4 +1,5 @@
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { whenVisible } from '../../utils/when-visible';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import {
@@ -345,7 +346,7 @@ export class OltComponent implements OnInit, OnDestroy {
     this.restoreRememberedTab();
     this.restoreOnuView();
     this.loadAll();
-    this.refreshTimer = setInterval(() => this.loadAll(true), 60000);
+    this.refreshTimer = setInterval(whenVisible(() => this.loadAll(true)), 60000);
   }
 
   ngOnDestroy() {

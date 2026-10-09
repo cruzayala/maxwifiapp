@@ -1,4 +1,5 @@
 import { Component, OnInit, OnDestroy, inject, signal, computed, ElementRef, ViewChild, AfterViewInit } from '@angular/core';
+import { whenVisible } from '../../utils/when-visible';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
@@ -519,7 +520,7 @@ export class MapaComponent implements OnInit, OnDestroy, AfterViewInit {
       this.didAutoFit = true; // no encuadrar todo: vamos directo al cliente pedido
     }
     this.reload();
-    this.refreshTimer = setInterval(() => this.reload(true), 30000);
+    this.refreshTimer = setInterval(whenVisible(() => this.reload(true)), 30000);
     if (this.colorMode() === 'network' || this.chip() === 'online' || this.chip() === 'offline') this.loadNetState();
   }
 

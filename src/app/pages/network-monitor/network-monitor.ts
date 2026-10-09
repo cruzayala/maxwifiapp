@@ -1,4 +1,5 @@
 import { DecimalPipe } from '@angular/common';
+import { whenVisible } from '../../utils/when-visible';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -534,7 +535,7 @@ export class NetworkMonitorComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     void this.load(true);
-    this.timer = setInterval(() => { this.tick.update((v) => v + 1); void this.load(); }, REFRESH_MS);
+    this.timer = setInterval(whenVisible(() => { this.tick.update((v) => v + 1); void this.load(); }), REFRESH_MS);
   }
 
   ngOnDestroy() {
