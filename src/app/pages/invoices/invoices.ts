@@ -137,7 +137,7 @@ interface InvoiceBreakdown {
             <option value="pendiente">Pendientes</option>
             <option value="vencida">Vencidas</option>
             <option value="partial">Cobro parcial</option>
-            <option value="closed">Canceladas o transferidas</option>
+            <option value="closed">Canceladas, transferidas o eliminadas</option>
           </select>
           <select [(ngModel)]="dateFilter" (change)="filterInvoices()" class="filter-select">
             <option value="">Todas las fechas</option>
@@ -1583,7 +1583,7 @@ export class InvoicesComponent implements OnInit {
   }
 
   private static readonly STATUS_LABELS: Record<string, string> = {
-    pagada: 'Pagadas', pendiente: 'Pendientes', vencida: 'Vencidas', partial: 'Cobro parcial', closed: 'Canceladas o transferidas',
+    pagada: 'Pagadas', pendiente: 'Pendientes', vencida: 'Vencidas', partial: 'Cobro parcial', closed: 'Canceladas, transferidas o eliminadas',
   };
 
   private static readonly DATE_FILTER_LABELS: Record<string, string> = {
@@ -1644,7 +1644,7 @@ export class InvoicesComponent implements OnInit {
   private isClosedWithoutPayment(inv: Invoice): boolean {
     const status = this.normalize(inv.estado);
     // WispHub usa "Se Transfirio": 'transfer' solo no coincidía y esas facturas se contaban como pagadas.
-    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer') || status.includes('transfir');
+    return status.includes('cancelad') || status.includes('anulad') || status.includes('transfer') || status.includes('transfir') || status.includes('eliminad');
   }
 
   isOverdue(inv: Invoice): boolean {

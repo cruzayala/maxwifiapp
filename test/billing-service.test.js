@@ -128,3 +128,27 @@ test('concurrent verification retains one local receipt', async () => {
   assert.equal((await f.service.reconcile(op.id)).state, 'confirmed');
   assert.equal(await qa.prisma.paymentLog.count({ where: { idFactura: f.request.invoiceId } }), 1);
 });
+test('a payment whose answer was lost is confirmed once the invoice shows it in WispHub', async () => {
+  const f = await fixture('lost'); const result = await f.service.submit(f.request);
+  assert.equal(result.state, 'uncertain');
+  // WispHub si lo registro aunque la respuesta no llego: la factura lo refleja.
+  f.invoice.total_cobrado = 40; f.invoice.saldo = 60;
+  const confirmed = await f.service.reconcile(result.id);
+  assert.equal(confirmed.state, 'confirmed'); assert.equal(f.calls(), 1);
+  assert.equal(await qa.prisma.paymentLog.count({ where: { idFactura: f.request.invoiceId } }), 1);
+  const activity = await qa.prisma.activity.findFirst({ where: { action: 'payment_confirmed', entityId: String(f.request.invoiceId) } });
+  assert.equal(JSON.parse(activity.details).evidence, 'invoice');
+  assert.equal((await f.service.options(f.request.invoiceId)).activeOperation, null, 'the invoice is free again');
+});
+test('the automatic pass confirms what WispHub reflects and leaves the rest waiting, without resending', async () => {
+  const reflected = await fixture('pending'); const a = await reflected.service.submit(reflected.request);
+  const stillOpen = await fixture('lost'); const b = await stillOpen.service.submit(stillOpen.request);
+  reflected.invoice.estado = 'Pagada'; reflected.invoice.total_cobrado = 100; reflected.invoice.saldo = 0;
+  const firstPass = await reflected.service.reconcileOpen({ minAgeMs: 0 });
+  assert.ok(firstPass.checked >= 2);
+  assert.equal((await reflected.service.read(a.id)).state, 'confirmed');
+  assert.equal((await stillOpen.service.read(b.id)).state, 'uncertain');
+  assert.equal(reflected.calls() + stillOpen.calls(), 2, 'nothing is ever sent again');
+  const young = await reflected.service.reconcileOpen({ minAgeMs: 60 * 60_000 });
+  assert.equal(young.checked, 0, 'operations younger than the grace period are left to the cashier');
+});

@@ -6,12 +6,12 @@ import { Invoice } from '../models/invoice.model';
  * una copia se quedaba atrás y los montos no cuadraban entre pantallas.
  */
 
-/** Facturas cerradas sin dinero de por medio: anuladas, canceladas o transferidas a otra factura. */
+/** Facturas cerradas sin dinero de por medio: anuladas, canceladas, transferidas a otra factura o eliminadas en WispHub. */
 export function isInvoiceClosedWithoutPayment(invoice: Invoice): boolean {
   const status = (invoice.estado || '').toLowerCase();
   // WispHub escribe "Se Transfirió": buscar solo 'transfer' dejaba fuera ese estado.
   return status.includes('cancelad') || status.includes('anulad') ||
-    status.includes('transfer') || status.includes('transfir');
+    status.includes('transfer') || status.includes('transfir') || status.includes('eliminad');
 }
 
 /** Cobrada por completo. */

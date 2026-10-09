@@ -203,7 +203,7 @@ export class IncidentsComponent implements OnInit {
   }
 
   scopeLabel(value: string): string {
-    return { network: 'Red', zone: 'Zona', interface: 'Interfaz', router: 'Router' }[value] || value;
+    return { network: 'Red', zone: 'Zona', interface: 'Interfaz', router: 'Router', integration: 'Integración' }[value] || value;
   }
 
   formatDate(value?: string | null): string {

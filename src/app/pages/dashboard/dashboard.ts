@@ -17,7 +17,7 @@ import { MikrotikService, MtLiveResponse, MtStatus } from '../../services/mikrot
 import { NetworkAuditService, NetworkAuditStatus, WanAuditResponse } from '../../services/network-audit.service';
 import { NocIncident, NocService, NocSummary } from '../../services/noc.service';
 import { OltPon, OltService, OltStatus } from '../../services/olt.service';
-import { ServerSyncStatus, SyncService } from '../../services/sync.service';
+import { ServerSyncStatus, SyncService, WisphubOutageStatus } from '../../services/sync.service';
 
 interface DashboardFinance {
   expected: number;
@@ -80,6 +80,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   loading = signal(true);
   refreshing = signal(false);
   sourceErrors = signal<string[]>([]);
+  wisphubOutage = computed(() => {
+    const status = this.syncStatus()?.wisphub;
+    return status?.state === 'down' ? status : null;
+  });
   lastUpdated = signal<Date | null>(null);
 
   totalClients = computed(() => this.clients().length);
@@ -238,12 +242,55 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   sourceTitle(source: 'wisphub' | 'mikrotik' | 'olt'): string {
+    const outage = source === 'wisphub' ? this.wisphubOutage() : null;
+    if (outage) return `WispHub: sin respuesta desde ${this.atTime(outage.since)} — ${this.outageCause(outage)}`;
     const names = { wisphub: 'WispHub', mikrotik: 'MikroTik', olt: 'OLT' };
     return `${names[source]}: ${this.sourceOnline(source) ? 'conectado' : 'sin conexión'}`;
   }
 
+  outageDuration(ms: number): string {
+    const minutes = Math.max(1, Math.round(ms / 60_000));
+    if (minutes < 60) return `${minutes} min`;
+    return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+  }
+
+  /** La causa en palabras del equipo, sin el detalle tecnico de que consulta fallo. */
+  outageCause(outage: WisphubOutageStatus): string {
+    const code = outage.lastHttpStatus ? ` (error ${outage.lastHttpStatus})` : '';
+    switch (outage.lastCode) {
+      case 'WISPHUB_DOWN': return `su servidor está caído${code}`;
+      case 'WISPHUB_TIMEOUT': return `no responde a tiempo${code}`;
+      case 'WISPHUB_UNREACHABLE': return 'no se puede conectar con su servidor';
+      case 'WISPHUB_AUTH': return `rechazó la clave de la API${code}`;
+      case 'WISPHUB_RATE_LIMITED': return 'limitó las consultas';
+      case 'WISPHUB_INVALID_RESPONSE': return 'responde con páginas de error';
+      default: return outage.lastError || 'sin detalle';
+    }
+  }
+
+  timeOnly(value: string | null | undefined): string {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' }) : '—';
+  }
+
+  /** "las 9:10 a. m." si es de hoy; "el 8 oct a las 9:10 a. m." si no. */
+  atTime(value: string | null | undefined): string {
+    if (!value) return 'hace un momento';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'hace un momento';
+    const time = date.toLocaleTimeString('es-DO', { hour: 'numeric', minute: '2-digit' });
+    const clock = `${/^1:/.test(time) ? 'la' : 'las'} ${time}`;
+    if (date.toDateString() === new Date().toDateString()) return clock;
+    return `el ${date.toLocaleDateString('es-DO', { day: 'numeric', month: 'short' })} a ${clock}`;
+  }
+
+  async retryWisphub(): Promise<void> {
+    await this.sync.syncAll();
+    await this.load(false);
+  }
+
   sourceOnline(source: 'wisphub' | 'mikrotik' | 'olt'): boolean {
-    if (source === 'wisphub') return this.syncStatus()?.lastSyncResult?.sources?.wisphub === 'ok';
+    if (source === 'wisphub') return !this.wisphubOutage() && this.syncStatus()?.lastSyncResult?.sources?.wisphub === 'ok';
     if (source === 'mikrotik') return Boolean(this.mikrotik()?.connected);
     return Boolean(this.olt()?.connected);
   }

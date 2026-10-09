@@ -19,6 +19,18 @@
     </div>
   </header>
 
+  @if (wisphubOutage(); as outage) {
+    <div class="partial-warning outage" role="alert">
+      <svg lucideTriangleAlert size="17"></svg>
+      <span>
+        <strong>WispHub no responde desde {{ atTime(outage.since) }}</strong> ({{ outageDuration(outage.downForMs) }}): {{ outageCause(outage) }}.
+        Los clientes y las facturas pueden estar desactualizados; MikroTik y OLT siguen en vivo.
+        @if (outage.nextAttemptAt) { Próximo intento automático: {{ timeOnly(outage.nextAttemptAt) }} }
+      </span>
+      <button type="button" (click)="retryWisphub()" [disabled]="sync.syncing()">{{ sync.syncing() ? 'Intentando…' : 'Reintentar ahora' }}</button>
+    </div>
+  }
+
   @if (sourceErrors().length) {
     <div class="partial-warning" role="status">
       <svg lucideTriangleAlert size="17"></svg>

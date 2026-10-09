@@ -64,3 +64,16 @@ test('combina emisiones y pagos sin duplicar facturas', () => {
   assert.equal(result.length, 2);
   assert.equal(result.find((item) => item.id_factura === 1).estado, 'Pagada');
 });
+
+test('the minute sync asks for yesterday and today in Santo Domingo, not in UTC', () => {
+  const { businessDate, recentInvoiceWindow } = require('../lib/wisphub-invoices');
+  // 9:15 p. m. del 8 de octubre en Santo Domingo = 01:15 UTC del 9: antes se pedia el 9
+  // y el pago de las 9:15 p. m. (fecha 8) no se traia nunca.
+  const evening = new Date('2026-10-09T01:15:00Z');
+  assert.equal(businessDate(evening), '2026-10-08');
+  assert.deepEqual(recentInvoiceWindow(evening), { from: '2026-10-07', to: '2026-10-08' });
+  // Mediodia: mismo dia en las dos zonas.
+  assert.deepEqual(recentInvoiceWindow(new Date('2026-10-08T16:00:00Z')), { from: '2026-10-07', to: '2026-10-08' });
+  // Primer dia del mes: ayer es el ultimo del mes anterior.
+  assert.deepEqual(recentInvoiceWindow(new Date('2026-11-01T14:00:00Z')), { from: '2026-10-31', to: '2026-11-01' });
+});

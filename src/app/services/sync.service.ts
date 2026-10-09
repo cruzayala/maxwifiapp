@@ -5,9 +5,25 @@ import { LocalDbService } from './local-db.service';
 import { ToastService } from './toast.service';
 import { AuthService } from './auth.service';
 
+/** Seguimiento del servidor: WispHub caido desde `since`; los intentos se espacian hasta `nextAttemptAt`. */
+export interface WisphubOutageStatus {
+  state: 'ok' | 'down';
+  consecutiveFailures: number;
+  since: string | null;
+  downForMs: number;
+  lastError: string | null;
+  lastCode: string | null;
+  lastHttpStatus?: number | null;
+  lastFailureAt: string | null;
+  nextAttemptAt: string | null;
+  lastSuccessAt: string | null;
+}
+
 export interface ServerSyncStatus {
   running: boolean;
   intervalMs: number;
+  inProgressSince?: string | null;
+  wisphub?: WisphubOutageStatus;
   lastSyncAt: string | null;
   lastSyncResult: {
     at: string;

@@ -467,7 +467,7 @@ private statusText(inv: Invoice): string {
 
 private balanceAmount(inv: Invoice): number {
     const status = (inv.estado || '').toLowerCase();
-    if (status.includes('cancelad') || status.includes('anulad') || status.includes('transf')) return 0;
+    if (status.includes('cancelad') || status.includes('anulad') || status.includes('transf') || status.includes('eliminad')) return 0;
     if (this.isPaid(inv)) return 0;
     if (Number(inv.saldo) > 0) return Number(inv.saldo);
     // WispHub pone en total_cobrado el importe a cobrar, no lo cobrado: si esta pendiente

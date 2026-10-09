@@ -93,6 +93,9 @@ const {
 } = require('./lib/onu-model-profiles');
 const {
   DEFAULT_INVOICE_START_DATE,
+  businessDate,
+  recentInvoiceWindow,
+  saveWisphubInvoices,
   buildInvoiceDateWindows,
   fetchWisphubInvoices,
   formatDateOnly,
@@ -205,6 +208,9 @@ app.get('/health', async (req, res) => {
       database: 'connected',
       whatsapp: waStatus,
       mikrotik: mtConn?.connected ? 'connected' : 'disconnected',
+      // Informativo: una caida de WispHub no debe hacer que Railway reinicie el servidor.
+      wisphub: wisphubOutage.snapshot().state,
+      lastSyncAt,
       uptime: process.uptime(),
       version: '1.0.0',
     };
@@ -1234,6 +1240,9 @@ if (API_KEY) {
     changeOrigin: true,
     pathRewrite: { '^/': '/api/' },
     headers: { 'Authorization': `Api-Key ${API_KEY}` },
+    // En una caida de WispHub, Cloudflare tarda hasta 100 s en responder 524.
+    proxyTimeout: 60_000,
+    timeout: 60_000,
     on: {
       proxyReq: (proxyReq, req) => {
         proxyReq.setHeader('Authorization', `Api-Key ${API_KEY}`);
@@ -1241,6 +1250,17 @@ if (API_KEY) {
         // express.json() ya leyo el cuerpo: sin esto el proxy reenvia PATCH/PUT vacios,
         // WispHub se queda esperando los datos y la web recibe 504 a los 60 s.
         fixRequestBody(proxyReq, req);
+      },
+      error: (error, req, res) => {
+        if (!res || typeof res.status !== 'function' || res.headersSent) {
+          try { res?.end?.(); } catch {}
+          return;
+        }
+        const timedOut = ['ECONNRESET', 'ETIMEDOUT', 'ESOCKETTIMEDOUT'].includes(error.code) || /timeout|hang up/i.test(error.message);
+        res.status(timedOut ? 504 : 502).json({
+          error: timedOut ? 'WispHub no respondio a tiempo. Intente de nuevo en unos minutos.' : 'No se pudo conectar con WispHub. Intente de nuevo en unos minutos.',
+          code: timedOut ? 'WISPHUB_TIMEOUT' : 'WISPHUB_UNREACHABLE',
+        });
       },
     },
   }));
@@ -3565,27 +3585,49 @@ const clientProvisioningInProgress = new Set();
 clientProvisioningRouter.use(authMiddleware);
 clientProvisioningRouter.use(requireRole(['admin']));
 
+const { errorForStatus: wisphubStatusError, errorForFailure: wisphubFailureError } = require('./lib/wisphub-http');
+
 async function wisphubApiRequest(pathName, options = {}) {
   if (!API_KEY) throw Object.assign(new Error('WISPHUB_API_KEY no esta configurada'), { statusCode: 503 });
   const { timeoutMs = 15_000, ...fetchOptions } = options;
-  const response = await fetch(`https://api.wisphub.io/api/${pathName.replace(/^\/+/, '')}`, {
-    ...fetchOptions,
-    headers: {
-      Authorization: `Api-Key ${API_KEY}`,
-      Accept: 'application/json',
-      ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {}),
-    },
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  const payload = await readWisphubResponse(response);
-  if (!response.ok) {
-    const detail = payload.detail || payload.error || payload.errors || JSON.stringify(payload);
-    throw Object.assign(new Error(String(detail || `WispHub HTTP ${response.status}`).slice(0, 600)), {
-      statusCode: response.status >= 500 ? 502 : response.status,
+  // Solo las lecturas se repiten: repetir una escritura podria aplicarla dos veces.
+  const attempts = String(fetchOptions.method || 'GET').toUpperCase() === 'GET' ? 2 : 1;
+  let lastError = null;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    if (attempt > 1) await new Promise((resolve) => setTimeout(resolve, 1500));
+    let response;
+    try {
+      response = await fetch(`https://api.wisphub.io/api/${pathName.replace(/^\/+/, '')}`, {
+        ...fetchOptions,
+        headers: {
+          Authorization: `Api-Key ${API_KEY}`,
+          Accept: 'application/json',
+          ...(typeof options.body === 'string' ? { 'Content-Type': 'application/json' } : {}),
+          ...(options.headers || {}),
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      lastError = wisphubFailureError(error, timeoutMs, 'WispHub');
+      continue;
+    }
+    const payload = await readWisphubResponse(response);
+    if (response.ok) return payload;
+    const known = wisphubStatusError(response.status, 'WispHub');
+    // Las caidas llegan como pagina HTML de Cloudflare: al usuario se le dice que paso, no el HTML.
+    const detail = typeof payload.detail === 'string' && /^\s*</.test(payload.detail)
+      ? null
+      : payload.detail || payload.error || payload.errors || (Object.keys(payload).length ? JSON.stringify(payload) : null);
+    const ownMessage = response.status < 500 && ![401, 403, 408, 429].includes(response.status) && detail;
+    lastError = Object.assign(new Error(String(ownMessage ? detail : known.message).slice(0, 600)), {
+      // 401/403 de WispHub es su clave de API, no la sesion del usuario: nunca se reenvia como 401.
+      statusCode: response.status >= 500 || [401, 403].includes(response.status) ? 502 : response.status,
+      code: known.code,
+      httpStatus: response.status,
     });
+    if (!known.retryable) throw lastError;
   }
-  return payload;
+  throw lastError;
 }
 
 async function findWisphubClientByIp(ip) {
@@ -9878,10 +9920,16 @@ surveyRouter.get('/stats', asyncHandler(async (req, res) => {
 const SYNC_INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_MS || '60000');
 const WISPHUB_SYNC_ENABLED = process.env.WISPHUB_SYNC_ENABLED !== 'false';
 const WISPHUB_INVOICE_SYNC_START_DATE = process.env.WISPHUB_INVOICE_SYNC_START_DATE || DEFAULT_INVOICE_START_DATE;
+const { fetchWisphubJson, createOutageTracker } = require('./lib/wisphub-http');
+const { recordWisphubOutage, resolveWisphubOutage } = require('./lib/integration-incidents');
+// Mientras WispHub esta caido los intentos se espacian (1, 2, 4 y luego cada 5 min).
+const wisphubOutage = createOutageTracker();
 let syncTimer = null;
 let lastSyncAt = null;
 let lastSyncResult = null;
 let syncInProgress = false;
+let syncStartedAt = null;
+const SYNC_PROCESS_STARTED_AT = new Date();
 
 let invoiceHistorySyncStatus = {
   running: false,
@@ -9899,64 +9947,7 @@ let invoiceHistorySyncStatus = {
 };
 
 async function upsertWisphubInvoices(invoices) {
-  const list = Array.isArray(invoices) ? invoices : [];
-  const referencedClientIds = [...new Set(list
-    .map((invoice) => Number(invoice?.articulos?.[0]?.servicio?.id_servicio))
-    .filter((id) => Number.isInteger(id) && id > 0))];
-  const existingClients = referencedClientIds.length
-    ? await prisma.client.findMany({
-      where: { idServicio: { in: referencedClientIds } },
-      select: { idServicio: true },
-    })
-    : [];
-  const existingClientIds = new Set(existingClients.map((client) => client.idServicio));
-  const existingInvoices = await prisma.invoice.findMany({
-    select: { idFactura: true, sourceHash: true },
-  });
-  const existingInvoiceHashes = new Map(existingInvoices.map((invoice) => [invoice.idFactura, invoice.sourceHash]));
-
-  let saved = 0;
-  let invalid = 0;
-  let created = 0;
-  let changed = 0;
-  let unchanged = 0;
-  for (let start = 0; start < list.length; start += 25) {
-    const operations = [];
-    for (const invoice of list.slice(start, start + 25)) {
-      const data = mapWisphubInvoice(invoice, existingClientIds);
-      if (!data) {
-        invalid++;
-        continue;
-      }
-      const articles = Array.isArray(invoice.articulos)
-        ? invoice.articulos.map((article) => mapWisphubInvoiceArticle(article, data.idFactura))
-        : [];
-      const sourceHash = sourceStateHash(data, articles);
-      if (existingInvoiceHashes.get(data.idFactura) === sourceHash) {
-        unchanged++;
-        continue;
-      }
-      if (existingInvoiceHashes.has(data.idFactura)) changed++;
-      else created++;
-      operations.push(prisma.invoice.upsert({
-        where: { idFactura: data.idFactura },
-        update: { ...data, sourceHash },
-        create: { ...data, sourceHash },
-      }));
-      if (Array.isArray(invoice.articulos)) {
-        operations.push(prisma.invoiceArticle.deleteMany({ where: { idFactura: data.idFactura } }));
-        if (articles.length) {
-          operations.push(prisma.invoiceArticle.createMany({
-            data: articles,
-          }));
-        }
-      }
-      existingInvoiceHashes.set(data.idFactura, sourceHash);
-      saved++;
-    }
-    if (operations.length) await prisma.$transaction(operations);
-  }
-  return { saved, created, changed, unchanged, invalid };
+  return saveWisphubInvoices(prisma, invoices);
 }
 
 async function syncInvoiceDateWindow(from, to, dateField = 'fecha_emision') {
@@ -9966,10 +9957,10 @@ async function syncInvoiceDateWindow(from, to, dateField = 'fecha_emision') {
 }
 
 async function syncRecentInvoices() {
-  const today = formatDateOnly(new Date());
+  const { from, to } = recentInvoiceWindow();
   const [issued, paid] = await Promise.all([
-    fetchWisphubInvoices({ apiKey: API_KEY, from: today, to: today, dateField: 'fecha_emision' }),
-    fetchWisphubInvoices({ apiKey: API_KEY, from: today, to: today, dateField: 'fecha_pago' }),
+    fetchWisphubInvoices({ apiKey: API_KEY, from, to, dateField: 'fecha_emision' }),
+    fetchWisphubInvoices({ apiKey: API_KEY, from, to, dateField: 'fecha_pago' }),
   ]);
   const invoices = mergeInvoicesById(issued, paid);
   const result = await upsertWisphubInvoices(invoices);
@@ -9985,7 +9976,7 @@ async function syncRecentInvoices() {
 async function runInvoiceHistorySync({ trigger = 'startup', force = false } = {}) {
   if (invoiceHistorySyncStatus.running) return { busy: true, ...invoiceHistorySyncStatus };
 
-  const today = formatDateOnly(new Date());
+  const today = businessDate();
   let startDate = WISPHUB_INVOICE_SYNC_START_DATE;
   if (!force) {
     const checkpoint = await prisma.appSetting.findUnique({
@@ -10064,14 +10055,10 @@ async function runInvoiceHistorySync({ trigger = 'startup', force = false } = {}
 }
 
 async function fetchWisphubAllClients() {
-  const fetchPage = async (offset = 0) => {
-    const url = `https://api.wisphub.io/api/clientes/?limit=100${offset ? `&offset=${offset}` : ''}`;
-    const r = await fetch(url, {
-      headers: { Authorization: `Api-Key ${API_KEY}`, Accept: 'application/json' },
-    });
-    if (!r.ok) throw new Error(`WispHub ${r.status}`);
-    return r.json();
-  };
+  const fetchPage = (offset = 0) => fetchWisphubJson(
+    `https://api.wisphub.io/api/clientes/?limit=100${offset ? `&offset=${offset}` : ''}`,
+    { apiKey: API_KEY, label: 'WispHub clientes' },
+  );
   let all = [];
   let offset = 0;
   let pages = 0;
@@ -10101,7 +10088,23 @@ async function syncOnce() {
   const sourceErrors = [];
   try {
     if (!API_KEY) throw new Error('WISPHUB_API_KEY no esta configurada');
-    const wpClients = await fetchWisphubAllClients();
+    let wpClients;
+    try {
+      wpClients = await fetchWisphubAllClients();
+    } catch (error) {
+      wisphubOutage.failure(error);
+      recordWisphubOutage(prisma, wisphubOutage.snapshot()).catch((e) => console.error('[sync] outage incident:', e.message));
+      throw error;
+    }
+    const recovered = wisphubOutage.success();
+    if (recovered) {
+      console.log(`[sync] WispHub volvio tras ${Math.max(1, Math.round((recovered.until - recovered.since) / 60_000))} min (${recovered.failures} intentos fallidos)`);
+      resolveWisphubOutage(prisma, recovered).catch((e) => console.error('[sync] outage incident:', e.message));
+      // Si la puesta al dia de facturas del arranque fallo por la caida, se repite ahora.
+      if (invoiceHistorySyncStatus.status === 'error') {
+        void runInvoiceHistorySync({ trigger: 'recovery' }).catch((e) => console.error('[invoice-sync] recovery history sync failed:', e.message));
+      }
+    }
     wisphubStatus = 'ok';
     wpCount = wpClients.length;
     const existingClientCount = await prisma.client.count();
@@ -10247,11 +10250,22 @@ async function syncOnce() {
 async function runSyncSafely(trigger) {
   if (syncInProgress) return { busy: true, trigger, lastSyncResult };
   syncInProgress = true;
+  syncStartedAt = new Date();
   try {
     return await syncOnce();
   } finally {
     syncInProgress = false;
+    syncStartedAt = null;
   }
+}
+
+/** Una sincronizacion que el reinicio del servidor corto queda "running" para siempre. */
+async function closeInterruptedSyncLogs() {
+  const { count } = await prisma.syncLog.updateMany({
+    where: { status: 'running', startedAt: { lt: SYNC_PROCESS_STARTED_AT } },
+    data: { status: 'interrupted', endedAt: new Date(), errorMessage: 'El servidor se reinicio antes de terminar' },
+  });
+  if (count) console.log(`[sync] ${count} sincronizaciones cortadas por reinicios marcadas como interrumpidas`);
 }
 
 const syncRouter = express.Router();
@@ -10263,8 +10277,17 @@ syncRouter.get('/status', (req, res) => {
     intervalMs: SYNC_INTERVAL_MS,
     lastSyncAt,
     lastSyncResult,
+    inProgressSince: syncStartedAt,
+    wisphub: wisphubOutage.snapshot(),
+    invoiceReconciliation: lastInvoiceReconciliation && { ...lastInvoiceReconciliation, running: invoiceReconcileRunning },
   });
 });
+syncRouter.post('/invoices/reconcile', asyncHandler(async (req, res) => {
+  const result = await runPendingInvoiceReconciliation('manual');
+  if (result.busy) return res.status(409).json({ error: 'Ya hay un repaso de facturas en curso', ...result });
+  await logActivity(req, { action: 'invoices_reconciled', entityType: 'invoice', details: { changed: result.changed, markedMissing: result.markedMissing, failed: result.failed } });
+  res.json(result);
+}));
 syncRouter.post('/run', asyncHandler(async (req, res) => {
   const result = await runSyncSafely('manual');
   if (result.busy) return res.status(409).json({ error: 'Ya hay una sincronización en curso', ...result });
@@ -10272,10 +10295,74 @@ syncRouter.post('/run', asyncHandler(async (req, res) => {
 }));
 app.use('/sync', syncRouter);
 
+// Repaso de las facturas pendientes contra WispHub (ver lib/invoice-reconciliation.js):
+// al arrancar y cada 6 horas. Solo lee WispHub; nunca borra facturas locales.
+const { reconcilePendingInvoices } = require('./lib/invoice-reconciliation');
+const INVOICE_RECONCILE_INTERVAL_MS = 6 * 3600_000;
+let invoiceReconcileTimer = null;
+let invoiceReconcileRunning = false;
+let lastInvoiceReconciliation = null;
+async function runPendingInvoiceReconciliation(trigger) {
+  if (invoiceReconcileRunning) return { busy: true, last: lastInvoiceReconciliation };
+  invoiceReconcileRunning = true;
+  const startedAt = Date.now();
+  try {
+    const result = await reconcilePendingInvoices({
+      prisma,
+      fetchInvoice: (id) => fetchWisphubJson(`https://api.wisphub.io/api/facturas/${id}/`, { apiKey: API_KEY, label: 'WispHub factura', retries: 1 }),
+      save: upsertWisphubInvoices,
+    });
+    if (result.markedMissing) {
+      await prisma.activity.create({ data: {
+        action: 'invoices_missing_in_wisphub', entityType: 'invoice', entityName: `${result.markedMissing} facturas`,
+        details: JSON.stringify({ ids: result.missingIds, trigger }),
+      } }).catch(() => {});
+    }
+    lastInvoiceReconciliation = { at: new Date().toISOString(), trigger, durationMs: Date.now() - startedAt, ...result };
+    console.log('[invoice-reconcile]', JSON.stringify({ ...lastInvoiceReconciliation, missingIds: undefined }));
+    return lastInvoiceReconciliation;
+  } finally {
+    invoiceReconcileRunning = false;
+  }
+}
+function startInvoiceReconcileLoop() {
+  if (invoiceReconcileTimer) return;
+  const tick = (trigger) => {
+    if (wisphubOutage.shouldWait()) return;
+    runPendingInvoiceReconciliation(trigger).catch((error) => console.error('[invoice-reconcile]', error.message));
+  };
+  setTimeout(() => tick('startup'), 3 * 60_000).unref?.();
+  invoiceReconcileTimer = setInterval(() => tick('scheduled'), INVOICE_RECONCILE_INTERVAL_MS);
+}
+
+// Pagos enviados a WispHub que quedaron sin confirmar (respuesta perdida, tarea lenta):
+// se revisan solos cada 2 minutos para no dejar la factura trabada. Nunca reenvia un pago.
+const BILLING_RECONCILE_INTERVAL_MS = 2 * 60_000;
+let billingReconcileTimer = null;
+let billingReconcileRunning = false;
+function startBillingReconcileLoop() {
+  if (billingReconcileTimer) return;
+  billingReconcileTimer = setInterval(async () => {
+    if (billingReconcileRunning || wisphubOutage.shouldWait()) return;
+    billingReconcileRunning = true;
+    try {
+      const result = await billingService.reconcileOpen();
+      if (result.confirmed || result.released || result.failed) console.log('[billing] conciliacion automatica', JSON.stringify(result));
+    } catch (error) {
+      console.error('[billing] conciliacion automatica:', error.message);
+    } finally {
+      billingReconcileRunning = false;
+    }
+  }, BILLING_RECONCILE_INTERVAL_MS);
+}
+
 function startSyncLoop() {
   if (syncTimer) return;
   console.log(`[sync] starting loop. interval=${SYNC_INTERVAL_MS}ms`);
+  closeInterruptedSyncLogs().catch((error) => console.error('[sync] interrupted logs:', error.message));
   const safeSync = async () => {
+    // WispHub caido: no se le insiste cada minuto. "Sincronizar ahora" sigue disponible.
+    if (wisphubOutage.shouldWait()) return;
     try {
       const result = await runSyncSafely('scheduled');
       if (result.busy) console.warn('[sync] tick skipped: previous run still in progress');
@@ -12751,6 +12838,8 @@ const server = app.listen(PORT, () => {
   if (API_KEY && process.env.WHATSAPP_AUTOSTART !== 'false') initWhatsApp();
   if (WISPHUB_SYNC_ENABLED && API_KEY) startSyncLoop();
   else if (!WISPHUB_SYNC_ENABLED) console.log('[sync] disabled by WISPHUB_SYNC_ENABLED=false');
+  if (API_KEY) startBillingReconcileLoop();
+  if (WISPHUB_SYNC_ENABLED && API_KEY) startInvoiceReconcileLoop();
   if (MT_HOST && process.env.WEB_ACTIVITY_ENABLED !== 'false') startWebActivityLoop();
   if (MT_HOST && API_KEY) startAutoBlockLoop();
   startNotifLoop();
@@ -12793,6 +12882,9 @@ async function shutdown() {
   if (oltAutoAuthorizeTimer) clearInterval(oltAutoAuthorizeTimer);
   if (nocTimer) clearInterval(nocTimer);
   if (networkAuditTimer) clearInterval(networkAuditTimer);
+  if (syncTimer) clearInterval(syncTimer);
+  if (billingReconcileTimer) clearInterval(billingReconcileTimer);
+  if (invoiceReconcileTimer) clearInterval(invoiceReconcileTimer);
   server.close(async () => {
     await prisma.$disconnect();
     if (waSocket) try { waSocket.end(); } catch {}

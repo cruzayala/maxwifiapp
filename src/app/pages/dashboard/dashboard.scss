@@ -93,6 +93,9 @@
   font-size: 12px;
 }
 .partial-warning span { flex: 1; min-width: 0; }
+.partial-warning.outage { color: #7f1d1d; background: #fef2f2; border-color: #f3c4c4; }
+.partial-warning.outage button { border-color: #f3c4c4; color: #991b1b; }
+.partial-warning.outage button:disabled { opacity: .6; cursor: progress; }
 .partial-warning button { flex: 0 0 auto; min-height: 30px; padding: 0 10px; border: 1px solid #edcf9e; border-radius: 9px; background: #fff; color: #8c4c0a; font-weight: 700; cursor: pointer; }
 
 .kpi-strip,
