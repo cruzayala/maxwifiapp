@@ -1210,6 +1210,26 @@ dbRouter.get('/backup', requireRole(['admin']), asyncHandler(async (req, res, ne
   stream.pipe(res);
 }));
 
+// Copias diarias automaticas (lib/db-snapshots.js): /data/backups/daily, ultimos 7 dias.
+const dbSnapshots = require('./lib/db-snapshots');
+function dbSnapshotDir() {
+  const dbPath = resolveSqliteDatabasePath(process.env.DATABASE_URL || 'file:./data.db', __dirname);
+  return dbPath ? path.join(path.dirname(dbPath), 'backups', 'daily') : null;
+}
+let lastDbSnapshot = null;
+dbRouter.get('/snapshots', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const dir = dbSnapshotDir();
+  res.json({ items: dir ? await dbSnapshots.listSnapshots(dir) : [], last: lastDbSnapshot, keepDays: 7 });
+}));
+dbRouter.get('/snapshots/:file', requireRole(['admin']), asyncHandler(async (req, res) => {
+  const dir = dbSnapshotDir();
+  const file = dir && dbSnapshots.snapshotPath(dir, req.params.file);
+  if (!file || !fs.existsSync(file)) return res.status(404).json({ error: 'Copia no encontrada' });
+  await logActivity(req, { action: 'db_snapshot_download', entityType: 'backup', entityName: req.params.file });
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.download(file, req.params.file);
+}));
+
 app.use('/db', dbRouter);
 
 // Survey router (declarado/montado AQUI antes del proxy /api -> WispHub
@@ -12785,6 +12805,30 @@ async function runPaymentReminders({ trigger = 'scheduled', actor = 'system' } =
   return sendPaymentReminders(await preparePaymentReminders(), { trigger, actor });
 }
 
+let dbSnapshotTimer = null;
+function startDbSnapshotLoop() {
+  const dir = dbSnapshotDir();
+  if (dbSnapshotTimer || !dir || !IS_PROD) return;
+  const runner = createDailyRunner({
+    name: 'db-snapshot',
+    hour: () => 2,
+    run: async () => {
+      const startedAt = Date.now();
+      const result = await dbSnapshots.createSnapshot(prisma, { dir, date: businessDate(), keep: 7 });
+      lastDbSnapshot = { ...result, at: new Date().toISOString(), durationMs: Date.now() - startedAt };
+      console.log('[db-snapshot]', JSON.stringify(lastDbSnapshot));
+      return lastDbSnapshot;
+    },
+    store: automationStore,
+    log: console.log,
+  });
+  dbSnapshotTimer = setInterval(() => runner.tick().catch((e) => {
+    lastDbSnapshot = { error: e.message, at: new Date().toISOString() };
+    console.error('[db-snapshot] error:', e.message);
+  }), AUTOMATION_TICK_MS);
+  console.log(`[db-snapshot] copia diaria a las 2:00 (${BUSINESS_TIME_ZONE}) en ${dir}`);
+}
+
 function startPaymentReminderLoop() {
   if (paymentReminderTimer) return;
   const runner = createDailyRunner({
@@ -13011,6 +13055,7 @@ const server = app.listen(PORT, () => {
   startNotifLoop();
   startPaymentWarningLoop();
   startPaymentReminderLoop();
+  startDbSnapshotLoop();
   startSurveyReminderLoop();
   startMetricsLoop();
   startOltSyncLoop();
@@ -13052,6 +13097,7 @@ async function shutdown() {
   if (syncTimer) clearInterval(syncTimer);
   if (billingReconcileTimer) clearInterval(billingReconcileTimer);
   if (paymentReminderTimer) clearInterval(paymentReminderTimer);
+  if (dbSnapshotTimer) clearInterval(dbSnapshotTimer);
   if (invoiceReconcileTimer) clearInterval(invoiceReconcileTimer);
   server.close(async () => {
     await prisma.$disconnect();

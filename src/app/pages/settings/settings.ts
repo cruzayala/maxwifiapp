@@ -1,4 +1,5 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { FormsModule } from '@angular/forms';
 import { environment } from '../../../environments/environment';
@@ -14,7 +15,7 @@ import {
   selector: 'app-settings',
   standalone: true,
   imports: [
-    NavbarComponent, FormsModule,
+    NavbarComponent, FormsModule, DecimalPipe,
     LucideActivity, LucideBuilding2, LucideCircleCheck, LucideCopy, LucideDatabase, LucideDownload, LucideEye, LucideGlobe, LucideInfo, LucideMessageCircle, LucidePlay, LucideRefreshCw, LucideSave, LucideSend, LucideSmartphone, LucideWifi, LucideWrench,
   ],
   template: `
@@ -168,6 +169,21 @@ import {
             </button>
           </div>
           <p class="help-text small-gap">Guarda el respaldo en un lugar seguro: contiene todos los datos de clientes y pagos.</p>
+          <div class="snapshot-list" aria-label="Copias automáticas">
+            <strong>Copias automáticas</strong>
+            <p class="help-text small-gap">El servidor guarda cada día a las 2:00 a. m. una copia comprimida y conserva los últimos 7 días. Protegen de un borrado o una sincronización mala; para protegerte de perder el servidor, descarga una de vez en cuando y guárdala fuera.</p>
+            @if (!snapshots().length) {
+              <span class="help-text">Todavía no hay copias automáticas (la primera se crea esta madrugada).</span>
+            }
+            @for (snap of snapshots(); track snap.file) {
+              <div class="snapshot-row">
+                <span>{{ snap.date }} · {{ (snap.sizeBytes / 1048576) | number:'1.0-1' }} MB</span>
+                <button type="button" class="btn btn-outline btn-sm" (click)="downloadSnapshot(snap.file)" [disabled]="snapshotBusy() === snap.file">
+                  <svg lucideDownload size="14"></svg> {{ snapshotBusy() === snap.file ? 'Descargando…' : 'Descargar' }}
+                </button>
+              </div>
+            }
+          </div>
         </div>
 
         <!-- WHATSAPP AUTOMÁTICO -->
@@ -464,6 +480,9 @@ import {
 
     .help-text { font-size: 13px; color: #56665e; line-height: 1.5; margin: 0 0 12px; }
     .help-text.small-gap { margin: 10px 0 0; font-size: 12px; }
+    .snapshot-list { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e3e9e5; display: grid; gap: 8px; }
+    .snapshot-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
+    .btn-sm { min-height: 30px; padding: 0 10px; font-size: 12px; }
 
     .btn {
       display: inline-flex; align-items: center; gap: 7px;
@@ -521,6 +540,8 @@ export class SettingsComponent implements OnInit {
   ipInventoryCount = signal(0);
   lastSyncAt = signal('');
   backupBusy = signal(false);
+  snapshots = signal<{ file: string; date: string; sizeBytes: number }[]>([]);
+  snapshotBusy = signal<string | null>(null);
   paymentWarningEnabled = signal(false);
   paymentWarningOverdueDays = signal(15);
   paymentWarningRunHour = signal(9);
@@ -533,6 +554,7 @@ export class SettingsComponent implements OnInit {
 
   async ngOnInit() {
     this.loadDatabaseStatus();
+    this.loadSnapshots();
     this.config.load();
     this.loadPaymentWarning();
     this.loadOpsHealth();
@@ -751,6 +773,32 @@ export class SettingsComponent implements OnInit {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
       },
       error: () => { this.androidBusy.set(false); this.toast.error('No se pudo descargar la app Android'); },
+    });
+  }
+
+  loadSnapshots() {
+    this.http.get<{ items: { file: string; date: string; sizeBytes: number }[] }>('/db/snapshots').subscribe({
+      next: (result) => this.snapshots.set(result.items || []),
+      error: () => this.snapshots.set([]),
+    });
+  }
+
+  downloadSnapshot(file: string) {
+    this.snapshotBusy.set(file);
+    this.http.get(`/db/snapshots/${encodeURIComponent(file)}`, { responseType: 'blob' }).subscribe({
+      next: (blob) => {
+        this.snapshotBusy.set(null);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = file;
+        link.click();
+        URL.revokeObjectURL(link.href);
+        this.toast.success('Copia descargada. Para usarla: descomprímela (.gz) y abre el .db con SQLite.');
+      },
+      error: (error) => {
+        this.snapshotBusy.set(null);
+        this.toast.error(error.error?.error || 'No se pudo descargar la copia');
+      },
     });
   }
 
