@@ -466,8 +466,16 @@ private statusText(inv: Invoice): string {
   }
 
 private balanceAmount(inv: Invoice): number {
-    if (this.isPaid(inv)) return inv.saldo || 0;
-    return inv.saldo || Math.max((inv.total || 0) - (inv.total_cobrado || 0), 0);
+    const status = (inv.estado || '').toLowerCase();
+    if (status.includes('cancelad') || status.includes('anulad') || status.includes('transf')) return 0;
+    if (this.isPaid(inv)) return 0;
+    if (Number(inv.saldo) > 0) return Number(inv.saldo);
+    // WispHub pone en total_cobrado el importe a cobrar, no lo cobrado: si esta pendiente
+    // debe el total. Antes la factura impresa de un pendiente decia "saldo RD$ 0.00".
+    const total = inv.total || 0;
+    const charged = inv.total_cobrado || 0;
+    if (status.includes('pendiente') && (charged <= 0 || charged >= total - 0.01)) return Math.max(total, 0);
+    return Math.max(total - charged, 0);
   }
 
 private money(value: number | string | null | undefined): string {

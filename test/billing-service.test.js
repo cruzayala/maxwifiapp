@@ -24,6 +24,32 @@ async function fixture(behavior = 'success') {
   const request = { invoiceId: id, userId: 1, requestKey: randomUUID(), body: { amount: 40, paymentMethodId: 1, paidAt: new Date().toISOString(), invoiceVersion: invoiceSnapshot(invoice, id).version } };
   return { service, request, invoice, adapter, calls: () => calls, task: status => { taskState = status; } };
 }
+test('a payment against the real WispHub shape is accepted and confirmed', async () => {
+  // Asi responde la API real: pendiente con saldo 0 y total_cobrado = total; al pagar
+  // pasa a "Pagada". Antes ISP Max rechazaba todo pago ("supera el saldo actual").
+  const id = ++sequence;
+  await qa.prisma.invoice.create({ data: { idFactura: id, clienteIdServicio: 301, clienteNombre: 'Ana QA', estado: 'Pendiente de Pago', total: 700, subTotal: 700, saldo: 700 } });
+  const invoice = { id_factura: id, total: 700, total_cobrado: 700, saldo: 0, estado: 'Pendiente de Pago' };
+  let calls = 0;
+  const adapter = { invoice: async () => ({ ...invoice }), task: async () => ({ status: 'SUCCESS' }), submit: async () => {
+    calls++;
+    invoice.estado = 'Pagada';
+    return { status: 'SUCCESS' };
+  } };
+  const service = createBillingService({ prisma: qa.prisma, adapter });
+  const options = await service.options(id);
+  assert.equal(options.invoice.balance, 700);
+  const request = { invoiceId: id, userId: 1, requestKey: randomUUID(), body: { amount: 700, paymentMethodId: 1, paidAt: new Date().toISOString(), invoiceVersion: options.invoice.version } };
+  const result = await service.submit(request);
+  assert.equal(result.state, 'confirmed');
+  assert.equal(calls, 1);
+  assert.equal(await qa.prisma.paymentLog.count({ where: { idFactura: id } }), 1);
+  // Mas de lo que debe sigue rechazado.
+  invoice.estado = 'Pendiente de Pago';
+  const fresh = await service.options(id);
+  await assert.rejects(service.submit({ ...request, requestKey: randomUUID(), body: { ...request.body, amount: 701, invoiceVersion: fresh.invoice.version } }), (error) => error.code === 'INVALID_BALANCE');
+});
+
 test('validates money, real calendar date, timezone and invoice version', () => {
   const body = { amount: '40.20', paymentMethodId: 1, paidAt: '2026-01-01T12:00:00Z', invoiceVersion: 'a'.repeat(64) };
   assert.equal(validatePayment(body).amount, 40.2);

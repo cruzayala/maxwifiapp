@@ -25,14 +25,18 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const isPublic = PUBLIC_PATHS.some((p) => req.url.startsWith(p));
   const isWisphubProxy = req.url.startsWith('/api/') && !req.url.startsWith('/api/survey/');
 
+  // La sesion solo viaja a nuestro propio servidor (rutas relativas). Antes tambien se
+  // enviaba a sitios externos como api.ipify.org e ipapi.co desde Ajustes.
+  const isOwnServer = !/^[a-z][a-z0-9+.-]*:\/\//i.test(req.url) && !req.url.startsWith('//');
+
   let modifiedReq = req;
-  if (token && !isPublic) {
+  if (token && !isPublic && isOwnServer) {
     modifiedReq = req.clone({ setHeaders: { 'X-Auth-Token': token } });
   }
 
   return next(modifiedReq).pipe(
     catchError((err) => {
-      if (err.status === 401 && !isPublic && !isWisphubProxy) {
+      if (err.status === 401 && !isPublic && !isWisphubProxy && isOwnServer) {
         auth.clearSession();
         router.navigate(['/login']);
       }

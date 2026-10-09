@@ -11,7 +11,7 @@ import { ClientBlockActionsComponent } from '../../components/client-block-actio
 import { ClientActionsService } from '../../services/client-actions.service';
 import { NavbarComponent } from '../../components/layout/navbar';
 import { PlanLabelPipe } from '../../pipes/plan-label.pipe';
-import { WisphubService } from '../../services/wisphub.service';
+import { ClientEditResult, WisphubService } from '../../services/wisphub.service';
 import { LocalDbService } from '../../services/local-db.service';
 import { WispHubClient } from '../../models/client.model';
 import { Invoice } from '../../models/invoice.model';
@@ -1114,32 +1114,45 @@ export class ClientDetailComponent implements OnInit {
     const c = this.client();
     if (!c) return;
     const name = this.editName.replace(/\s+/g, ' ').trim();
+    // Solo viaja lo que cambio. Antes se mandaba todo y los vacios se rellenaban con
+    // '0000000000', 'na@na.com' o '-', que quedaban guardados en WispHub.
+    const personal: Partial<Record<'phone' | 'nationalId' | 'email' | 'address' | 'city', string>> = {};
+    const track = (key: keyof typeof personal, value: string, current: unknown) => {
+      const next = (value || '').trim();
+      if (next !== String(current ?? '').trim()) personal[key] = next;
+    };
+    track('phone', this.editPhone, c.telefono);
+    track('nationalId', this.editCedula, c.cedula);
+    track('email', this.editEmail, c.email);
+    track('address', this.editDireccion, c.direccion);
+    track('city', this.editCiudad, c.ciudad);
+    const nameChanged = name !== (c.nombre || '').trim();
+    if (!nameChanged && !Object.keys(personal).length) {
+      this.editingProfile.set(false);
+      this.toast.info('No hay cambios para guardar');
+      return;
+    }
     this.saving.set(true);
 
-    const saveProfileData = (renamed: string | null) => {
-      const profileData: any = {
-        nombre: name.split(' ')[0] || name,
-        apellidos: name.split(' ').slice(1).join(' ') || '-',
-        telefono: this.editPhone || '0000000000',
-        cedula: this.editCedula || '-',
-        email: this.editEmail || 'na@na.com',
-        direccion: this.editDireccion || '-',
-        localidad: this.editCiudad || '-',
-        ciudad: this.editCiudad || '-',
-      };
-      this.api.updateProfile(c.id_servicio, profileData).subscribe({
-        next: () => this.onProfileSaved(name, renamed),
-        error: () => this.onProfileSaved(name, renamed), // PUT da 500 pero guarda los datos
+    const savePersonal = (renamed: string | null) => {
+      if (!Object.keys(personal).length) { this.onProfileSaved(name, renamed, null); return; }
+      this.api.editClientProfile(c.id_servicio, personal).subscribe({
+        next: (result) => this.onProfileSaved(name, renamed, result.client.profile),
+        error: (e) => {
+          this.saving.set(false);
+          if (renamed) this.applyLocalClient({ nombre: name });
+          this.toast.error(`${renamed ? renamed + ', pero no' : 'No'} se pudieron guardar los datos: ${e.error?.error || 'ISP Max no respondió. Intente de nuevo.'}`);
+        },
       });
     };
 
     // 1. El nombre va primero y en los tres lados: WispHub, la cola del MikroTik e ISP Max.
-    if (name === (c.nombre || '').trim()) {
-      saveProfileData(null);
+    if (!nameChanged) {
+      savePersonal(null);
       return;
     }
     this.api.renameClient(c.id_servicio, name).subscribe({
-      next: (result) => saveProfileData(result.mikrotik === 'renamed'
+      next: (result) => savePersonal(result.mikrotik === 'renamed'
         ? 'Nombre cambiado en WispHub, MikroTik e ISP Max'
         : result.mikrotik === 'no_queue'
         ? 'Nombre cambiado en WispHub e ISP Max (el cliente no tiene cola en el MikroTik)'
@@ -1151,24 +1164,24 @@ export class ClientDetailComponent implements OnInit {
     });
   }
 
-  private async onProfileSaved(name: string, renamed: string | null) {
+  private onProfileSaved(name: string, renamed: string | null, profile: ClientEditResult['client']['profile'] | null) {
     this.saving.set(false);
     this.editingProfile.set(false);
-    this.toast.success(renamed ? `${renamed}. Datos del cliente actualizados.` : 'Datos del cliente actualizados');
-
-    // El nombre del cliente es el del servicio; el resto de datos se relee del perfil.
-    const c = this.client()!;
-    const withName = { ...c, nombre: name };
-    this.client.set(withName);
-    this.clientName.set(name);
-    this.db.saveClients([withName]);
-    this.api.getClientProfile(c.id_servicio).subscribe({
-      next: (profile) => {
-        const updated = { ...withName, telefono: profile.telefono, cedula: profile.cedula, email: profile.email, direccion: profile.direccion, ciudad: profile.ciudad };
-        this.client.set(updated);
-        this.db.saveClients([updated]); // update local cache
-      }
+    this.toast.success(renamed ? `${renamed}. Datos del cliente actualizados.` : 'Datos del cliente actualizados y confirmados en WispHub');
+    // Lo que se muestra es lo que WispHub confirmo, no lo que se escribio en el formulario.
+    this.applyLocalClient({
+      nombre: name,
+      ...(profile ? { telefono: profile.phone, cedula: profile.nationalId, email: profile.email, direccion: profile.address, ciudad: profile.city } : {}),
     });
+  }
+
+  private applyLocalClient(patch: Partial<WispHubClient>) {
+    const c = this.client();
+    if (!c) return;
+    const updated = { ...c, ...patch };
+    this.client.set(updated);
+    if (patch.nombre) this.clientName.set(patch.nombre);
+    this.db.saveClients([updated]);
   }
 
   // ─── EDIT SERVICE ───
@@ -1188,32 +1201,45 @@ export class ClientDetailComponent implements OnInit {
   saveService() {
     const c = this.client();
     if (!c) return;
+    const changes: Partial<Record<'ip' | 'macCpe' | 'lanInterface' | 'onuSerial' | 'wifiSsid' | 'wifiPassword' | 'comments', string>> = {};
+    const track = (key: keyof typeof changes, value: string, current: unknown) => {
+      const next = (value || '').trim();
+      if (next !== String(current ?? '').trim()) changes[key] = next;
+    };
+    track('ip', this.editIp, c.ip);
+    track('macCpe', this.editMac, c.mac_cpe);
+    track('lanInterface', this.editLan, c.interfaz_lan);
+    track('onuSerial', this.editOnu, c.sn_onu);
+    track('wifiSsid', this.editSsid, c.ssid_router_wifi);
+    track('comments', this.editComentarios, c.comentarios);
+    if (this.editWifiPass.trim() && this.editWifiPass.trim() !== (c.password_ssid_router_wifi || '').trim()) changes.wifiPassword = this.editWifiPass.trim();
+    if (!Object.keys(changes).length) {
+      this.editingService.set(false);
+      this.toast.info('No hay cambios para guardar');
+      return;
+    }
     this.saving.set(true);
 
-    const data: any = {
-      ip: this.editIp,
-      mac_cpe: this.editMac,
-      interfaz_lan: this.editLan,
-      sn_onu: this.editOnu,
-      ssid_router_wifi: this.editSsid,
-      password_ssid_router_wifi: this.editWifiPass,
-      comentarios: this.editComentarios,
-    };
-
-    this.api.updateService(c.id_servicio, data).subscribe({
-      next: (res) => {
+    // WispHub confirma cada campo antes de guardarlo aqui; una IP nueva tambien mueve la
+    // cola del MikroTik. Antes se escribia directo y una IP cambiada dejaba la cola atras.
+    this.api.editClientService(c.id_servicio, changes).subscribe({
+      next: (result) => {
         this.saving.set(false);
         this.editingService.set(false);
-        this.toast.success('Servicio actualizado en WispHub');
-
-        const updated = { ...c, ip: this.editIp, mac_cpe: this.editMac, interfaz_lan: this.editLan, sn_onu: this.editOnu, ssid_router_wifi: this.editSsid, password_ssid_router_wifi: this.editWifiPass, comentarios: this.editComentarios };
-        this.client.set(updated);
-        this.db.saveClients([updated]);
+        const service = result.client.service;
+        this.applyLocalClient({
+          ip: service.ip, mac_cpe: service.macCpe, interfaz_lan: service.lanInterface, sn_onu: service.onuSerial,
+          ssid_router_wifi: service.wifiSsid, comentarios: service.comments,
+          ...(changes.wifiPassword ? { password_ssid_router_wifi: changes.wifiPassword } : {}),
+        });
+        this.toast.success(changes.ip
+          ? `Servicio actualizado y confirmado. La cola del MikroTik pasó a ${service.ip}.`
+          : 'Servicio actualizado y confirmado en WispHub');
       },
       error: (e) => {
         this.saving.set(false);
-        this.toast.error('No se pudo guardar: ' + (e.error?.detail || 'WispHub no respondió. Intente de nuevo.'));
-      }
+        this.toast.error('No se pudo guardar: ' + (e.error?.error || 'ISP Max no respondió. Intente de nuevo.'));
+      },
     });
   }
 

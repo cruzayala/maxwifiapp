@@ -953,6 +953,20 @@ dbRouter.post('/activity', asyncHandler(async (req, res) => {
 }));
 
 // CLIENTS (cached)
+/**
+ * Datos sensibles del cliente segun el rol: la clave WiFi solo la ven tecnicos y
+ * administradores, y la cedula no la ve el rol de solo lectura. Antes se enviaban a todos.
+ */
+function clientForRole(client, session) {
+  if (!client) return client;
+  const role = session?.role;
+  const privileged = role === 'super_admin' || role === 'admin';
+  const visible = { ...client };
+  if (!privileged && role !== 'tecnico') delete visible.passwordSsidWifi;
+  if (!privileged && role !== 'tecnico' && role !== 'cobranza') delete visible.cedula;
+  return visible;
+}
+
 dbRouter.get('/clients', asyncHandler(async (req, res) => {
   const requestedLimit = Number.parseInt(req.query.limit, 10);
   const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100_000) : 1000;
@@ -960,7 +974,7 @@ dbRouter.get('/clients', asyncHandler(async (req, res) => {
     orderBy: { idServicio: 'desc' },
     take: limit,
   });
-  res.json(clients);
+  res.json(clients.map((client) => clientForRole(client, req.session)));
 }));
 
 dbRouter.get('/clients/:id', asyncHandler(async (req, res) => {
@@ -968,7 +982,7 @@ dbRouter.get('/clients/:id', asyncHandler(async (req, res) => {
     where: { idServicio: parseInt(req.params.id) },
     include: { notes: true, tags: { include: { tag: true } }, promises: true }
   });
-  res.json(c);
+  res.json(clientForRole(c, req.session));
 }));
 
 // INVOICES (cached)
@@ -3751,6 +3765,48 @@ function clientRenameDeps(actor) {
   };
 }
 
+// ─── Cambiar la IP de un cliente: WispHub + target de su cola en el MikroTik + ISP Max ───
+const { changeClientIp } = require('./lib/client-ip-change');
+
+function clientIpDeps(actor) {
+  const queueRow = (row) => (row ? { id: row['.id'], name: row.name } : null);
+  return {
+    readService: (id) => wisphubApiRequest(`clientes/${id}/`, { timeoutMs: 20_000 }),
+    writeServiceIp: (id, ip) => awaitWisphubWrite(`clientes/${id}/`, 'PATCH', { ip }, 'la IP del servicio'),
+    localOwner: (ip, id) => prisma.client.findFirst({ where: { ip, NOT: { idServicio: id } }, select: { idServicio: true, nombre: true } }),
+    findQueue: async (ip) => {
+      const connection = await getMtConnection();
+      return queueRow((await mtWrite(connection, 10_000, '/queue/simple/print', `?target=${ip}/32`))[0]);
+    },
+    retargetQueue: (id, ip) => mtSerialize(async () => {
+      const connection = await getMtConnection();
+      await mtWrite(connection, 10_000, '/queue/simple/set', `=.id=${id}`, `=target=${ip}/32`);
+      mtInvalidate('queues');
+      mtInvalidate('clients-live');
+      mtInvalidate('unknown-devices');
+    }),
+    saveLocal: async (id, ip, before) => {
+      await prisma.client.updateMany({ where: { idServicio: id }, data: { ip } });
+      await prisma.activity.create({ data: {
+        action: 'client_ip_changed', entityType: 'client', entityId: String(id), entityName: ip,
+        details: JSON.stringify({ actor, before: before || null, after: ip, targets: ['wisphub', 'mikrotik', 'isp_max'] }),
+      } });
+    },
+  };
+}
+
+async function changeIp(idServicio, ip, actor) {
+  if (clientRenamesInProgress.has(idServicio)) {
+    throw Object.assign(new Error('Ya hay un cambio en curso para este cliente'), { statusCode: 409 });
+  }
+  clientRenamesInProgress.add(idServicio);
+  try {
+    return await changeClientIp({ idServicio, ip, deps: clientIpDeps(actor) });
+  } finally {
+    clientRenamesInProgress.delete(idServicio);
+  }
+}
+
 /** Un solo cambio de nombre a la vez por cliente, venga de la web o del celular. */
 async function renameClient(idServicio, name, actor) {
   if (clientRenamesInProgress.has(idServicio)) {
@@ -3792,11 +3848,16 @@ async function updateExternalWisphubClient({ idServicio, section, changes, befor
     return read();
   }
 
+  // La IP tambien mueve la cola del MikroTik: va por su propio cambio verificado.
+  const { ip, ...otherChanges } = changes;
+  if (ip !== undefined) await changeIp(idServicio, ip, actor || 'celular');
+  if (!Object.keys(otherChanges).length) return { ...(await read()), secretVerified: true };
+
   const remoteFields = {
-    ip: 'ip', macCpe: 'mac_cpe', lanInterface: 'interfaz_lan', onuSerial: 'sn_onu',
+    macCpe: 'mac_cpe', lanInterface: 'interfaz_lan', onuSerial: 'sn_onu',
     wifiSsid: 'ssid_router_wifi', wifiPassword: 'password_ssid_router_wifi', comments: 'comentarios',
   };
-  const payload = Object.fromEntries(Object.entries(changes).map(([field, value]) => [remoteFields[field], value]));
+  const payload = Object.fromEntries(Object.entries(otherChanges).map(([field, value]) => [remoteFields[field], value]));
   const result = await writeAndConfirmWisphub(
     `clientes/${idServicio}/`, 'PATCH', payload, 'la edicion del servicio', read,
     (raw) => Object.entries(payload).every(([field, value]) => String(raw.detail?.[field] ?? '').trim() === value),
@@ -5836,7 +5897,9 @@ oltRouter.get('/pons', asyncHandler(async (req, res) => {
 
 oltRouter.get('/onus', asyncHandler(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
-  const limit = Math.min(200, Math.max(10, Number(req.query.limit) || 50));
+  // El mapa de PON y los conteos de senal piden todas las ONU de una vez (limit=500):
+  // con el tope anterior de 200 quedaban incompletos sin aviso al pasar de 200 ONU.
+  const limit = Math.min(1000, Math.max(10, Number(req.query.limit) || 50));
   const search = String(req.query.search || '').trim();
   const pon = Number(req.query.pon);
   const status = String(req.query.status || 'all');
@@ -8522,6 +8585,58 @@ clientActionsRouter.patch('/:id/alias', asyncHandler(async (req, res) => {
   const data = validateAlias(req.body);
   const updated = await prisma.$transaction(tx => changeAlias(tx, { id: idServicio, data, actor: req.session.username }));
   res.json(updated);
+}));
+
+/**
+ * Edicion verificada desde la web: escribe en WispHub, relee para confirmar cada campo y
+ * solo entonces guarda en ISP Max. Antes la web escribia directo por el proxy, ignoraba
+ * los errores y rellenaba los vacios con '0000000000', 'na@na.com' o '-'.
+ */
+async function editClientInWisphub(idServicio, section, rawChanges, actor) {
+  const external = require('./lib/mobile-client-external');
+  const { readWisphubService } = require('./lib/client-rename');
+  const { changes } = external.validateChanges({ section, changes: rawChanges });
+  const beforeRaw = await readWisphubService(readExternalWisphubClient, idServicio);
+  const before = external.externalSnapshot(beforeRaw, idServicio);
+  const effective = Object.fromEntries(Object.entries(changes)
+    .filter(([field, value]) => field === 'wifiPassword' || external.comparable(before, section, field) !== value));
+  if (!Object.keys(effective).length) return { ok: true, changedFields: [], client: before };
+  const updatedRaw = await updateExternalWisphubClient({ idServicio, section, changes: effective, before: beforeRaw, actor });
+  const after = external.externalSnapshot(updatedRaw, idServicio);
+  external.verifyChanges(after, section, effective, updatedRaw?.secretVerified);
+  await prisma.client.update({
+    where: { idServicio },
+    data: { ...external.sqliteChanges(after, section), ...(Object.hasOwn(effective, 'wifiPassword') ? { passwordSsidWifi: effective.wifiPassword } : {}) },
+  });
+  const fields = Object.keys(effective).filter((field) => field !== 'wifiPassword');
+  await prisma.activity.create({ data: {
+    action: 'client_external_updated', entityType: 'client', entityId: String(idServicio),
+    details: JSON.stringify({ actor, section, fields, wifiPasswordChanged: Object.hasOwn(effective, 'wifiPassword'), source: 'web' }),
+  } });
+  return { ok: true, changedFields: Object.keys(effective), client: after };
+}
+
+async function requireLocalClient(req, res) {
+  if (!/^\d+$/.test(req.params.id)) { res.status(400).json({ error: 'Cliente inválido' }); return null; }
+  const idServicio = Number(req.params.id);
+  const local = await prisma.client.findUnique({ where: { idServicio }, select: { idServicio: true } });
+  if (!local) { res.status(404).json({ error: 'Cliente no encontrado' }); return null; }
+  return idServicio;
+}
+
+// Datos personales (telefono, cedula, correo, direccion, ciudad), verificados en WispHub.
+clientActionsRouter.patch('/:id/profile', requireAnyRole(['tecnico', 'cobranza']), asyncHandler(async (req, res) => {
+  const idServicio = await requireLocalClient(req, res);
+  if (idServicio == null) return;
+  const { displayName, ...changes } = req.body || {};
+  res.json(await editClientInWisphub(idServicio, 'profile', changes, req.session.username));
+}));
+
+// Datos tecnicos (IP, MAC, interfaz, serial ONU, WiFi, comentarios). La IP mueve tambien la cola.
+clientActionsRouter.patch('/:id/service', requireAnyRole(['tecnico']), asyncHandler(async (req, res) => {
+  const idServicio = await requireLocalClient(req, res);
+  if (idServicio == null) return;
+  res.json(await editClientInWisphub(idServicio, 'service', req.body || {}, req.session.username));
 }));
 
 // PATCH nombre real del cliente: WispHub (usuario_rb), cola del MikroTik e ISP Max.
@@ -11217,6 +11332,7 @@ app.get('/clients/:idServicio/equipment', authMiddleware, asyncHandler(async (re
 // ─── Expenses ───
 const expensesRouter = express.Router();
 expensesRouter.use(authMiddleware);
+expensesRouter.use(requireRole(['admin']));
 const expenseService = require('./lib/expense-service');
 
 expensesRouter.get('/', asyncHandler(async (req, res) => {
@@ -11302,6 +11418,8 @@ app.use('/expenses', expensesRouter);
 // ─── Employees + Payroll ───
 const employeesRouter = express.Router();
 employeesRouter.use(authMiddleware);
+// Salarios y cedulas del personal: solo administracion (antes bastaba con iniciar sesion).
+employeesRouter.use(requireRole(['admin']));
 
 employeesRouter.get('/', asyncHandler(async (req, res) => {
   const employees = await prisma.employee.findMany({
@@ -11361,6 +11479,7 @@ app.use('/employees', employeesRouter);
 
 const payrollRouter = express.Router();
 payrollRouter.use(authMiddleware);
+payrollRouter.use(requireRole(['admin']));
 
 payrollRouter.get('/', asyncHandler(async (req, res) => {
   const { employeeId, period, status } = req.query;
@@ -12642,6 +12761,11 @@ const server = app.listen(PORT, () => {
   startNocLoop();
   startNetworkAuditLoop();
   dbMaintenance.startMaintenanceLoop(prisma);
+  // Las facturas guardadas antes del 08/10/2026 tenian saldo 0 y cobrado = total aunque
+  // estuvieran pendientes. Es idempotente: tras la primera vez no cambia nada.
+  require('./lib/invoice-amounts').normalizeStoredInvoiceAmounts(prisma)
+    .then((fixed) => console.log(`[invoices] importes normalizados: ${JSON.stringify(fixed)}`))
+    .catch((error) => console.error('[invoices] no se pudieron normalizar los importes:', error.message));
   ensureTemplatesSeeded().catch((e) => console.error('[templates] seed error:', e.message));
   ensureSuperAdmin().catch((e) => console.error('[auth] seed error:', e.message));
   ensureOnuModelProfilesSeeded().catch((e) => console.error('[onu-models] seed error:', e.message));

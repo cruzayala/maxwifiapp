@@ -5,6 +5,15 @@ import { environment } from '../../environments/environment';
 import { TicketResponse } from '../models/ticket.model';
 import { PlanResponse, ZoneResponse } from '../models/plan.model';
 
+export interface ClientEditResult {
+  ok: boolean;
+  changedFields: string[];
+  client: {
+    profile: { displayName: string; phone: string; nationalId: string; email: string; address: string; city: string };
+    service: { ip: string; macCpe: string; lanInterface: string; onuSerial: string; wifiSsid: string; wifiPasswordConfigured: boolean; comments: string };
+  };
+}
+
 export interface ClientRenameResult {
   ok: boolean;
   idServicio: number;
@@ -49,23 +58,19 @@ export class WisphubService {
   private api = environment.apiUrl;
 
   // ─── CLIENTES ───
-  getClientProfile(idServicio: number): Observable<any> {
-    return this.http.get(`${this.api}/clientes/${idServicio}/perfil/`);
-  }
-
   /** Cambia el nombre del cliente en WispHub, en su cola del MikroTik y en ISP Max, y lo verifica. */
   renameClient(idServicio: number, name: string): Observable<ClientRenameResult> {
     return this.http.patch<ClientRenameResult>(`/clients-actions/${idServicio}/name`, { name });
   }
 
-  /** Editar datos del servicio: IP, plan, zona, MAC, WiFi, etc */
-  updateService(idServicio: number, data: any): Observable<any> {
-    return this.http.patch(`${this.api}/clientes/${idServicio}/`, data);
+  /** Datos personales confirmados en WispHub antes de guardarse en ISP Max. Solo los campos que cambiaron. */
+  editClientProfile(idServicio: number, changes: Partial<Record<'phone' | 'nationalId' | 'email' | 'address' | 'city', string>>): Observable<ClientEditResult> {
+    return this.http.patch<ClientEditResult>(`/clients-actions/${idServicio}/profile`, changes);
   }
 
-  /** Editar datos personales: telefono, cedula, email, direccion */
-  updateProfile(idServicio: number, data: any): Observable<any> {
-    return this.http.put(`${this.api}/clientes/${idServicio}/perfil/`, data);
+  /** Datos tecnicos confirmados en WispHub; una IP nueva tambien mueve la cola del MikroTik. */
+  editClientService(idServicio: number, changes: Partial<Record<'ip' | 'macCpe' | 'lanInterface' | 'onuSerial' | 'wifiSsid' | 'wifiPassword' | 'comments', string>>): Observable<ClientEditResult> {
+    return this.http.patch<ClientEditResult>(`/clients-actions/${idServicio}/service`, changes);
   }
 
   provisionClient(data: ClientProvisioningRequest): Observable<ClientProvisioningResult> {

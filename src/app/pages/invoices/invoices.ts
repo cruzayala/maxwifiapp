@@ -10,6 +10,7 @@ import { ReceiptService } from '../../services/receipt.service';
 import { ToastService } from '../../services/toast.service';
 import { PaymentModalComponent } from '../../components/payment-modal/payment-modal';
 import { firstValueFrom } from 'rxjs';
+import { invoicePendingBalance } from '../../utils/invoice-status';
 import {
   LucideBanknote, LucideCalendarClock, LucideChartColumn, LucideChevronDown,
   LucideCircleDollarSign, LucideFileCheck2, LucideFileQuestion, LucideGauge,
@@ -1630,6 +1631,8 @@ export class InvoicesComponent implements OnInit {
 
   isPaid(inv: Invoice): boolean {
     if (this.isClosedWithoutPayment(inv)) return false;
+    // WispHub llena fecha_pago y total_cobrado aunque siga pendiente: el estado manda.
+    if (this.normalize(inv.estado).includes('pendiente')) return false;
     if (this.normalize(inv.estado).includes('pagad')) return true;
     return Boolean(inv.fecha_pago) && (inv.total || 0) > 0 && (inv.total_cobrado || 0) >= (inv.total || 0) - 0.01;
   }
@@ -1670,9 +1673,7 @@ export class InvoicesComponent implements OnInit {
   }
 
   balanceAmount(inv: Invoice): number {
-    if (this.isClosedWithoutPayment(inv)) return 0;
-    if (this.isPaid(inv)) return 0;
-    return Math.max(inv.saldo || (inv.total || 0) - (inv.total_cobrado || 0), 0);
+    return invoicePendingBalance(inv);
   }
 
   invoiceSubline(inv: Invoice): string {

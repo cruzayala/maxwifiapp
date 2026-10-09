@@ -34,7 +34,13 @@ export function invoicePendingBalance(invoice: Invoice): number {
   if (!isInvoicePending(invoice)) return 0;
   const balance = Number(invoice.saldo || 0);
   if (balance > 0) return balance;
-  return Math.max((invoice.total || 0) - (invoice.total_cobrado || 0), 0);
+  // WispHub pone en total_cobrado el importe a cobrar (igual al total), no lo cobrado:
+  // una factura pendiente debe su total completo.
+  // Un abono parcial (cobrado entre 0 y el total) deja pendiente solo la diferencia.
+  const total = invoice.total || 0;
+  const charged = invoice.total_cobrado || 0;
+  if ((invoice.estado || '').toLowerCase().includes('pendiente') && (charged <= 0 || charged >= total - 0.01)) return Math.max(total, 0);
+  return Math.max(total - charged, 0);
 }
 
 /** Convierte "dd/mm/aaaa", "aaaa-mm-dd" o una fecha ISO en Date; null si no se entiende. */

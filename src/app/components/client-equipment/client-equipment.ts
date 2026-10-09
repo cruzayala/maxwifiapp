@@ -184,7 +184,8 @@ export class ClientEquipmentComponent implements OnChanges {
     });
     this.http.get<ExpenseLite[]>('/expenses', { params: { clientId: id, limit: '50' } }).subscribe({
       next: x => { this.expenses.set(x); done(); },
-      error: () => { this.loadError.set(true); done(); },
+      // Los gastos son solo de administracion: para otros roles el apartado queda vacio, sin error.
+      error: (err: { status?: number }) => { if (err?.status === 403) this.expenses.set([]); else this.loadError.set(true); done(); },
     });
   }
 }
