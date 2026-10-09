@@ -41,6 +41,8 @@ export interface WispHubClient {
   gpsAccuracy?: number | null;
   gpsCapturedAt?: string | null;
   gpsCapturedBy?: string | null;
+  /** WispHub ya no tiene este servicio (404). Se conserva, pero no cuenta ni se cobra. */
+  missingFromWisphubAt?: string | null;
   costo_instalacion: string;
   precio_plan: string;
   forma_contratacion: string;

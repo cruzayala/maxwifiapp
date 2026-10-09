@@ -92,6 +92,7 @@ export class LocalDbService {
       gpsAccuracy: row.gpsAccuracy ?? null,
       gpsCapturedAt: row.gpsCapturedAt ?? null,
       gpsCapturedBy: row.gpsCapturedBy ?? null,
+      missingFromWisphubAt: row.missingFromWisphubAt ?? null,
       costo_instalacion: '',
       precio_plan: row.precioPlan || '',
       forma_contratacion: row.formaContratacion || '',

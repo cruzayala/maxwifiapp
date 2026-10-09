@@ -212,7 +212,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const wanHistory = read<WanAuditResponse>(11, 'Historial WAN');
     const syncStatus = read<ServerSyncStatus>(12, 'Sincronización');
 
-    if (clients) this.clients.set(clients);
+    // Los servicios borrados en WispHub no cuentan en la operacion de hoy.
+    if (clients) this.clients.set(clients.filter((client) => !client.missingFromWisphubAt));
     if (invoices) this.invoices.set(invoices);
     if (mikrotik) this.mikrotik.set(mikrotik);
     if (live) this.live.set(live);

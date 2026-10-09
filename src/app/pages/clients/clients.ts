@@ -201,6 +201,7 @@ interface ClientGroup {
                   <td data-label="Estado">
                     <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ statusLabel(c.estado) }}</span>
                     @if (crmActionLabel(c.id_servicio); as lbl) { <span class="crm-state badge-{{ lbl.color }}">{{ lbl.text }}</span> }
+                    @if (c.missingFromWisphubAt) { <span class="crm-state badge-gone" title="Este servicio ya no existe en WispHub. Se conserva el registro, pero no se cobra, las automatizaciones no lo tocan y su IP puede ser ya de otro cliente.">Eliminado en WispHub</span> }
                   </td>
                   <td data-label="Facturación">
                     <div class="billing-cell"><strong>RD$ {{ monthlyAmount(c) | number:'1.0-0' }}</strong><span class="badge" [class]="'badge-' + getFacturaClass(c.estado_facturas)">{{ invoiceShort(c) }}</span><small>{{ billingCycleLabel(c) }}</small></div>
@@ -264,6 +265,7 @@ interface ClientGroup {
                     <span>{{ c.usuario || ('#' + c.id_servicio) }}</span>
                   </div>
                   <span class="badge" [class]="'badge-' + getStatusClass(c.estado)">{{ statusLabel(c.estado) }}</span>
+                  @if (c.missingFromWisphubAt) { <span class="crm-state badge-gone" title="Este servicio ya no existe en WispHub. Se conserva el registro, pero no se cobra, las automatizaciones no lo tocan y su IP puede ser ya de otro cliente.">Eliminado en WispHub</span> }
                 </div>
                 <div class="client-card-service">
                   <span>{{ planLabel(c) }}</span>
@@ -531,6 +533,7 @@ interface ClientGroup {
     .badge-suspended { background: #fff0ef; color: #b42318; }
     .badge-free { background: #e6f2ec; color: #0b6b52; }
     .badge-default { background: #edf1ed; color: #526170; }
+    .badge-gone { background: #f3f3f6; color: #5f5f6e; border: 1px dashed #c4c4d0; }
     .badge-paid { background: #e9f8f1; color: #0f7a53; }
     .badge-pending { background: #fff6e8; color: #b36b12; }
     .pending-text { color: #b36b12 !important; }

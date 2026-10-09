@@ -143,7 +143,8 @@ export class MorososComponent implements OnInit, OnDestroy {
     const morosos: MorosoInfo[] = [];
     // Deben tambien los suspendidos y los cortados: dejarlos fuera escondia la
     // mayor parte de la cartera vencida, que es justo la que hay que perseguir.
-    const pendientes = clients.filter((client) =>
+    // Un servicio borrado en WispHub ya no se cobra: su estado de facturas quedo congelado.
+    const pendientes = clients.filter((client) => !client.missingFromWisphubAt &&
       client.estado_facturas?.toLowerCase().includes('pendiente'));
 
     for (const client of pendientes) {

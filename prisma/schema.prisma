@@ -81,6 +81,11 @@ model Client {
   syncedAt   DateTime @default(now())
   sourceHash String?
 
+  // WispHub ya no tiene este servicio (404 confirmado). El registro se conserva, pero las
+  // automatizaciones y las comprobaciones de IP lo ignoran: su IP puede ser ya de otro
+  // cliente. Vuelve a null solo si el servicio reaparece en WispHub.
+  missingFromWisphubAt DateTime?
+
   // Alias / nombre real del cliente (override custom del admin)
   // Se usa para imprimir facturas, notificaciones, captive page
   // El sync NUNCA sobrescribe este campo - solo lo modifica el admin

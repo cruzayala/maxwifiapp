@@ -3815,7 +3815,7 @@ function clientIpDeps(actor) {
   return {
     readService: (id) => wisphubApiRequest(`clientes/${id}/`, { timeoutMs: 20_000 }),
     writeServiceIp: (id, ip) => awaitWisphubWrite(`clientes/${id}/`, 'PATCH', { ip }, 'la IP del servicio'),
-    localOwner: (ip, id) => prisma.client.findFirst({ where: { ip, NOT: { idServicio: id } }, select: { idServicio: true, nombre: true } }),
+    localOwner: (ip, id) => prisma.client.findFirst({ where: { ip, NOT: { idServicio: id }, missingFromWisphubAt: null }, select: { idServicio: true, nombre: true } }),
     findQueue: async (ip) => {
       const connection = await getMtConnection();
       return queueRow((await mtWrite(connection, 10_000, '/queue/simple/print', `?target=${ip}/32`))[0]);
@@ -10073,6 +10073,38 @@ async function fetchWisphubAllClients() {
   return all;
 }
 
+/**
+ * Servicios que WispHub borro: el registro local se conserva pero se marca, porque su IP
+ * puede ser ya de otro cliente y las automatizaciones no deben tocarla. Se confirma con un
+ * 404 del servicio (no basta con faltar en el listado) y se desmarca si reaparece.
+ */
+async function updateClientsMissingFromWisphub(wisphubIds) {
+  const locals = await prisma.client.findMany({ select: { idServicio: true, missingFromWisphubAt: true } });
+  const missing = locals.filter((client) => !wisphubIds.has(client.idServicio));
+  const reappeared = locals.filter((client) => client.missingFromWisphubAt && wisphubIds.has(client.idServicio)).map((client) => client.idServicio);
+  if (reappeared.length) {
+    await prisma.client.updateMany({ where: { idServicio: { in: reappeared } }, data: { missingFromWisphubAt: null } });
+  }
+  const confirmed = [];
+  // Solo los nuevos y con tope por ciclo, para no cargar WispHub.
+  for (const client of missing.filter((item) => !item.missingFromWisphubAt).slice(0, 20)) {
+    try {
+      await fetchWisphubJson(`https://api.wisphub.io/api/clientes/${client.idServicio}/`, { apiKey: API_KEY, label: 'WispHub cliente', retries: 1 });
+    } catch (error) {
+      if (error.code === 'WISPHUB_NOT_FOUND') confirmed.push(client.idServicio);
+    }
+  }
+  if (confirmed.length) {
+    await prisma.client.updateMany({ where: { idServicio: { in: confirmed } }, data: { missingFromWisphubAt: new Date() } });
+    await prisma.activity.create({ data: {
+      action: 'clients_missing_in_wisphub', entityType: 'client', entityName: `${confirmed.length} clientes`,
+      details: JSON.stringify({ ids: confirmed }),
+    } }).catch(() => {});
+    console.log(`[sync] ${confirmed.length} servicios ya no existen en WispHub: quedan fuera de las automatizaciones`);
+  }
+  return { missing: missing.length, newlyMarked: confirmed.length, reappeared: reappeared.length };
+}
+
 async function syncOnce() {
   const startedAt = new Date();
   const log = await prisma.syncLog.create({
@@ -10179,8 +10211,7 @@ async function syncOnce() {
     }
 
     const wisphubIds = new Set(wpClients.map((client) => client.id_servicio));
-    const localIds = await prisma.client.findMany({ select: { idServicio: true } });
-    missingFromWisphub = localIds.filter((client) => !wisphubIds.has(client.idServicio)).length;
+    missingFromWisphub = (await updateClientsMissingFromWisphub(wisphubIds)).missing;
 
     if (mikrotikAvailable) {
       try {
@@ -12169,32 +12200,73 @@ function parseFechaCorte(fechaStr) {
   return isNaN(dt.getTime()) ? null : dt;
 }
 
+const { calendarDaysOverdue, createDailyRunner, BUSINESS_TIME_ZONE } = require('./lib/business-time');
+const { autoBlockDecision, reminderType } = require('./lib/collection-rules');
+
+// Dias calendario de Santo Domingo. Antes se contaban en UTC: desde las 8 p. m. sumaba un dia.
 function daysOverdue(fechaCorte) {
-  if (!fechaCorte) return null;
-  const ms = Date.now() - fechaCorte.getTime();
-  return Math.floor(ms / (1000 * 60 * 60 * 24));
+  return calendarDaysOverdue(fechaCorte);
+}
+
+// El ultimo dia que corrio cada automatizacion queda en la base: un reinicio no la repite.
+const automationStore = {
+  get: async (key) => (await prisma.appSetting.findUnique({ where: { key } }))?.value ?? null,
+  set: async (key, value) => {
+    await prisma.appSetting.upsert({ where: { key }, update: { value, category: 'automation' }, create: { key, value, category: 'automation' } });
+  },
+};
+const AUTOMATION_TICK_MS = 5 * 60_000;
+
+/**
+ * Clientes que deben de verdad: una factura pendiente con saldo en las facturas ya
+ * repasadas contra WispHub. El estado_facturas del cliente solo no basta: puede ser
+ * de un servicio borrado en WispHub o de una factura ya pagada.
+ */
+async function clientsWithPendingInvoice() {
+  const rows = await prisma.invoice.findMany({
+    where: { estado: { contains: 'pendiente' }, saldo: { gt: 0 }, clienteIdServicio: { not: null } },
+    select: { clienteIdServicio: true },
+    distinct: ['clienteIdServicio'],
+  });
+  return new Set(rows.map((row) => row.clienteIdServicio));
+}
+
+// Candidatos a moroso o corte: WispHub los marca con deuda y el servicio sigue existiendo
+// alli (la IP de un servicio borrado puede ser ya de otro cliente).
+const OVERDUE_CLIENT_WHERE = {
+  ip: { not: null },
+  missingFromWisphubAt: null,
+  OR: [
+    { estadoFacturas: { contains: 'endiente' } }, // "Pendiente"
+    { estadoFacturas: { contains: 'encida' } },   // "Vencidas"
+    { estadoFacturas: { contains: 'tras' } },     // "Atrasadas"
+  ],
+};
+
+/** Lo que haria el auto-bloqueo con cada cliente; lo usan la corrida y la vista previa. */
+async function autoBlockCandidates() {
+  const [clients, owing] = await Promise.all([
+    prisma.client.findMany({
+      where: OVERDUE_CLIENT_WHERE,
+      select: { idServicio: true, nombre: true, ip: true, estado: true, estadoFacturas: true, fechaCorte: true, crmAction: true },
+    }),
+    clientsWithPendingInvoice(),
+  ]);
+  return clients.map((cl) => {
+    const overdueDays = daysOverdue(parseFechaCorte(cl.fechaCorte));
+    const decision = autoBlockDecision(
+      { owing: owing.has(cl.idServicio), crmAction: cl.crmAction, overdueDays },
+      { hardDays: AUTO_BLOCK_HARD_DAYS, morosoDays: AUTO_BLOCK_MOROSO_DAYS },
+    );
+    return { ...cl, overdueDays, ...decision };
+  });
 }
 
 async function runAutoBlockCheck() {
   if (!AUTO_BLOCK_ENABLED) return { ran: false, reason: 'AUTO_BLOCK_ENABLED=false' };
 
   const startedAt = new Date();
-  const candidates = await prisma.client.findMany({
-    where: {
-      ip: { not: null },
-      // Solo clientes que Wisphub marca pendiente/vencido
-      OR: [
-        { estadoFacturas: { contains: 'endiente' } }, // "Pendiente"
-        { estadoFacturas: { contains: 'encida' } },   // "Vencidas"
-        { estadoFacturas: { contains: 'tras' } },     // "Atrasadas"
-      ],
-    },
-    select: {
-      idServicio: true, nombre: true, ip: true,
-      estado: true, estadoFacturas: true, fechaCorte: true,
-      crmAction: true,
-    },
-  });
+  const candidates = await autoBlockCandidates();
 
   let toMoroso = 0;
   let toBlock = 0;
@@ -12202,23 +12274,11 @@ async function runAutoBlockCheck() {
   const actions = [];
 
   for (const cl of candidates) {
-    // Si el admin ya marco manualmente, no tocar
-    if (cl.crmAction === 'block') { skipped++; continue; }
-
-    const fechaCorte = parseFechaCorte(cl.fechaCorte);
-    const overdueDays = daysOverdue(fechaCorte);
-    if (overdueDays === null || overdueDays < 0) { skipped++; continue; }
-
-    let action = null;
-    if (overdueDays >= AUTO_BLOCK_HARD_DAYS && cl.crmAction !== 'block') {
-      action = 'block';
-      toBlock++;
-    } else if (overdueDays >= AUTO_BLOCK_MOROSO_DAYS && !cl.crmAction) {
-      action = 'moroso';
-      toMoroso++;
-    }
-
+    if (cl.skip) { skipped++; continue; }
+    const { overdueDays, wouldDo: action } = cl;
     if (!action) continue;
+    if (action === 'block') toBlock++;
+    else toMoroso++;
 
     try {
       const reason = `Auto: ${overdueDays} dias vencido (factura ${cl.estadoFacturas || 'pendiente'})`;
@@ -12251,17 +12311,9 @@ function startAutoBlockLoop() {
     console.log('[auto-block] disabled (set AUTO_BLOCK_ENABLED=true to enable)');
     return;
   }
-  console.log(`[auto-block] enabled. moroso>=${AUTO_BLOCK_MOROSO_DAYS}d, block>=${AUTO_BLOCK_HARD_DAYS}d, runHour=${AUTO_BLOCK_RUN_HOUR}`);
-
-  let lastCheckDay = null;
-  autoBlockTimer = setInterval(() => {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    if (now.getHours() === AUTO_BLOCK_RUN_HOUR && lastCheckDay !== today) {
-      lastCheckDay = today;
-      runAutoBlockCheck().catch((e) => console.error('[auto-block] error:', e.message));
-    }
-  }, 60 * 60 * 1000); // cada hora
+  console.log(`[auto-block] enabled. moroso>=${AUTO_BLOCK_MOROSO_DAYS}d, block>=${AUTO_BLOCK_HARD_DAYS}d, runHour=${AUTO_BLOCK_RUN_HOUR} (${BUSINESS_TIME_ZONE})`);
+  const runner = createDailyRunner({ name: 'auto-block', hour: () => AUTO_BLOCK_RUN_HOUR, run: runAutoBlockCheck, store: automationStore, log: console.log });
+  autoBlockTimer = setInterval(() => runner.tick().catch((e) => console.error('[auto-block] error:', e.message)), AUTOMATION_TICK_MS);
 }
 
 // API endpoints (autoBlockRouter ya esta declarado arriba)
@@ -12283,32 +12335,15 @@ autoBlockRouter.post('/run', asyncHandler(async (req, res) => {
 
 // Preview: dry-run, ver candidates sin aplicar nada
 autoBlockRouter.get('/preview', asyncHandler(async (req, res) => {
-  const candidates = await prisma.client.findMany({
-    where: {
-      ip: { not: null },
-      OR: [
-        { estadoFacturas: { contains: 'endiente' } },
-        { estadoFacturas: { contains: 'encida' } },
-        { estadoFacturas: { contains: 'tras' } },
-      ],
-    },
-    select: { idServicio: true, nombre: true, ip: true, estadoFacturas: true, fechaCorte: true, crmAction: true },
-  });
-  const preview = candidates.map((cl) => {
-    const fechaCorte = parseFechaCorte(cl.fechaCorte);
-    const overdueDays = daysOverdue(fechaCorte);
-    let wouldDo = null;
-    if (overdueDays !== null && overdueDays >= 0) {
-      if (overdueDays >= AUTO_BLOCK_HARD_DAYS && cl.crmAction !== 'block') wouldDo = 'block';
-      else if (overdueDays >= AUTO_BLOCK_MOROSO_DAYS && !cl.crmAction) wouldDo = 'moroso';
-    }
-    return { ...cl, overdueDays, wouldDo };
-  }).filter((c) => c.wouldDo);
+  const all = await autoBlockCandidates();
+  const excluded = {};
+  for (const cl of all) if (cl.skip) excluded[cl.skip] = (excluded[cl.skip] || 0) + 1;
   res.json({
     enabled: AUTO_BLOCK_ENABLED,
     morosoDays: AUTO_BLOCK_MOROSO_DAYS,
     hardBlockDays: AUTO_BLOCK_HARD_DAYS,
-    candidates: preview,
+    candidates: all.filter((cl) => cl.wouldDo).map(({ skip, ...cl }) => cl),
+    excluded,
   });
 }));
 
@@ -12358,15 +12393,9 @@ async function getPaymentWarningConfig() {
 }
 
 async function buildPaymentWarningCandidates(config) {
+  const owing = await clientsWithPendingInvoice();
   const clients = await prisma.client.findMany({
-    where: {
-      ip: { not: null },
-      OR: [
-        { estadoFacturas: { contains: 'endiente' } },
-        { estadoFacturas: { contains: 'encida' } },
-        { estadoFacturas: { contains: 'tras' } },
-      ],
-    },
+    where: OVERDUE_CLIENT_WHERE,
     select: {
       idServicio: true,
       nombre: true,
@@ -12383,6 +12412,7 @@ async function buildPaymentWarningCandidates(config) {
 
   const candidates = [];
   for (const cl of clients) {
+    if (!owing.has(cl.idServicio)) continue;
     const invoice = await findLatestPendingInvoiceForClient(cl.idServicio);
     const dueDate = parseFechaCorte(invoice?.fechaVencimiento || cl.fechaCorte || '');
     const overdueDays = daysOverdue(dueDate);
@@ -12522,18 +12552,16 @@ paymentWarningRouter.post('/run', requireAnyRole(['cobranza']), asyncHandler(asy
 
 function startPaymentWarningLoop() {
   if (paymentWarningTimer) return;
-  console.log('[payment-warning] scheduler ready');
-  let lastCheckDay = null;
-  paymentWarningTimer = setInterval(async () => {
-    const config = await getPaymentWarningConfig().catch(() => null);
-    if (!config?.enabled) return;
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    if (now.getHours() === config.runHour && lastCheckDay !== today) {
-      lastCheckDay = today;
-      runPaymentWarningCheck().catch((e) => console.error('[payment-warning] error:', e.message));
-    }
-  }, 60 * 60 * 1000);
+  console.log(`[payment-warning] scheduler ready (${BUSINESS_TIME_ZONE})`);
+  const runner = createDailyRunner({
+    name: 'payment-warning',
+    enabled: async () => (await getPaymentWarningConfig().catch(() => null))?.enabled === true,
+    hour: async () => (await getPaymentWarningConfig()).runHour,
+    run: () => runPaymentWarningCheck(),
+    store: automationStore,
+    log: console.log,
+  });
+  paymentWarningTimer = setInterval(() => runner.tick().catch((e) => console.error('[payment-warning] error:', e.message)), AUTOMATION_TICK_MS);
 }
 
 const NOTIF_ENABLED = process.env.NOTIF_ENABLED === 'true';
@@ -12575,10 +12603,12 @@ async function runNotifCheck() {
   if (waStatus !== 'connected') return { ran: false, reason: `WhatsApp ${waStatus}` };
 
   const startedAt = new Date();
+  const owing = await clientsWithPendingInvoice();
   const all = await prisma.client.findMany({
     where: {
       telefono: { not: null },
       fechaCorte: { not: null },
+      missingFromWisphubAt: null,
       OR: [
         { estado: 'Activo' },
         { estado: 'Suspendido' },
@@ -12596,23 +12626,14 @@ async function runNotifCheck() {
 
   for (const cl of all) {
     if (!cl.telefono || cl.telefono.length < 7) { stats.skipped++; continue; }
+    // "Su factura vence" o "lleva 3 dias vencida" a quien ya pago es peor que no avisar.
+    if (!owing.has(cl.idServicio)) { stats.skipped++; continue; }
     const fechaCorte = parseFechaCorte(cl.fechaCorte);
     if (!fechaCorte) { stats.skipped++; continue; }
 
     const overdue = daysOverdue(fechaCorte);
-    let type = null, message = null;
-
-    if (overdue === -3) {
-      type = 'reminder_t-3';
-    } else if (overdue === -1) {
-      type = 'reminder_t-1';
-    } else if (overdue === 0) {
-      type = 'due_today';
-    } else if (overdue === 3) {
-      type = 'overdue_t3';
-    } else if (overdue === 7) {
-      type = 'overdue_t7';
-    }
+    const type = reminderType(overdue);
+    let message = null;
 
     if (type) {
       message = await renderClientTemplate(type, cl, null, { dias: Math.abs(overdue) });
@@ -12641,16 +12662,17 @@ function startNotifLoop() {
     console.log('[notif] disabled (set NOTIF_ENABLED=true to enable)');
     return;
   }
-  console.log(`[notif] enabled. runHour=${NOTIF_RUN_HOUR}`);
-  let lastDay = null;
-  notifTimer = setInterval(() => {
-    const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    if (now.getHours() === NOTIF_RUN_HOUR && lastDay !== today && waStatus === 'connected') {
-      lastDay = today;
-      runNotifCheck().catch((e) => console.error('[notif] error:', e.message));
-    }
-  }, 60 * 60 * 1000);
+  console.log(`[notif] enabled. runHour=${NOTIF_RUN_HOUR} (${BUSINESS_TIME_ZONE})`);
+  const runner = createDailyRunner({
+    name: 'notif',
+    hour: () => NOTIF_RUN_HOUR,
+    // Sin WhatsApp no se marca el dia: si se conecta dentro de la hora, todavia sale.
+    enabled: () => waStatus === 'connected',
+    run: runNotifCheck,
+    store: automationStore,
+    log: console.log,
+  });
+  notifTimer = setInterval(() => runner.tick().catch((e) => console.error('[notif] error:', e.message)), AUTOMATION_TICK_MS);
 }
 
 // notifRouter ya esta declarado arriba

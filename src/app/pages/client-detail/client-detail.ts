@@ -96,6 +96,13 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
           </div>
         </div>
 
+        @if (client()!.missingFromWisphubAt) {
+          <div class="gone-banner" role="status">
+            <svg lucideSearchX size="17" aria-hidden="true"></svg>
+            <span><strong>Este servicio ya no existe en WispHub</strong> (se detectó el {{ client()!.missingFromWisphubAt | date:'d MMM y' }}). Se conserva su historial, pero no se cobra, las automatizaciones no lo tocan y su IP {{ client()!.ip || '' }} puede ser ya de otro cliente. Editarlo, suspenderlo o activarlo fallará en WispHub.</span>
+          </div>
+        }
+
         <!-- RESUMEN RÁPIDO: lo que se pregunta primero al atender a un cliente -->
         <section class="quick-summary" aria-label="Resumen del cliente">
           <div class="qs-item" [class.danger]="clientOpenBalance() > 0" [class.warn]="clientOpenBalance() === 0 && hasPendingStatus()" [class.ok]="clientOpenBalance() === 0 && !hasPendingStatus()">
@@ -661,6 +668,8 @@ type ClientDetailTab = 'overview' | 'service' | 'monitoring' | 'equipment' | 'ac
     .btn-wa:hover { background: #0f704b; }
 
     /* Resumen rápido */
+    .gone-banner { display: flex; align-items: flex-start; gap: 9px; margin: 0 0 14px; padding: 10px 12px; border: 1px dashed #c4c4d0; border-radius: 10px; background: #f6f6f9; color: #45455a; font-size: 13px; line-height: 1.45; }
+    .gone-banner svg { flex: 0 0 auto; margin-top: 1px; }
     .quick-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 14px; }
     .qs-item { position: relative; min-width: 0; padding: 12px 14px; border: 1px solid #e0e6e1; border-left: 4px solid #cfd8d2; border-radius: 12px; background: #fff; display: grid; gap: 3px; align-content: start; }
     .qs-item.ok { border-left-color: #0f7a53; }
