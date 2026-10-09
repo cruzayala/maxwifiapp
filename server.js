@@ -1326,6 +1326,16 @@ const MT_USER = process.env.MIKROTIK_USER;
 const MT_PASS = process.env.MIKROTIK_PASS;
 const MT_PORT = parseInt(process.env.MIKROTIK_PORT || '8728');
 const MIKROTIK_ENABLED = process.env.MIKROTIK_ENABLED !== 'false';
+// api-ssl (8729): sin esto la clave del MikroTik viaja en texto plano por internet en cada
+// conexion. Solo se acepta el certificado del propio router (su CA en MIKROTIK_TLS_CA_B64,
+// creada el 09-oct-2026); la IP no figura en un certificado publico, asi que no se valida el nombre.
+const MT_TLS = process.env.MIKROTIK_TLS === 'true';
+const MT_TLS_CA = process.env.MIKROTIK_TLS_CA_B64 ? Buffer.from(process.env.MIKROTIK_TLS_CA_B64, 'base64').toString('utf8') : null;
+function mikrotikTlsOptions() {
+  if (!MT_TLS) return {};
+  if (!MT_TLS_CA) throw new Error('MIKROTIK_TLS=true necesita MIKROTIK_TLS_CA_B64 (el certificado de la CA del MikroTik)');
+  return { tls: { ca: MT_TLS_CA, minVersion: 'TLSv1.2', checkServerIdentity: () => undefined } };
+}
 
 let mtConn = null;
 let mtConnecting = false;
@@ -1553,6 +1563,7 @@ async function getMtConnection() {
         const connection = new RouterOSAPI({
           host: MT_HOST, user: MT_USER, password: MT_PASS, port: MT_PORT,
           timeout: 10, keepalive: true,
+          ...mikrotikTlsOptions(),
         });
         connection.on('error', (error) => {
           mtLastError = error?.message || 'Conexion MikroTik interrumpida';
@@ -1591,6 +1602,7 @@ mtRouter.get('/status', asyncHandler(async (req, res) => {
     configured: !!(MT_HOST && MT_USER && MT_PASS),
     connected: !!mtConn?.connected,
     host: MT_HOST,
+    encrypted: MT_TLS,
     error: mtLastError,
     telemetry: { commandQueue: mtCommands.snapshot(), cache: { ...mtCacheMetrics, entries: mtCache.size, inFlight: mtInFlight.size } },
   });
