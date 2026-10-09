@@ -7753,6 +7753,18 @@ agentRouter.post('/agent/tasks/:id/report', asyncHandler(async (req, res) => {
   res.json(onuAgentTaskDto(updated));
 }));
 
+// Instaladores (APK y ONU Studio): viven en el volumen persistente y no viajan en cada deploy
+// (eran ~160 MB por subida). scripts/publish-installers.sh los sube cuando cambian. Si un
+// archivo todavia no esta en el volumen, se usa el que vino en la imagen.
+const INSTALLER_DIRS = [process.env.INSTALLERS_DIR || '/data/agent-downloads', path.join(__dirname, 'agent-downloads')];
+function installerFile(fileName) {
+  for (const dir of INSTALLER_DIRS) {
+    const candidate = path.join(dir, fileName);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 async function readOnuAgentDownloadManifest() {
   const manifestPath = path.join(__dirname, 'agent-downloads', 'manifest.json');
   if (!fs.existsSync(manifestPath)) return null;
@@ -7768,8 +7780,8 @@ async function readOnuAgentDownloadManifest() {
 agentRouter.get('/downloads/windows/manifest', asyncHandler(async (_req, res) => {
   const manifest = await readOnuAgentDownloadManifest();
   if (!manifest) return res.status(404).json({ error: 'El instalador aun no esta publicado' });
-  const executablePath = path.join(__dirname, 'agent-downloads', manifest.fileName);
-  if (!fs.existsSync(executablePath)) return res.status(404).json({ error: 'El instalador publicado no esta disponible' });
+  const executablePath = installerFile(manifest.fileName);
+  if (!executablePath) return res.status(404).json({ error: 'El instalador publicado no esta disponible' });
   const stat = await fs.promises.stat(executablePath);
   res.json({ ...manifest, sizeBytes: stat.size, downloadUrl: '/agent-api/downloads/windows' });
 }));
@@ -7777,8 +7789,8 @@ agentRouter.get('/downloads/windows/manifest', asyncHandler(async (_req, res) =>
 agentRouter.get('/downloads/windows', asyncHandler(async (_req, res) => {
   const manifest = await readOnuAgentDownloadManifest();
   if (!manifest) return res.status(404).json({ error: 'El instalador aun no esta publicado' });
-  const executablePath = path.join(__dirname, 'agent-downloads', manifest.fileName);
-  if (!fs.existsSync(executablePath)) return res.status(404).json({ error: 'El instalador publicado no esta disponible' });
+  const executablePath = installerFile(manifest.fileName);
+  if (!executablePath) return res.status(404).json({ error: 'El instalador publicado no esta disponible' });
   res.setHeader('Cache-Control', 'private, no-cache');
   res.download(executablePath, `ONU-Studio-ISP-Max-v${manifest.version}.exe`);
 }));
@@ -7789,7 +7801,7 @@ app.use('/agent-api', agentRouter);
 app.get('/android-api/latest', authMiddleware, asyncHandler(async (_req, res) => {
   const manifestPath = path.join(__dirname, 'agent-downloads', 'android-manifest.json');
   if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'La APK aun no esta publicada' });
-  const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
+  const manifest = JSON.parse((await fs.promises.readFile(manifestPath, 'utf8')).replace(/^\uFEFF/, ''));
   res.setHeader('Cache-Control', 'private, no-cache');
   res.json({
     version: String(manifest.version || ''),
@@ -7804,11 +7816,11 @@ app.get('/android-api/latest', authMiddleware, asyncHandler(async (_req, res) =>
 app.get('/android-api/download', authMiddleware, asyncHandler(async (_req, res) => {
   const manifestPath = path.join(__dirname, 'agent-downloads', 'android-manifest.json');
   if (!fs.existsSync(manifestPath)) return res.status(404).json({ error: 'La APK aun no esta publicada' });
-  const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf8'));
+  const manifest = JSON.parse((await fs.promises.readFile(manifestPath, 'utf8')).replace(/^\uFEFF/, ''));
   const fileName = String(manifest.fileName || '');
   if (!/^ISP-Max-Android-[a-zA-Z0-9.-]+\.apk$/.test(fileName) || path.basename(fileName) !== fileName) return res.status(500).json({ error: 'Manifiesto Android inválido' });
-  const apkPath = path.join(__dirname, 'agent-downloads', fileName);
-  if (!fs.existsSync(apkPath)) return res.status(404).json({ error: 'La APK publicada no esta disponible' });
+  const apkPath = installerFile(fileName);
+  if (!apkPath) return res.status(404).json({ error: 'La APK publicada no esta disponible' });
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-APK-SHA256', String(manifest.sha256 || ''));
   res.download(apkPath, fileName);

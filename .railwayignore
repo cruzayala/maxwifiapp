@@ -24,3 +24,7 @@
 *.out
 *.db
 /onu-studio-net
+# Instaladores (~160 MB): viven en el volumen /data/agent-downloads y se suben solo cuando
+# cambian con scripts/publish-installers.sh. Los manifiestos (.json) si viajan.
+/agent-downloads/*.apk
+/agent-downloads/*.exe
